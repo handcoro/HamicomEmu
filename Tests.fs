@@ -76,28 +76,28 @@ let tests =
       Expect.equal result.X (byte 10) "Accumulator X should be 0x80"
     }
 
-    // test "Text 5 ops working together" {
-    //   let program = [| 0xA9uy; 0xC0uy; 0xAAuy; 0xE8uy; 0x00uy |]
-    //   let cpu = initialCpu
-    //   let result =
-    //     cpu |> load program
-    //         |> reset
-    //         |> run
+    test "Text 5 ops working together" {
+      let program = [| 0xA9uy; 0xC0uy; 0xAAuy; 0xE8uy; 0x00uy |]
+      let cpu = initialCpu
+      let result =
+        cpu |> load program
+            |> reset
+            |> run
 
-    //   Expect.equal result.X 0xC1uy "X shoud be 0XC1"
-    // }
+      Expect.equal result.X 0xC1uy "X shoud be 0XC1"
+    }
 
-    // test "INX overflow" {
-    //   let program = [| 0xE8uy; 0xE8uy; 0x00uy |]
-    //   let cpu = initialCpu
-    //   let cpu =
-    //     cpu |> load program
-    //         |> reset
-    //   let cpu = { cpu with X = 0xFFuy }
-    //   let result = cpu |> run
+    test "INX overflow" {
+      let program = [| 0xE8uy; 0xE8uy; 0x00uy |]
+      let cpu = initialCpu
+      let cpu =
+        cpu |> load program
+            |> reset
+      let cpu = { cpu with X = 0xFFuy }
+      let result = cpu |> run
 
-    //   Expect.equal result.X 0x01uy "X should be 0x01"
-    // }
+      Expect.equal result.X 0x01uy "X should be 0x01"
+    }
 
     test "LDA from memory" {
       let program = [| 0xA5uy; 0x10uy; 0x00uy |]

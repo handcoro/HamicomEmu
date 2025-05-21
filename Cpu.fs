@@ -135,7 +135,6 @@ let adc mode cpu = // Add with Carry
   let sum = int cpu.A + int value + carry
   let result = byte sum
   let isCarry = sum > 0xFF
-
   let isOverflow =
     // オーバーフローが発生する条件:
     // 1. A と value の符号が同じ
@@ -155,13 +154,10 @@ let sbc mode cpu = // Subtract with Carry
   let addr = mode |> getOperandAddress cpu (cpu.PC + 1us)
   let value = addr |> memRead cpu
   let carry = if hasFlag Flags.C cpu.P then 1 else 0
-
-  let valueInverted = value ^^^ 0xFFuy
+  let valueInverted = ~~~ value
   let sum = int cpu.A + int valueInverted + carry
   let result = byte sum
-
   let isCarry = sum > 0xFF
-
   let isOverflow =
     // ADC とオーバーフローの条件が違うので注意
     cpu.A ^^^ value &&& 0x80uy <> 0uy && cpu.A ^^^ result &&& 0x80uy <> 0uy
@@ -191,12 +187,15 @@ let ldy mode cpu = // Load Y Register
   let y = addr |> memRead cpu
   let p = setZeroNegativeFlags y cpu.P
   { cpu with Y = y; P = p }
+
 let sta mode cpu = // Store Accumulator
   let addr = mode |> getOperandAddress cpu (cpu.PC + 1us)
   cpu |> memWrite addr cpu.A
+
 let stx mode cpu = // Store X Register
   let addr = mode |> getOperandAddress cpu (cpu.PC + 1us)
   cpu |> memWrite addr cpu.X
+
 let sty mode cpu = // Store Y Register
   let addr = mode |> getOperandAddress cpu (cpu.PC + 1us)
   cpu |> memWrite addr cpu.Y
@@ -205,25 +204,31 @@ let tax _ cpu = // Transfer Accumulator to X
   let x = cpu.A
   let p = cpu.P |> setZeroNegativeFlags x
   { cpu with X = x; P = p }
+
 let tay _ cpu = // Transfer Accumulator to Y
   let y = cpu.A
   let p = cpu.P |> setZeroNegativeFlags y
   { cpu with Y = y; P = p }
+
 let txa _ cpu = // Transfer X to Accumulator
   let a = cpu.X
   let p = cpu.P |> setZeroNegativeFlags a
   { cpu with A = a; P = p }
+
 let tya _ cpu = // Transfer Y to Accumulator
   let a = cpu.Y
   let p = cpu.P |> setZeroNegativeFlags a
   { cpu with A = a; P = p }
+
 let tsx _ cpu = // Transfer Stack Pointer to X
   let x = cpu.SP
   let p = cpu.P |> setZeroNegativeFlags x
   { cpu with X = x; P = p }
+
 let txs _ cpu = // Transfer X to Stack Pointer
   let sp = cpu.X
   { cpu with SP = sp }
+
 let shiftLeftAndUpdate value status =
   let carry = value &&& 0b1000_0000uy > 0uy
   let result = value <<< 1
@@ -362,6 +367,7 @@ let dec mode cpu = // Decrement Memory
   let result = (addr |> memRead cpu) - 1uy
   cpu |> memWrite addr result
       |> fun c -> { c with P = cpu.P |> setZeroNegativeFlags result }
+
 let dex _ cpu = // Decrement X Register
   let x = cpu.X - 1uy
   { cpu with X = x; P = cpu.P |> setZeroNegativeFlags x }
@@ -370,18 +376,19 @@ let dey _ cpu = // Decrement X Register
   let y = cpu.Y - 1uy
   { cpu with Y = y; P = cpu.P |> setZeroNegativeFlags y }
 
-let inc mode cpu = // Decrement Memory
+let inc mode cpu = // Increment Memory
   let addr = mode |> getOperandAddress cpu (cpu.PC + 1us)
   let result = (addr |> memRead cpu) + 1uy
   cpu |> memWrite addr result
       |> fun c -> { c with P = cpu.P |> setZeroNegativeFlags result }
-let inx _ cpu =
+let inx _ cpu = // Increment X Register
   let x = cpu.X + 1uy
   { cpu with X = x; P = cpu.P |> setZeroNegativeFlags x }
 
-let iny _ cpu = // Decrement X Register
+let iny _ cpu = // Increment Y Register
   let y = cpu.Y + 1uy
   { cpu with Y = y; P = cpu.P |> setZeroNegativeFlags y }
+
 let jmp mode cpu = // Jump
   let addr = mode |> getOperandAddress cpu (cpu.PC + 1us)
   { cpu with PC = addr }
@@ -390,10 +397,12 @@ let push value cpu = // Push value to stack
   let addr = 0x0100us + uint16 cpu.SP
   cpu |> memWrite addr value
       |> fun c -> { c with SP = c.SP - 1uy }
+
 let push16 value cpu = // Push 16-bit value to stack
   let addr = 0x0100us + uint16 cpu.SP - 1us
   cpu |> memWrite16 addr value
       |> fun c -> { c with SP = c.SP - 2uy }
+
 let pull cpu = // Pull value from stack
   let sp = cpu.SP + 1uy
   let addr = 0x0100us + uint16 sp
@@ -417,11 +426,14 @@ let rts _ cpu = // Return from Subroutine
 
 let pha _ cpu = // Push Accumulator
   cpu |> push cpu.A
+
 let php _ cpu = // Push Processor Status
   cpu |> push cpu.P
+
 let plp _ cpu = // Pull Processor Status
   let c, p = cpu |> pull
   { c with P = p }
+
 let pla _ cpu = // Pull Accumulator
   let c, a = cpu |> pull
   { c with A = a; P = c.P |> setZeroNegativeFlags a }
@@ -435,6 +447,7 @@ let brk _ cpu = // BRK - Force Break
   //                     P = c.P |> updateFlag Flags.B true
   //                 } // BRK の場合は 0xFFFE に飛ぶ
   { cpu with P = cpu.P |> updateFlag Flags.B true }
+
 let rti _ cpu = // Return from Interrupt
   let c, p = cpu |> pull
   let c, pc = c |> pull16
@@ -442,6 +455,7 @@ let rti _ cpu = // Return from Interrupt
 
 let nop _ cpu = // No Operation
   cpu
+
 let reset cpu =
   { cpu with
       A = 0uy
@@ -449,21 +463,21 @@ let reset cpu =
       Y = 0uy
       P = 0uy
       PC = 0xFFFCus |> memRead16 cpu
-      // todo?: Memory
   }
 
 let load program cpu =
   let mem = Array.copy cpu.Memory
-  // for NES
-  // Array.blit program 0 mem 0x8000 program.Length
-  // let cpu = { cpu with Memory = mem }
-  // cpu |> memWrite16 0xFFFCus 0x8000us
-  // for Snake game
+  Array.blit program 0 mem 0x8000 program.Length
+  let cpu = { cpu with Memory = mem }
+  cpu |> memWrite16 0xFFFCus 0x8000us
+
+let loadSnake program cpu =
+  let mem = Array.copy cpu.Memory
   Array.blit program 0 mem 0x0600 program.Length
   let cpu = { cpu with Memory = mem }
   cpu |> memWrite16 0xFFFCus 0x0600us
 
-    /// CPUを1命令だけ実行する（既存の関数があればそれを使用）
+    /// CPU を 1 命令だけ実行する
 let step cpu =
     let opcode = cpu.PC |> memRead cpu
     let op, mode, size, cycles = decodeOpcode opcode
@@ -533,4 +547,3 @@ let rec run cpu =
   // if c.P |> hasFlag Flags.B then c else c |> run
   // BRK に当たったときループを抜ける暫定処理
   if c.P |> hasFlag Flags.B then c else c |> run
-

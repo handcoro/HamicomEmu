@@ -1,5 +1,5 @@
-﻿open Expecto
-open Tests
+﻿// open Expecto
+// open Tests
 
 open SnakeGame
 open Cpu
@@ -57,7 +57,7 @@ type pseudoNESGame() as this =
 
     let mutable cpu =
         initialCpu
-        |> load gameCode
+        |> loadSnake gameCode
         |> reset
 
     do
