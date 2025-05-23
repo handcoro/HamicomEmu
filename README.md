@@ -4,11 +4,14 @@
 ## 開発めも
 関数型言語習得を何回も挫折してた初心者が、F# とゲーム機内部仕様の勉強をしながらファミコンエミュレータをつくっていくリポジトリとなっております。ゴールは決めてません。
 
+関数型に慣れるためになるべくクラスは使わない方針で行きます。
+
 とりあえずの画面表示のために MonoGame を使用してます。
 
 [Writing NES Emulator in Rust](https://bugzmanov.github.io/nes_ebook/) に従って実装を進めていってます。へびゲームもその流れで動作テストとして実装しました。
 
 じつは Rust も全く知らないので、同時に Rust の仕様もぼんやり程度でもわかるようになるといいなと思ってます。
+
 
 ## ビルド方法
 .NET 8 SDK が入っていればコマンドラインから dotnet コマンドでビルドできます。
@@ -33,4 +36,4 @@
   "CPUの仕様の参考に また Instruction.fs はこのページ内容から抽出して自動生成してます")
 - [GitHub: Famicom-Fsharp - instructions.fs](https://github.com/kxkx5150/Famicom-Fsharp/blob/main/src/emulator/instructions.fs
   "型の使い方を参考にさせていただきました")
-- & etc.
+- etc.
