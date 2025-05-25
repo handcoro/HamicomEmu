@@ -1,6 +1,6 @@
 module Bus
 
-open Rom
+open Cartridge
 
 module Ram =
   let Begin = 0x0000us
@@ -15,12 +15,12 @@ module PrgRom =
   let End = 0xFFFFus
 
 type Bus = {
-  CpuVRam: byte array // 0x0000 - 0x1FFF
+  CpuVram: byte array // 0x0000 - 0x1FFF
   Rom: Rom
 }
 
 let initialBus rom = {
-  CpuVRam = Array.create 0x2000 0uy
+  CpuVram = Array.create 0x2000 0uy
   Rom = rom
 }
 
@@ -29,28 +29,30 @@ let readPrgRom bus addr = // PRG ROM の読み込み
   let addr2 = if bus.Rom.PrgRom.Length = 0x4000 && addr' >= 0x4000us then addr' % 0x4000us else addr' // 16KB ROM の場合はミラーリング
   bus.Rom.PrgRom[int addr2]
 
+let inline inRange startAddr endAddr addr =
+  addr >= startAddr && addr <= endAddr
 let memRead bus addr = 
   match addr with
-  | addr when addr >= Ram.Begin && addr <= Ram.MirrorsEnd ->
+  | addr when addr |> inRange Ram.Begin Ram.MirrorsEnd ->
     let mirrorDownAddr = addr &&& 0b0000_0111_1111_1111us
-    bus.CpuVRam.[int mirrorDownAddr]
-  | addr when addr >= PpuRegisters.Begin && addr <= PpuRegisters.MirrorsEnd ->
+    bus.CpuVram.[int mirrorDownAddr]
+  | addr when addr |> inRange PpuRegisters.Begin PpuRegisters.MirrorsEnd ->
     let mirrorDownAddr = addr &&& 0b0010_0000_0000_0111us
     failwithf "PPU is not implemented yet. addr: %04X\n" addr
-  | addr when addr >= PrgRom.Begin && addr <= PrgRom.End ->
+  | addr when addr |> inRange PrgRom.Begin PrgRom.End ->
     addr |> readPrgRom bus
   | _ -> failwithf "Invalid Memory access at: %04X" addr
 
 let memWrite addr value bus =
   match addr with
-  | addr when addr >= Ram.Begin && addr <= Ram.MirrorsEnd ->
+  | addr when addr |> inRange Ram.Begin Ram.MirrorsEnd ->
     let mirrorDownAddr = addr &&& 0b0000_0111_1111_1111us
-    bus.CpuVRam.[int mirrorDownAddr] <- value
+    bus.CpuVram.[int mirrorDownAddr] <- value
     bus
-  | addr when addr >= PpuRegisters.Begin && addr <= PpuRegisters.MirrorsEnd ->
+  | addr when addr |> inRange PpuRegisters.Begin PpuRegisters.MirrorsEnd ->
     let mirrorDownAddr = addr &&& 0b0010_0000_0000_0111us
     failwithf "PPU is not implemented yet. addr: %04X\n" addr
-  | addr when addr >= PrgRom.Begin && addr <= PrgRom.End -> // PRG ROM は書き込み禁止
+  | addr when addr |> inRange PrgRom.Begin PrgRom.End -> // PRG ROM は書き込み禁止
     failwithf "Attempt to write to Cartridge Rom space. addr: %04X\n" addr
   | _ -> failwithf "Invalid Memory write-access at: %04X" addr
 

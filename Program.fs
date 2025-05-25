@@ -2,11 +2,13 @@
 // open Tests
 open Cpu
 open Bus
-open Rom
+open Cartridge
+open Tests
 
 open System
 open System.IO
 open FsToolkit.ErrorHandling
+open Expecto
 
 // MonoGame メインゲームクラス
 open Microsoft.Xna.Framework
@@ -130,10 +132,11 @@ type pseudoNESGame() as this =
 
 [<EntryPoint>]
 let main argv =
-  use game = new pseudoNESGame()
-  game.Run()
-  0
-
-// [<EntryPoint>]
-// let main argv =
-//     runTestsWithArgs defaultConfig argv tests
+  if argv |> Array.exists ((=) "--test") then
+    // --test を除いた引数だけ Expecto に渡す
+    let filteredArgs = argv |> Array.filter (fun a -> a <> "--test")
+    runTestsWithArgs defaultConfig filteredArgs Tests.tests
+  else
+    use game = new pseudoNESGame()
+    game.Run()
+    0

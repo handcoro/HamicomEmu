@@ -1,4 +1,4 @@
-module Rom
+module Cartridge
 
 open FsToolkit.ErrorHandling
 
@@ -65,3 +65,39 @@ let parseRom (raw : byte array) =
       ScreenMirroring = screenMirroring
     }
   }
+
+type TestRom = {
+  Header: byte array
+  Trainer: byte array option
+  PrgRom: byte array
+  ChrRom: byte array
+}
+let createRom rom =
+  Array.concat [
+    rom.Header
+    match rom.Trainer with
+    | Some t -> t
+    | None -> [||]
+    rom.PrgRom
+    rom.ChrRom
+  ]
+
+let normalizePrgRom (prg : byte array) = // PRG ROM を 32KB に正規化
+  match prg.Length with
+  | len when len < 0x8000 ->
+      let padded = Array.create 0x8000 0uy
+      Array.blit prg 0 padded 0 len
+      padded
+  | len when len = 0x8000 -> prg
+  | len when len > 0x8000 -> prg[0..0x7FFF] // 切り詰める
+  | _ -> failwith "Unexpected PRG ROM size"
+
+let testRom program =
+  let prgRomContents = normalizePrgRom program
+  let rom = {
+    Header = Array.append nesTag  [| 0x02uy; 0x01uy; 0x31uy; 00uy; 00uy; 00uy; 00uy; 00uy; 00uy; 00uy; 00uy; 00uy |]
+    Trainer = None
+    PrgRom = prgRomContents
+    ChrRom = Array.create chrRomPageSize 2uy
+  }
+  rom |> createRom |> parseRom |> Result.defaultWith (fun msg -> failwith $"Cannot create test rom: %s{msg}")

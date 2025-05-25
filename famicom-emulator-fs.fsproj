@@ -1,18 +1,19 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <OutputType>WinExe</OutputType>
+    <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Instructions.fs" />
-    <Compile Include="Rom.fs" />
+    <Compile Include="Cartridge.fs" />
     <Compile Include="Bus.fs" />
     <Compile Include="Cpu.fs" />
-    <!-- <Compile Include="Tests.fs" /> -->
+    <Compile Include="Trace.fs" />
+    <Compile Include="Tests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
-    <!-- <PackageReference Include="Expecto" Version="9.0.4" /> -->
+    <PackageReference Include="Expecto" Version="9.0.4" />
     <PackageReference Include="FsToolkit.ErrorHandling" Version="4.18.0" />
     <PackageReference Include="MonoGame.Content.Builder.Task" Version="3.8.3" />
     <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.3" />

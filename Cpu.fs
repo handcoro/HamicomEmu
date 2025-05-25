@@ -29,15 +29,19 @@ let initialCpu =
     X = 0uy
     Y = 0uy
     PC = 0us
-    SP = 0xFFuy
-    P = 0uy }
+    SP = 0xFDuy
+    P = Flags.I ||| Flags.U }
 
 let getOperandAddress cpu bus pc mode =
   match mode with
-  | Accumulator -> failwithf "Unsupported mode: %A" mode
-  | Immediate -> pc
-  | ZeroPage -> pc |> memRead bus |> uint16
-  | Absolute -> pc |> memRead16 bus
+  | Accumulator ->
+    failwithf "Unsupported mode: %A" mode
+  | Immediate ->
+    pc
+  | ZeroPage ->
+    pc |> memRead bus |> uint16
+  | Absolute ->
+    pc |> memRead16 bus
   | ZeroPage_X ->
     let pos = pc |> memRead bus
     let addr = pos + cpu.X |> uint16
@@ -73,12 +77,14 @@ let getOperandAddress cpu bus pc mode =
     let offset = pc |> memRead bus |> int8 |> int
     let addr = int pc + offset
     uint16 addr
-  | Implied -> pc
-  | NoneAddressing -> failwithf "Unsupported mode: %A" mode
+  | Implied ->
+    pc
+  | NoneAddressing ->
+    failwithf "Unsupported mode: %A" mode
 
-let hasFlag flag p = p &&& flag <> 0uy
-let setFlag flag p = p ||| flag
-let clearFlag flag p = p &&& ~~~flag
+let inline hasFlag flag p = p &&& flag <> 0uy
+let inline setFlag flag p = p ||| flag
+let inline clearFlag flag p = p &&& ~~~flag
 let updateFlag flag condition p =
   if condition then setFlag flag p else clearFlag flag p
 
@@ -519,3 +525,9 @@ let rec run cpu bus =
   let cpu', bus' = (cpu, bus) ||> step
   // BRK に当たったときループを抜ける暫定処理
   if hasFlag Flags.B cpu'.P then cpu', bus' else (cpu', bus') ||> run
+
+let rec runWithCallback callback cpu bus =
+  callback cpu bus
+  let cpu', bus' = (cpu, bus) ||> step
+  // BRK に当たったときループを抜ける暫定処理
+  if hasFlag Flags.B cpu'.P then cpu', bus' else (cpu', bus') ||> runWithCallback callback
