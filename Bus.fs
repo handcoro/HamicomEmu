@@ -58,8 +58,23 @@ let memWrite addr value bus =
 
 let memRead16 bus pos = // 16ビットデータ読み込み（リトルエンディアンをデコード）
   let read = memRead bus
-  let lo = read  pos        |> uint16
+  let lo = read  pos |> uint16
   let hi = read (pos + 1us) |> uint16
+  (hi <<< 8) ||| lo
+
+let memRead16ZeroPage bus (pos: byte) =
+  let read = memRead bus
+  let loPos = pos |> uint16
+  let hiPos = pos + 1uy |> uint16
+  let lo = read loPos |> uint16
+  let hi = read hiPos |> uint16
+  (hi <<< 8) ||| lo
+
+let memRead16Wrap bus pos =
+  let read = memRead bus
+  let lo = read pos |> uint16
+  let hiPos = if pos &&& 0x00FFus = 0x00FFus then pos &&& 0xFF00us else pos + 1us
+  let hi = read hiPos |> uint16
   (hi <<< 8) ||| lo
 
 let memWrite16 addr pos bus = // 16ビットデータ書き込み（リトルエンディアン化）

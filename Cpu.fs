@@ -60,18 +60,17 @@ let getOperandAddress cpu bus pc mode =
     addr
   | Indirect_X ->
     let bpos = pc |> memRead bus
-    let ptr = bpos + cpu.X |> uint16
-    let addr = ptr |> memRead16 bus
+    let ptr = bpos + cpu.X
+    let addr = ptr |> memRead16ZeroPage bus
     addr
   | Indirect_Y ->
-    let bpos = pc |> memRead bus |> uint16
-    let deRefBase = bpos |> memRead16 bus
+    let bpos = pc |> memRead bus
+    let deRefBase = bpos |> memRead16ZeroPage bus
     let deRef = deRefBase + (cpu.Y |> uint16)
     deRef
-  // Indirect でページ境界を指定した場合の動作をよく調べておく
   | Indirect ->
     let bpos = pc |> memRead16 bus
-    let addr = bpos |> memRead16 bus
+    let addr = bpos |> memRead16Wrap bus // JMP のページ境界バグ
     addr
   | Relative ->
     let offset = pc |> memRead bus |> int8 |> int
@@ -407,11 +406,11 @@ let pha _ cpu bus = // Push Accumulator
   (cpu, bus) ||> push cpu.A
 
 let php _ cpu bus = // Push Processor Status
-  (cpu, bus) ||> push cpu.P
+  (cpu, bus) ||> push (cpu.P |> setFlag Flags.B ||| Flags.U) // B フラグをセットしてプッシュ
 
 let plp _ cpu bus = // Pull Processor Status
   let c, p = cpu |> pull bus
-  { c with P = p }, bus
+  { c with P = p |> clearFlag Flags.B |> setFlag Flags.U }, bus
 
 let pla _ cpu bus = // Pull Accumulator
   let c, a = cpu |> pull bus
@@ -430,7 +429,7 @@ let brk _ cpu bus = // BRK - Force Break
 let rti _ cpu bus = // Return from Interrupt
   let c, p = cpu |> pull bus
   let c, pc = c |> pull16 bus
-  { c with P = p; PC = pc }, bus
+  { c with P = p |> clearFlag Flags.B |> setFlag Flags.U; PC = pc }, bus
 
 let nop _ cpu bus = // No Operation
   cpu, bus
@@ -519,7 +518,7 @@ let step cpu bus : CpuState * Bus =
       | TXS -> (cpu, bus) ||> execInstr txs mode
       | TXA -> (cpu, bus) ||> execInstr txa mode
       | TYA -> (cpu, bus) ||> execInstr tya mode
-      | _ -> failwithf "Unsupported mnemonic: %A" op
+      // | _ -> failwithf "Unsupported mnemonic: %A" op
 
 let rec run cpu bus =
   let cpu', bus' = (cpu, bus) ||> step
@@ -529,5 +528,4 @@ let rec run cpu bus =
 let rec runWithCallback callback cpu bus =
   callback cpu bus
   let cpu', bus' = (cpu, bus) ||> step
-  // BRK に当たったときループを抜ける暫定処理
-  if hasFlag Flags.B cpu'.P then cpu', bus' else (cpu', bus') ||> runWithCallback callback
+  (cpu', bus') ||> runWithCallback callback

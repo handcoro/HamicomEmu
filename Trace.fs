@@ -19,7 +19,7 @@ open Microsoft.FSharp.Reflection
   ind: $xxxx
 
 *)
-let formatAddress mode (args: byte[]) =
+let formatAddress pc mode (args: byte[]) =
   match mode with
   | Accumulator ->
     "A"
@@ -42,28 +42,67 @@ let formatAddress mode (args: byte[]) =
   | Indirect_Y ->
     sprintf "($%02X),Y" args[0]
   | Indirect ->
-    sprintf "$%02X%02X" args[1] args[0]
-  | Relative -> // 未実装
-    ""
+    sprintf "($%02X%02X)" args[1] args[0]
+  | Relative ->
+    sprintf "$%04X" (pc + uint16 args[0] + 2us)
   | Implied ->
     ""
   | NoneAddressing ->
     failwithf "Unsupported mode: %A" mode
 
-let formatMemoryAccess cpu bus mode (args: byte[]) = // 作りかけ
+let formatMemoryAccess cpu bus op mode (args: byte[]) =
   match mode with
+  | ZeroPage ->
+    let addr = args[0] |> uint16
+    let value = addr |> memRead bus
+    sprintf "= %02X" value
+  | ZeroPage_X ->
+    let addr = args[0] + cpu.X |> uint16
+    let value = addr |> memRead bus
+    sprintf "@ %02X = %02X" addr value
+  | ZeroPage_Y ->
+    let addr = args[0] + cpu.Y |> uint16
+    let value = addr |> memRead bus
+    sprintf "@ %02X = %02X" addr value
+  | Absolute ->
+    match op with
+    | JMP | JSR -> ""
+    | _ ->
+      let hi = args[1] |> uint16
+      let lo = args[0] |> uint16
+      let addr = hi <<< 8 ||| lo |> uint16
+      let value = addr |> memRead bus
+      sprintf "= %02X" value
+  | Absolute_X ->
+      let hi = args[1] |> uint16
+      let lo = args[0] |> uint16
+      let addr = (hi <<< 8 ||| lo) + uint16 cpu.X
+      let value = addr |> memRead bus
+      sprintf "@ %04X = %02X" addr value
+  | Absolute_Y ->
+      let hi = args[1] |> uint16
+      let lo = args[0] |> uint16
+      let addr = (hi <<< 8 ||| lo) + uint16 cpu.Y
+      let value = addr |> memRead bus
+      sprintf "@ %04X = %02X" addr value
   | Indirect_X ->
-    let bpos = cpu.PC |> memRead bus
-    let ptr = bpos + cpu.X |> uint16
-    let addr = ptr |> memRead16 bus
+    let bpos = args[0]
+    let ptr = bpos + cpu.X
+    let addr = ptr |> memRead16ZeroPage bus
     let value = addr |> memRead bus
     sprintf "@ %02X = %04X = %02X" ptr addr value
   | Indirect_Y ->
-    let bpos = args[0] |> uint16
-    let deRefBase = bpos |> memRead16 bus
+    let bpos = args[0]
+    let deRefBase = bpos |> memRead16ZeroPage bus
     let deRef = deRefBase + (cpu.Y |> uint16)
     let value = deRef |> memRead bus
     sprintf "= %04X @ %04X = %02X" deRefBase deRef value
+  | Indirect ->
+    let hi = args[1] |> uint16
+    let lo = args[0] |> uint16
+    let bpos = hi <<< 8 ||| lo
+    let addr = bpos |> memRead16Wrap bus // JMP のページ境界バグ
+    sprintf "= %04X" addr
   | _ -> ""
 
 let formatInstructionBytes opcode (args: byte[]) =
@@ -86,11 +125,12 @@ let trace cpu bus =
   | _ ->
     let args = Array.init (int size - 1) (fun i -> cpu.PC + uint16(i + 1) |> memRead bus)
     let bin = formatInstructionBytes opcode args
-    let addr = formatAddress mode args
-    let mem = formatMemoryAccess cpu bus mode args
+    let mn = getMnemonicName op
+    let addr = formatAddress cpu.PC mode args
+    let mem = formatMemoryAccess cpu bus op mode args
+    let asm = [|mn; addr; mem|] |> String.concat " "
 
     let pc = sprintf "%04X" cpu.PC
-    let mn = sprintf "%3s" (getMnemonicName op)
     let st = formatCpuStatus cpu
 
-    sprintf "%-6s%-10s%-4s%-8s%-20s%s" pc bin mn addr mem st
+    sprintf "%-6s%-10s%-32s%s" pc bin asm st

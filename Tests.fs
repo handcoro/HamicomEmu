@@ -1,5 +1,7 @@
 module Tests
 
+open System.IO
+
 open Expecto
 open Cpu
 open Bus
@@ -62,6 +64,23 @@ let tests =
       ]
       Expect.sequenceEqual (Seq.toList log) expected "Trace output should match expected"
     }
+    test "Run nestest.nes and Trace" {
+      let writer = System.IO.File.CreateText("mynes.log")
+      let callback = fun cpu bus ->
+          writer.WriteLine(trace cpu bus)
+          writer.Flush()
+      let raw = File.ReadAllBytes "roms/nestest.nes"
+      let parsed = parseRom raw
+      match parsed with
+      | Ok rom ->
+          let bus = initialBus rom
+          let cpu = initialCpu |> fun c -> { c with PC = 0xC000us }
+          (cpu, bus) ||> runWithCallback callback |> ignore
+      | Error e -> failwith $"Failed to parse ROM: {e}"
+      Expect.isOk parsed "nestest.nes should parse successfully"
+      writer.Close()
+    }
+
   ]
   (* 色々変えすぎて今はテストが通りません
   testList "Instruction Tests" [
