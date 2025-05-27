@@ -44,11 +44,10 @@ let formatAddress pc mode (args: byte[]) =
   | Indirect ->
     sprintf "($%02X%02X)" args[1] args[0]
   | Relative ->
-    sprintf "$%04X" (pc + uint16 args[0] + 2us)
+    let pc' = pc + 2us |> int
+    sprintf "$%04X" (args[0] |> sbyte |> int |> (+) pc' |> uint16)
   | Implied ->
     ""
-  | NoneAddressing ->
-    failwithf "Unsupported mode: %A" mode
 
 let formatMemoryAccess cpu bus op mode (args: byte[]) =
   match mode with
@@ -70,7 +69,7 @@ let formatMemoryAccess cpu bus op mode (args: byte[]) =
     | _ ->
       let hi = args[1] |> uint16
       let lo = args[0] |> uint16
-      let addr = hi <<< 8 ||| lo |> uint16
+      let addr = hi <<< 8 ||| lo
       let value = addr |> memRead bus
       sprintf "= %02X" value
   | Absolute_X ->
@@ -115,7 +114,9 @@ let formatCpuStatus cpu =
 
 let getMnemonicName (x: 'T) =
   match FSharpValue.GetUnionFields(x, typeof<'T>) with
-    | case, _ -> case.Name
+    | case, _ ->
+      let name = case.Name
+      if name.EndsWith "_" then "*" + name.TrimEnd '_' else " " + name
 
 let trace cpu bus =
   let opcode = cpu.PC |> memRead bus
@@ -133,4 +134,4 @@ let trace cpu bus =
     let pc = sprintf "%04X" cpu.PC
     let st = formatCpuStatus cpu
 
-    sprintf "%-6s%-10s%-32s%s" pc bin asm st
+    sprintf "%-6s%-9s%-33s%s" pc bin asm st

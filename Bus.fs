@@ -10,6 +10,10 @@ module PpuRegisters =
   let Begin = 0x2000us
   let MirrorsEnd = 0x3FFFus
 
+module ApuRegisters =
+  let Begin = 0x4000us
+  let MirrorsEnd = 0x4017us
+
 module PrgRom =
   let Begin = 0x8000us
   let End = 0xFFFFus
@@ -36,6 +40,8 @@ let memRead bus addr =
   | addr when addr |> inRange Ram.Begin Ram.MirrorsEnd ->
     let mirrorDownAddr = addr &&& 0b0000_0111_1111_1111us
     bus.CpuVram.[int mirrorDownAddr]
+  | addr when addr |> inRange ApuRegisters.Begin ApuRegisters.MirrorsEnd ->
+    failwithf "APU is not implemented yet. addr: %04X\n" addr
   | addr when addr |> inRange PpuRegisters.Begin PpuRegisters.MirrorsEnd ->
     let mirrorDownAddr = addr &&& 0b0010_0000_0000_0111us
     failwithf "PPU is not implemented yet. addr: %04X\n" addr
@@ -49,6 +55,8 @@ let memWrite addr value bus =
     let mirrorDownAddr = addr &&& 0b0000_0111_1111_1111us
     bus.CpuVram.[int mirrorDownAddr] <- value
     bus
+  | addr when addr |> inRange ApuRegisters.Begin ApuRegisters.MirrorsEnd ->
+    failwithf "APU is not implemented yet. addr: %04X\n" addr
   | addr when addr |> inRange PpuRegisters.Begin PpuRegisters.MirrorsEnd ->
     let mirrorDownAddr = addr &&& 0b0010_0000_0000_0111us
     failwithf "PPU is not implemented yet. addr: %04X\n" addr

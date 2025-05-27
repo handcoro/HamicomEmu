@@ -78,8 +78,8 @@ let getOperandAddress cpu bus pc mode =
     uint16 addr
   | Implied ->
     pc
-  | NoneAddressing ->
-    failwithf "Unsupported mode: %A" mode
+  // | NoneAddressing ->
+  //   failwithf "Unsupported mode: %A" mode
 
 let inline hasFlag flag p = p &&& flag <> 0uy
 let inline setFlag flag p = p ||| flag
@@ -434,6 +434,31 @@ let rti _ cpu bus = // Return from Interrupt
 let nop _ cpu bus = // No Operation
   cpu, bus
 
+let lax mode cpu bus = // LDA -> TAX
+  (cpu, bus) ||> lda mode ||> tax mode
+
+let sax mode cpu bus = // Store A and X
+  let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
+  let value = cpu.A &&& cpu.X
+  cpu, bus |> memWrite addr value
+
+let dcp mode cpu bus = // DEC -> CMP
+  (cpu, bus) ||> dec mode ||> cmp mode
+
+let isb mode cpu bus = // (ISC) INC -> SBC
+  (cpu, bus) ||> inc mode ||> sbc mode
+
+let slo mode cpu bus = // ASL -> ORA
+  (cpu, bus) ||> asl mode ||> logicalInstr ORA mode
+
+let rla mode cpu bus =
+  (cpu, bus) ||> rol mode ||> logicalInstr AND mode
+
+let rra mode cpu bus =
+  (cpu, bus) ||> ror mode ||> adc mode
+
+let sre mode cpu bus =
+  (cpu, bus) ||> lsrInstr mode ||> logicalInstr EOR mode
 let reset cpu bus =
   { cpu with
       A = 0uy
@@ -495,7 +520,7 @@ let step cpu bus : CpuState * Bus =
       | LDX -> (cpu, bus) ||> execInstr ldx mode
       | LDY -> (cpu, bus) ||> execInstr ldy mode
       | LSR -> (cpu, bus) ||> execInstr lsrInstr mode
-      | NOP -> (cpu, bus) ||> execInstr nop mode
+      | NOP | NOP_ -> (cpu, bus) ||> execInstr nop mode
       | ORA -> (cpu, bus) ||> execInstr (logicalInstr ORA) mode
       | PHA -> (cpu, bus) ||> execInstr pha mode
       | PHP -> (cpu, bus) ||> execInstr php mode
@@ -506,7 +531,7 @@ let step cpu bus : CpuState * Bus =
       | SEC -> (cpu, bus) ||> execInstr sec mode
       | SED -> (cpu, bus) ||> execInstr sed mode
       | SEI -> (cpu, bus) ||> execInstr sei mode
-      | SBC -> (cpu, bus) ||> execInstr sbc mode
+      | SBC | SBC_ -> (cpu, bus) ||> execInstr sbc mode
       | STA -> (cpu, bus) ||> execInstr sta mode
       | STX -> (cpu, bus) ||> execInstr stx mode
       | STY -> (cpu, bus) ||> execInstr sty mode
@@ -518,7 +543,15 @@ let step cpu bus : CpuState * Bus =
       | TXS -> (cpu, bus) ||> execInstr txs mode
       | TXA -> (cpu, bus) ||> execInstr txa mode
       | TYA -> (cpu, bus) ||> execInstr tya mode
-      // | _ -> failwithf "Unsupported mnemonic: %A" op
+      | LAX_ -> (cpu, bus) ||> execInstr lax mode
+      | SAX_ -> (cpu, bus) ||> execInstr sax mode
+      | DCP_ -> (cpu, bus) ||> execInstr dcp mode
+      | ISB_ -> (cpu, bus) ||> execInstr isb mode
+      | SLO_ -> (cpu, bus) ||> execInstr slo mode
+      | RLA_ -> (cpu, bus) ||> execInstr rla mode
+      | RRA_ -> (cpu, bus) ||> execInstr rra mode
+      | SRE_ -> (cpu, bus) ||> execInstr sre mode
+      | _ -> failwithf "Unsupported mnemonic: %A" op
 
 let rec run cpu bus =
   let cpu', bus' = (cpu, bus) ||> step
