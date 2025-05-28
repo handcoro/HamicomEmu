@@ -19,17 +19,17 @@ let prgRomPageSize = 16 * 1024 // 16KB
 let chrRomPageSize = 8 * 1024 // 8KB
 
 let validateTag (raw: byte[]) =
-    if raw.Length >= 4 && raw[0..3] = nesTag then
-        Ok ()
-    else
-        Error "File is not in iNES file format"
+  if raw.Length >= 4 && raw[0..3] = nesTag then
+    Ok ()
+  else
+    Error "File is not in iNES file format"
 
 let validateVersion (raw: byte[]) =
-    let inesVer = (raw[7] >>> 2) &&& 0b11uy
-    if inesVer = 0uy then
-        Ok ()
-    else
-        Error "NES2.0 format is not supported"
+  let inesVer = (raw[7] >>> 2) &&& 0b11uy
+  if inesVer = 0uy then
+    Ok ()
+  else
+    Error "NES2.0 format is not supported"
 
 let parseRom (raw : byte array) = 
   result {
@@ -85,9 +85,9 @@ let createRom rom =
 let normalizePrgRom (prg : byte array) = // PRG ROM を 32KB に正規化
   match prg.Length with
   | len when len < 0x8000 ->
-      let padded = Array.create 0x8000 0uy
-      Array.blit prg 0 padded 0 len
-      padded
+    let padded = Array.create 0x8000 0uy
+    Array.blit prg 0 padded 0 len
+    padded
   | len when len = 0x8000 -> prg
   | len when len > 0x8000 -> prg[0..0x7FFF] // 切り詰める
   | _ -> failwith "Unexpected PRG ROM size"
@@ -95,7 +95,7 @@ let normalizePrgRom (prg : byte array) = // PRG ROM を 32KB に正規化
 let testRom program =
   let prgRomContents = normalizePrgRom program
   let rom = {
-    Header = Array.append nesTag  [| 0x02uy; 0x01uy; 0x31uy; 00uy; 00uy; 00uy; 00uy; 00uy; 00uy; 00uy; 00uy; 00uy |]
+    Header = Array.append nesTag [| 0x02uy; 0x01uy; 0x31uy; 00uy; 00uy; 00uy; 00uy; 00uy; 00uy; 00uy; 00uy; 00uy |]
     Trainer = None
     PrgRom = prgRomContents
     ChrRom = Array.create chrRomPageSize 2uy

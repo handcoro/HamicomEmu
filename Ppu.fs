@@ -1,0 +1,209 @@
+module Ppu
+
+open Cartridge
+
+   // 7  bit  0
+   // ---- ----
+   // VPHB SINN
+   // |||| ||||
+   // |||| ||++- Base nametable address
+   // |||| ||    (0 = $2000; 1 = $2400; 2 = $2800; 3 = $2C00)
+   // |||| |+--- VRAM address increment per CPU read/write of PPUDATA
+   // |||| |     (0: add 1, going across; 1: add 32, going down)
+   // |||| +---- Sprite pattern table address for 8x8 sprites
+   // ||||       (0: $0000; 1: $1000; ignored in 8x16 mode)
+   // |||+------ Background pattern table address (0: $0000; 1: $1000)
+   // ||+------- Sprite size (0: 8x8 pixels; 1: 8x16 pixels)
+   // |+-------- PPU master/slave select
+   // |          (0: read backdrop from EXT pins; 1: output color on EXT pins)
+   // +--------- Generate an NMI at the start of the
+   //            vertical blanking interval (0: off; 1: on)
+module ControlFlags =
+  let Nametable1               = 0b0000_0001uy
+  let Nametable2               = 0b0000_0010uy
+  let VramAddIncrement         = 0b0000_0100uy
+  let SpritePatternAddress     = 0b0000_1000uy
+  let BackgroundPatternAddress = 0b0001_0000uy
+  let SpriteSize               = 0b0010_0000uy
+  let MasterSlaveSelect        = 0b0100_0000uy
+  let GenerateNmi              = 0b1000_0000uy
+
+module StatusFlags =
+  let SpriteOverflow = 0b0010_0000uy
+  let SpriteZeroHit  = 0b0100_0000uy
+  let Vblank         = 0b1000_0000uy
+
+type AddressRegister = {
+  Value: byte * byte
+  HiPtr: bool
+}
+
+let initialAddressRegister = {
+  Value = (0uy, 0uy)
+  HiPtr = true
+}
+
+type NesPpu = {
+  chr: byte array
+  pal: byte array
+  vram: byte array
+  oam: byte array
+  mirror: Mirroring
+  addrReg: AddressRegister
+  ctrl: byte
+  status: byte
+  buffer: byte
+  scanline: uint16
+  cycles: uint
+}
+
+let initialPpu (rom: Rom) = {
+  chr = rom.ChrRom
+  pal = Array.create 32 0uy // パレットテーブルは32バイト
+  vram = Array.create 0x2000 0uy // PPU VRAM は8KB
+  oam = Array.create 256 0uy // OAM データは256バイト
+  mirror = rom.ScreenMirroring
+  addrReg = initialAddressRegister
+  ctrl = 0uy // 初期状態では制御レジスタは0
+  status = 0uy
+  buffer = 0uy
+  scanline = 0us
+  cycles = 0u
+}
+
+let hasFlag flag r = r &&& flag <> 0uy
+let setFlag flag r = r ||| flag
+let clearFlag flag r = r &&& (~~~flag)
+let updateFlag flag condition p =
+  if condition then setFlag flag p else clearFlag flag p
+
+let private setAddrRegValue (data: uint16) =
+  (byte (data >>> 8), byte data)
+
+let private getAddrRegValue ar =
+  ar.Value |> fun (hi, lo) -> uint16 (hi <<< 8 ||| lo)
+
+let private ppuAdressMask = 0x3FFFus
+
+let private updateAddressRegister (data: byte) ar =
+  // HiPtr を目印に 2 回に分けて書き込む
+  let ar' = if ar.HiPtr then { ar with Value = (data, snd ar.Value) } else { ar with Value = (fst ar.Value, data) }
+  let v = getAddrRegValue ar'
+  let vt' = if v > ppuAdressMask then setAddrRegValue (v &&& 0b11_1111_1111_1111us) else ar'.Value
+  let toggledHp = not ar.HiPtr
+  { ar' with Value = vt'; HiPtr = toggledHp }
+
+let private incrementAddressRegister inc ar =
+  let lo = snd ar.Value
+  let sndv = snd ar.Value + inc
+  let fstv = fst ar.Value + if lo > sndv then 1uy else 0uy // 桁上り
+  let ar' = { ar with Value = (fstv, sndv) }
+  let v = getAddrRegValue ar'
+  let vt = if v > ppuAdressMask then setAddrRegValue (v &&& 0b11_1111_1111_1111us) else ar'.Value
+  { ar' with Value = vt }
+
+let private resetLatchAddressRegister ar = { ar with HiPtr = true }
+
+let writeToAddressRegister value ppu =
+  let ar = ppu.addrReg |> updateAddressRegister value
+  { ppu with addrReg = ar }
+
+let private VramAddressIncrement cr =
+  if hasFlag ControlFlags.VramAddIncrement cr then 32uy else 1uy
+
+let generateVblankNmi :bool =
+  // TODO: とりあえず true を返してるけどちゃんと判定する
+  true
+
+let updateControl data ppu = { ppu with ctrl = data}
+let writeToControlRegister value ppu =
+  let beforeNmiStatus = generateVblankNmi
+
+  { ppu with ctrl = value }
+
+let IncrementVramAddress ppu =
+  let inc = VramAddressIncrement ppu.ctrl
+  { ppu with addrReg = ppu.addrReg |> incrementAddressRegister inc }
+
+// Horizontal:
+//   [ A ] [ a ]
+//   [ B ] [ b ]
+
+// Vertical:
+//   [ A ] [ B ]
+//   [ a ] [ b ]
+let mirrorVramAddr mirror addr =
+  let mirroredVram = addr &&& 0b10_1111_1111_1111us // 0x3000 - 0x3EFF を 0x2000 - 0x2EFF にミラーリング
+  let vramIndex = mirroredVram - 0x2000us // VRAM ベクター
+  let nameTable = vramIndex / 0x400us // ネームテーブルのインデックス（0, 1, 2, 3）
+  match mirror, nameTable with
+  | Vertical, 2us | Vertical, 3us -> vramIndex - 0x800us // a b -> A B
+  | Horizontal, 2us -> vramIndex - 0x400us // B -> B
+  | Horizontal, 1us -> vramIndex - 0x400us // a -> A
+  | Horizontal, 3us -> vramIndex - 0x800us // b -> B
+  | _ -> vramIndex // それ以外はそのまま
+
+let readFromDataRegister ppu =
+  let addr = getAddrRegValue ppu.addrReg
+  // アドレスをインクリメント
+  let ppu' = IncrementVramAddress ppu
+
+  match addr with
+  | addr when addr <= 0x1FFFus ->
+    let result = ppu'.buffer
+    result, { ppu' with buffer = ppu'.chr[int addr] }
+
+  | addr when addr <= 0x2FFFus ->
+    let result = ppu'.buffer
+    result, { ppu' with buffer = ppu'.vram[addr |> mirrorVramAddr ppu'.mirror |> int] }
+
+  | addr when addr <= 0x3EFFus -> failwithf "Address space 0x3000 - 0x3EFF is not expected, addr: %04X" addr
+  | addr when addr <= 0x3FFFus -> // TODO: パレットのミラーリング処理
+    ppu'.pal[int (addr - 0x3F00us)], ppu'
+  | _ -> failwithf "Invalid PPU address: %04X" addr
+
+let writeToDataRegister value ppu =
+  let addr = getAddrRegValue ppu.addrReg
+  let ppu' = IncrementVramAddress ppu
+
+  match addr with
+  | addr when addr <= 0x1FFFus ->
+    printfn "Attempt to Write to Chr Rom Space: %04X" addr
+    ppu'
+
+  | addr when addr <= 0x2FFFus ->
+    ppu'.vram[addr |> mirrorVramAddr ppu'.mirror |> int] <- value
+    ppu'
+
+  | addr when addr <= 0x3EFFus -> failwithf "Address space 0x3000 - 0x3EFF is not expected, addr: %04X" addr
+  | addr when addr <= 0x3FFFus -> // TODO: パレットのミラーリング処理
+    ppu'.pal[int (addr - 0x3F00us)] <- value
+    ppu'
+  | _ -> failwithf "Invalid PPU address: %04X" addr
+
+let ppuTick cycles ppu =
+  let cyc = ppu.cycles + uint cycles
+
+  if cyc < 341u then
+    { ppu with cycles = cyc }
+  else
+    let cyc' = cyc - 341u
+    let nextScanline = ppu.scanline + 1us
+
+    match nextScanline with
+    | 241us ->
+        // VBlank 開始
+        if hasFlag ControlFlags.GenerateNmi ppu.ctrl then
+          let st = ppu.status |> updateFlag StatusFlags.Vblank true
+          { ppu with scanline = nextScanline; cycles = cyc'; status = st }
+        else
+          { ppu with scanline = nextScanline; cycles = cyc' }
+
+    | s when s >= 262us ->
+        // フレーム終了（VBlank 終了）
+        // TODO: resetVblankStatus
+        { ppu with scanline = 0us; cycles = cyc' } // bool で true を知らせる？
+
+    | _ ->
+        // 通常のスキャンライン進行
+        { ppu with scanline = nextScanline; cycles = cyc' }

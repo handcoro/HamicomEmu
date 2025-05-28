@@ -122,7 +122,7 @@ type pseudoNESGame() as this =
     for y in 0 .. height - 1 do
       for x in 0 .. width - 1 do
         let addr = 0x0200us + uint16 (y * width + x)
-        let value = addr |> memRead bus
+        let value, _ = memRead addr bus
         let col = color value
         let rect = Rectangle(x * 10, y * 10, 10, 10)
         spriteBatch.Draw(whiteTex, rect, col)

@@ -39,42 +39,44 @@ let getOperandAddress cpu bus pc mode =
   | Immediate ->
     pc
   | ZeroPage ->
-    pc |> memRead bus |> uint16
+    let addr, _ = memRead pc bus
+    addr |> uint16
   | Absolute ->
-    pc |> memRead16 bus
+    let addr, _ = memRead16 pc bus
+    addr |> uint16
   | ZeroPage_X ->
-    let pos = pc |> memRead bus
+    let pos, _ = memRead pc bus
     let addr = pos + cpu.X |> uint16
     addr
   | ZeroPage_Y ->
-    let pos = pc |> memRead bus
+    let pos, _ = memRead pc bus
     let addr = pos + cpu.Y |> uint16
     addr
   | Absolute_X ->
-    let bpos = pc |> memRead16 bus
+    let bpos, _ = memRead16 pc bus
     let addr = bpos + (cpu.X |> uint16)
     addr
   | Absolute_Y ->
-    let bpos = pc |> memRead16 bus
+    let bpos, _ = memRead16 pc bus
     let addr = bpos + (cpu.Y |> uint16)
     addr
   | Indirect_X ->
-    let bpos = pc |> memRead bus
+    let bpos, _ = memRead pc bus
     let ptr = bpos + cpu.X
-    let addr = ptr |> memRead16ZeroPage bus
+    let addr, _ = memRead16ZeroPage ptr bus
     addr
   | Indirect_Y ->
-    let bpos = pc |> memRead bus
-    let deRefBase = bpos |> memRead16ZeroPage bus
+    let bpos, _ = memRead pc bus
+    let deRefBase, _ = memRead16ZeroPage bpos bus
     let deRef = deRefBase + (cpu.Y |> uint16)
     deRef
   | Indirect ->
-    let bpos = pc |> memRead16 bus
-    let addr = bpos |> memRead16Wrap bus // JMP のページ境界バグ
+    let bpos, _ = memRead16 pc bus
+    let addr, _ = memRead16Wrap bpos bus // JMP のページ境界バグ
     addr
   | Relative ->
-    let offset = pc |> memRead bus |> int8 |> int
-    let addr = int pc + offset
+    let offset, _ = memRead pc bus
+    let addr = int pc + (offset |> int8 |> int)
     uint16 addr
   | Implied ->
     pc
@@ -98,7 +100,7 @@ let advancePC offset cpu bus =
 // ビット論理演算
 let logicalInstr op mode cpu bus = // AND, EOR, ORA
   let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
-  let value = addr |> memRead bus
+  let value, bus' = memRead addr bus
 
   let a =
     match op with
@@ -108,12 +110,12 @@ let logicalInstr op mode cpu bus = // AND, EOR, ORA
     | _   -> failwithf "Unsupported logical instruction: %A" op
 
   let p = cpu.P |> setZeroNegativeFlags a
-  { cpu with A = a; P = p }, bus
+  { cpu with A = a; P = p }, bus'
 
 // 加算
 let adc mode cpu bus = // Add with Carry
   let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
-  let value = addr |> memRead bus
+  let value, bus' = memRead addr bus
   let carry = if hasFlag Flags.C cpu.P then 1 else 0
   let sum = int cpu.A + int value + carry
   let result = byte sum
@@ -130,12 +132,12 @@ let adc mode cpu bus = // Add with Carry
     |> updateFlag Flags.V isOverflow
     |> setZeroNegativeFlags result
 
-  { cpu with A = result; P = p }, bus
+  { cpu with A = result; P = p }, bus'
 
 // 減算
 let sbc mode cpu bus = // Subtract with Carry
   let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
-  let value = addr |> memRead bus
+  let value, bus' = memRead addr bus
   let carry = if hasFlag Flags.C cpu.P then 1 else 0
   let valueInverted = ~~~ value
   let sum = int cpu.A + int valueInverted + carry
@@ -151,25 +153,25 @@ let sbc mode cpu bus = // Subtract with Carry
     |> updateFlag Flags.V isOverflow
     |> setZeroNegativeFlags result
 
-  { cpu with A = result; P = p }, bus
+  { cpu with A = result; P = p }, bus'
 
 let lda mode cpu bus = // Load Accumulator
   let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
-  let a = addr |> memRead bus
+  let a, bus' = memRead addr bus
   let p = setZeroNegativeFlags a cpu.P
-  { cpu with A = a; P = p }, bus
+  { cpu with A = a; P = p }, bus'
 
 let ldx mode cpu bus = // Load X Register
   let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
-  let x = addr |> memRead bus
+  let x, bus' = memRead addr bus
   let p = setZeroNegativeFlags x cpu.P
-  { cpu with X = x; P = p }, bus
+  { cpu with X = x; P = p }, bus'
 
 let ldy mode cpu bus = // Load Y Register
   let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
-  let y = addr |> memRead bus
+  let y, bus' = memRead addr bus
   let p = setZeroNegativeFlags y cpu.P
-  { cpu with Y = y; P = p }, bus
+  { cpu with Y = y; P = p }, bus'
 
 let sta mode cpu bus = // Store Accumulator
   let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
@@ -237,8 +239,8 @@ let modifyWithShift mode shiftFn carryInFn cpu bus =
         cpu.A, fun r -> { cpu with A = r }, bus
     | _ ->
         let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
-        let v = addr |> memRead bus 
-        v, fun r -> cpu, bus |> memWrite addr r
+        let v, b' = memRead addr bus
+        v, fun r -> cpu, b' |> memWrite addr r
 
   let shifted, p = shiftFn value cpu.P
   let result = carryInFn shifted cIn
@@ -316,23 +318,23 @@ let clv _ cpu bus = // Clear Overflow Flag
 
 let bit mode cpu bus = // BIT - Bit Test
   let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
-  let value = addr |> memRead bus
+  let value, bus' = memRead addr bus
   let p =
     cpu.P
     |> updateFlag Flags.Z (cpu.A &&& value    = 0uy)
     |> updateFlag Flags.N (value &&& Flags.N <> 0uy)
     |> updateFlag Flags.V (value &&& Flags.V <> 0uy)
-  { cpu with P = p }, bus
+  { cpu with P = p }, bus'
 
 let compareInstr lhs mode cpu bus =
   let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
-  let value = addr |> memRead bus
+  let value, bus' = memRead addr bus
   let result = lhs - value
   let p =
     cpu.P
     |> updateFlag Flags.C (lhs >= value)
     |> setZeroNegativeFlags result
-  { cpu with P = p }, bus
+  { cpu with P = p }, bus'
 
 let cmp mode cpu bus = // Compare
   (cpu, bus) ||> compareInstr cpu.A mode
@@ -345,9 +347,8 @@ let cpy mode cpu bus = // Compare Y Register
 
 let dec mode cpu bus = // Decrement Memory
   let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
-  let result = (addr |> memRead bus) - 1uy
-  
-  cpu |> fun c -> { c with P = cpu.P |> setZeroNegativeFlags result }, bus |> memWrite addr result
+  let result, bus' = memRead addr bus
+  cpu |> fun c -> { c with P = cpu.P |> setZeroNegativeFlags (result - 1uy) }, bus' |> memWrite addr (result - 1uy)
 
 let dex _ cpu bus = // Decrement X Register
   let x = cpu.X - 1uy
@@ -359,8 +360,9 @@ let dey _ cpu bus = // Decrement Y Register
 
 let inc mode cpu bus = // Increment Memory
   let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
-  let result = (addr |> memRead bus) + 1uy
-  { cpu with P = cpu.P |> setZeroNegativeFlags result }, bus |> memWrite addr result
+  let result, bus' = memRead addr bus
+  { cpu with P = cpu.P |> setZeroNegativeFlags (result + 1uy) }, bus' |> memWrite addr (result + 1uy)
+
 let inx _ cpu bus = // Increment X Register
   let x = cpu.X + 1uy
   { cpu with X = x; P = cpu.P |> setZeroNegativeFlags x }, bus
@@ -381,17 +383,17 @@ let push16 value cpu bus = // Push 16-bit value to stack
   let addr = 0x0100us + uint16 cpu.SP - 1us
   { cpu with SP = cpu.SP - 2uy }, bus |> memWrite16 addr value
 
-let pull bus cpu = // Pull value from stack
+let pull cpu bus = // Pull value from stack
   let sp = cpu.SP + 1uy
   let addr = 0x0100us + uint16 sp
-  let value = addr |> memRead bus
-  { cpu with SP = sp }, value
+  let value, bus' = memRead addr bus
+  value, { cpu with SP = sp }, bus'
 
-let pull16 bus cpu = // Pull 16-bit value from stack
+let pull16 cpu bus = // Pull 16-bit value from stack
   let addr = 0x0100us + uint16 cpu.SP + 1us
   let sp = cpu.SP + 2uy
-  let value = addr |> memRead16 bus
-  { cpu with SP = sp }, value
+  let value, bus' = memRead16 addr bus
+  value, { cpu with SP = sp }, bus'
 
 let jsr mode cpu bus = // Jump to Subroutine
   let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
@@ -399,8 +401,8 @@ let jsr mode cpu bus = // Jump to Subroutine
   { cpu' with PC = addr }, bus'
 
 let rts _ cpu bus = // Return from Subroutine
-  let cpu', pc = cpu |> pull16 bus
-  { cpu' with PC = pc + 1us }, bus // +1 してリターンポイントにする
+  let pc, cpu', bus' = pull16 cpu bus
+  { cpu' with PC = pc + 1us }, bus' // +1 してリターンポイントにする
 
 let pha _ cpu bus = // Push Accumulator
   (cpu, bus) ||> push cpu.A
@@ -409,12 +411,12 @@ let php _ cpu bus = // Push Processor Status
   (cpu, bus) ||> push (cpu.P |> setFlag Flags.B ||| Flags.U) // B フラグをセットしてプッシュ
 
 let plp _ cpu bus = // Pull Processor Status
-  let c, p = cpu |> pull bus
-  { c with P = p |> clearFlag Flags.B |> setFlag Flags.U }, bus
+  let p, cpu', bus' = pull cpu bus
+  { cpu' with P = p |> clearFlag Flags.B |> setFlag Flags.U }, bus'
 
 let pla _ cpu bus = // Pull Accumulator
-  let c, a = cpu |> pull bus
-  { c with A = a; P = c.P |> setZeroNegativeFlags a }, bus
+  let a, cpu', bus' = pull cpu bus
+  { cpu' with A = a; P = cpu'.P |> setZeroNegativeFlags a }, bus'
 
 let brk _ cpu bus = // BRK - Force Break
   // まだ未完成
@@ -427,9 +429,9 @@ let brk _ cpu bus = // BRK - Force Break
   { cpu with P = cpu.P |> updateFlag Flags.B true }, bus
 
 let rti _ cpu bus = // Return from Interrupt
-  let c, p = cpu |> pull bus
-  let c, pc = c |> pull16 bus
-  { c with P = p |> clearFlag Flags.B |> setFlag Flags.U; PC = pc }, bus
+  let p, cpu', bus' = pull cpu bus
+  let pc, cpu'', bus'' = pull16 cpu' bus'
+  { cpu'' with P = p |> clearFlag Flags.B |> setFlag Flags.U; PC = pc }, bus''
 
 let nop _ cpu bus = // No Operation
   cpu, bus
@@ -459,14 +461,29 @@ let rra mode cpu bus =
 
 let sre mode cpu bus =
   (cpu, bus) ||> lsrInstr mode ||> logicalInstr EOR mode
+
+let interruptNmi cpu bus =
+  let cpu', bus' = push16 cpu.PC cpu bus
+  let p = cpu.P |> updateFlag Flags.B false
+  let p' = p |> updateFlag Flags.U true
+
+  let cpu2, bus2 = push p' cpu' bus'
+  let p2 = p' |> updateFlag Flags.I true
+
+  let bus3 = tick 2u bus2
+  let pc, busF = memRead16 0xFFFAus bus3
+  { cpu2 with P = p2; PC = pc }, busF
+
+
 let reset cpu bus =
+  let pc, bus' = memRead16 0xFFFCus bus // リセットベクタを読み込む
   { cpu with
       A = 0uy
       X = 0uy
       Y = 0uy
       P = 0uy
-      PC = 0xFFFCus |> memRead16 bus
-  }, bus
+      PC = pc 
+  }, bus'
 
 // let load program cpu bus =
 //   let mem = Array.copy cpu.Memory
@@ -482,75 +499,75 @@ let reset cpu bus =
 
     /// CPU を 1 命令だけ実行する
 let step cpu bus : CpuState * Bus =
-    let opcode = cpu.PC |> memRead bus
+    let opcode, bus' = memRead cpu.PC bus
     let op, mode, size, cycles = decodeOpcode opcode
     let execInstr f m c b =
       (c, b) ||> f m ||> advancePC size
     match op with
-      | ADC -> (cpu, bus) ||> execInstr adc mode
-      | AND -> (cpu, bus) ||> execInstr (logicalInstr AND) mode
-      | ASL -> (cpu, bus) ||> execInstr asl mode
-      | BCC -> (cpu, bus) ||> bcc mode
-      | BCS -> (cpu, bus) ||> bcs mode
-      | BEQ -> (cpu, bus) ||> beq mode
-      | BIT -> (cpu, bus) ||> execInstr bit mode
-      | BMI -> (cpu, bus) ||> bmi mode
-      | BNE -> (cpu, bus) ||> bne mode
-      | BPL -> (cpu, bus) ||> bpl mode
-      | BRK -> (cpu, bus) ||> execInstr brk mode
-      | BVC -> (cpu, bus) ||> bvc mode
-      | BVS -> (cpu, bus) ||> bvs mode
-      | CLC -> (cpu, bus) ||> execInstr clc mode
-      | CLD -> (cpu, bus) ||> execInstr cld mode
-      | CLI -> (cpu, bus) ||> execInstr cli mode
-      | CLV -> (cpu, bus) ||> execInstr clv mode
-      | CMP -> (cpu, bus) ||> execInstr cmp mode
-      | CPX -> (cpu, bus) ||> execInstr cpx mode
-      | CPY -> (cpu, bus) ||> execInstr cpy mode
-      | DEC -> (cpu, bus) ||> execInstr dec mode
-      | DEX -> (cpu, bus) ||> execInstr dex mode
-      | DEY -> (cpu, bus) ||> execInstr dey mode
-      | EOR -> (cpu, bus) ||> execInstr (logicalInstr EOR) mode
-      | INC -> (cpu, bus) ||> execInstr inc mode
-      | INX -> (cpu, bus) ||> execInstr inx mode
-      | INY -> (cpu, bus) ||> execInstr iny mode
-      | JMP -> (cpu, bus) ||> jmp mode
-      | JSR -> (cpu, bus) ||> jsr mode
-      | LDA -> (cpu, bus) ||> execInstr lda mode
-      | LDX -> (cpu, bus) ||> execInstr ldx mode
-      | LDY -> (cpu, bus) ||> execInstr ldy mode
-      | LSR -> (cpu, bus) ||> execInstr lsrInstr mode
-      | NOP | NOP_ -> (cpu, bus) ||> execInstr nop mode
-      | ORA -> (cpu, bus) ||> execInstr (logicalInstr ORA) mode
-      | PHA -> (cpu, bus) ||> execInstr pha mode
-      | PHP -> (cpu, bus) ||> execInstr php mode
-      | PLA -> (cpu, bus) ||> execInstr pla mode
-      | PLP -> (cpu, bus) ||> execInstr plp mode
-      | ROL -> (cpu, bus) ||> execInstr rol mode
-      | ROR -> (cpu, bus) ||> execInstr ror mode
-      | SEC -> (cpu, bus) ||> execInstr sec mode
-      | SED -> (cpu, bus) ||> execInstr sed mode
-      | SEI -> (cpu, bus) ||> execInstr sei mode
-      | SBC | SBC_ -> (cpu, bus) ||> execInstr sbc mode
-      | STA -> (cpu, bus) ||> execInstr sta mode
-      | STX -> (cpu, bus) ||> execInstr stx mode
-      | STY -> (cpu, bus) ||> execInstr sty mode
-      | RTI -> (cpu, bus) ||> rti mode
-      | RTS -> (cpu, bus) ||> rts mode
-      | TAX -> (cpu, bus) ||> execInstr tax mode
-      | TAY -> (cpu, bus) ||> execInstr tay mode
-      | TSX -> (cpu, bus) ||> execInstr tsx mode
-      | TXS -> (cpu, bus) ||> execInstr txs mode
-      | TXA -> (cpu, bus) ||> execInstr txa mode
-      | TYA -> (cpu, bus) ||> execInstr tya mode
-      | LAX_ -> (cpu, bus) ||> execInstr lax mode
-      | SAX_ -> (cpu, bus) ||> execInstr sax mode
-      | DCP_ -> (cpu, bus) ||> execInstr dcp mode
-      | ISB_ -> (cpu, bus) ||> execInstr isb mode
-      | SLO_ -> (cpu, bus) ||> execInstr slo mode
-      | RLA_ -> (cpu, bus) ||> execInstr rla mode
-      | RRA_ -> (cpu, bus) ||> execInstr rra mode
-      | SRE_ -> (cpu, bus) ||> execInstr sre mode
+      | ADC -> (cpu, bus') ||> execInstr adc mode
+      | AND -> (cpu, bus') ||> execInstr (logicalInstr AND) mode
+      | ASL -> (cpu, bus') ||> execInstr asl mode
+      | BCC -> (cpu, bus') ||> bcc mode
+      | BCS -> (cpu, bus') ||> bcs mode
+      | BEQ -> (cpu, bus') ||> beq mode
+      | BIT -> (cpu, bus') ||> execInstr bit mode
+      | BMI -> (cpu, bus') ||> bmi mode
+      | BNE -> (cpu, bus') ||> bne mode
+      | BPL -> (cpu, bus') ||> bpl mode
+      | BRK -> (cpu, bus') ||> execInstr brk mode
+      | BVC -> (cpu, bus') ||> bvc mode
+      | BVS -> (cpu, bus') ||> bvs mode
+      | CLC -> (cpu, bus') ||> execInstr clc mode
+      | CLD -> (cpu, bus') ||> execInstr cld mode
+      | CLI -> (cpu, bus') ||> execInstr cli mode
+      | CLV -> (cpu, bus') ||> execInstr clv mode
+      | CMP -> (cpu, bus') ||> execInstr cmp mode
+      | CPX -> (cpu, bus') ||> execInstr cpx mode
+      | CPY -> (cpu, bus') ||> execInstr cpy mode
+      | DEC -> (cpu, bus') ||> execInstr dec mode
+      | DEX -> (cpu, bus') ||> execInstr dex mode
+      | DEY -> (cpu, bus') ||> execInstr dey mode
+      | EOR -> (cpu, bus') ||> execInstr (logicalInstr EOR) mode
+      | INC -> (cpu, bus') ||> execInstr inc mode
+      | INX -> (cpu, bus') ||> execInstr inx mode
+      | INY -> (cpu, bus') ||> execInstr iny mode
+      | JMP -> (cpu, bus') ||> jmp mode
+      | JSR -> (cpu, bus') ||> jsr mode
+      | LDA -> (cpu, bus') ||> execInstr lda mode
+      | LDX -> (cpu, bus') ||> execInstr ldx mode
+      | LDY -> (cpu, bus') ||> execInstr ldy mode
+      | LSR -> (cpu, bus') ||> execInstr lsrInstr mode
+      | NOP | NOP_ -> (cpu, bus') ||> execInstr nop mode
+      | ORA -> (cpu, bus') ||> execInstr (logicalInstr ORA) mode
+      | PHA -> (cpu, bus') ||> execInstr pha mode
+      | PHP -> (cpu, bus') ||> execInstr php mode
+      | PLA -> (cpu, bus') ||> execInstr pla mode
+      | PLP -> (cpu, bus') ||> execInstr plp mode
+      | ROL -> (cpu, bus') ||> execInstr rol mode
+      | ROR -> (cpu, bus') ||> execInstr ror mode
+      | SEC -> (cpu, bus') ||> execInstr sec mode
+      | SED -> (cpu, bus') ||> execInstr sed mode
+      | SEI -> (cpu, bus') ||> execInstr sei mode
+      | SBC | SBC_ -> (cpu, bus') ||> execInstr sbc mode
+      | STA -> (cpu, bus') ||> execInstr sta mode
+      | STX -> (cpu, bus') ||> execInstr stx mode
+      | STY -> (cpu, bus') ||> execInstr sty mode
+      | RTI -> (cpu, bus') ||> rti mode
+      | RTS -> (cpu, bus') ||> rts mode
+      | TAX -> (cpu, bus') ||> execInstr tax mode
+      | TAY -> (cpu, bus') ||> execInstr tay mode
+      | TSX -> (cpu, bus') ||> execInstr tsx mode
+      | TXS -> (cpu, bus') ||> execInstr txs mode
+      | TXA -> (cpu, bus') ||> execInstr txa mode
+      | TYA -> (cpu, bus') ||> execInstr tya mode
+      | LAX_ -> (cpu, bus') ||> execInstr lax mode
+      | SAX_ -> (cpu, bus') ||> execInstr sax mode
+      | DCP_ -> (cpu, bus') ||> execInstr dcp mode
+      | ISB_ -> (cpu, bus') ||> execInstr isb mode
+      | SLO_ -> (cpu, bus') ||> execInstr slo mode
+      | RLA_ -> (cpu, bus') ||> execInstr rla mode
+      | RRA_ -> (cpu, bus') ||> execInstr rra mode
+      | SRE_ -> (cpu, bus') ||> execInstr sre mode
       | _ -> failwithf "Unsupported mnemonic: %A" op
 
 let rec run cpu bus =

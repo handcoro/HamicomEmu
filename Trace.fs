@@ -6,19 +6,6 @@ open Bus
 
 open Microsoft.FSharp.Reflection
 
-(*
-  imm: #$xx
-  zp:  $xx
-  abs: $xxxx
-  zpx: $xx,X
-  zpy: $xx,Y
-  abx: $xxxx,X
-  aby: $xxxx,Y
-  inx: ($xx,X)
-  iny: ($xx),Y
-  ind: $xxxx
-
-*)
 let formatAddress pc mode (args: byte[]) =
   match mode with
   | Accumulator ->
@@ -53,15 +40,15 @@ let formatMemoryAccess cpu bus op mode (args: byte[]) =
   match mode with
   | ZeroPage ->
     let addr = args[0] |> uint16
-    let value = addr |> memRead bus
+    let value, _ = memRead addr bus
     sprintf "= %02X" value
   | ZeroPage_X ->
     let addr = args[0] + cpu.X |> uint16
-    let value = addr |> memRead bus
+    let value, _ = memRead addr bus
     sprintf "@ %02X = %02X" addr value
   | ZeroPage_Y ->
     let addr = args[0] + cpu.Y |> uint16
-    let value = addr |> memRead bus
+    let value, _ = memRead addr bus
     sprintf "@ %02X = %02X" addr value
   | Absolute ->
     match op with
@@ -70,37 +57,37 @@ let formatMemoryAccess cpu bus op mode (args: byte[]) =
       let hi = args[1] |> uint16
       let lo = args[0] |> uint16
       let addr = hi <<< 8 ||| lo
-      let value = addr |> memRead bus
+      let value, _ = memRead addr bus
       sprintf "= %02X" value
   | Absolute_X ->
-      let hi = args[1] |> uint16
-      let lo = args[0] |> uint16
-      let addr = (hi <<< 8 ||| lo) + uint16 cpu.X
-      let value = addr |> memRead bus
-      sprintf "@ %04X = %02X" addr value
+    let hi = args[1] |> uint16
+    let lo = args[0] |> uint16
+    let addr = (hi <<< 8 ||| lo) + uint16 cpu.X
+    let value, _ = memRead addr bus
+    sprintf "@ %04X = %02X" addr value
   | Absolute_Y ->
-      let hi = args[1] |> uint16
-      let lo = args[0] |> uint16
-      let addr = (hi <<< 8 ||| lo) + uint16 cpu.Y
-      let value = addr |> memRead bus
-      sprintf "@ %04X = %02X" addr value
+    let hi = args[1] |> uint16
+    let lo = args[0] |> uint16
+    let addr = (hi <<< 8 ||| lo) + uint16 cpu.Y
+    let value, _ = memRead addr bus
+    sprintf "@ %04X = %02X" addr value
   | Indirect_X ->
     let bpos = args[0]
     let ptr = bpos + cpu.X
-    let addr = ptr |> memRead16ZeroPage bus
-    let value = addr |> memRead bus
+    let addr, _ = memRead16ZeroPage ptr bus
+    let value, _ = memRead addr bus
     sprintf "@ %02X = %04X = %02X" ptr addr value
   | Indirect_Y ->
     let bpos = args[0]
-    let deRefBase = bpos |> memRead16ZeroPage bus
+    let deRefBase, _ = memRead16ZeroPage bpos bus
     let deRef = deRefBase + (cpu.Y |> uint16)
-    let value = deRef |> memRead bus
+    let value, _ = memRead deRef bus
     sprintf "= %04X @ %04X = %02X" deRefBase deRef value
   | Indirect ->
     let hi = args[1] |> uint16
     let lo = args[0] |> uint16
     let bpos = hi <<< 8 ||| lo
-    let addr = bpos |> memRead16Wrap bus // JMP のページ境界バグ
+    let addr, _ = memRead16Wrap bpos bus // JMP のページ境界バグ
     sprintf "= %04X" addr
   | _ -> ""
 
@@ -118,13 +105,20 @@ let getMnemonicName (x: 'T) =
       let name = case.Name
       if name.EndsWith "_" then "*" + name.TrimEnd '_' else " " + name
 
+let readArgs bus start count =
+  let folder (acc, b) i =
+    let data, b' = memRead (start + uint16 i) b
+    (data :: acc, b')
+  let result, finalBus = List.fold folder ([], bus) [1 .. count]
+  (List.rev result |> List.toArray), finalBus
+
 let trace cpu bus =
-  let opcode = cpu.PC |> memRead bus
+  let opcode, _ = memRead cpu.PC bus
   let op, mode, size, cycles = decodeOpcode opcode
   match op with
   | BRK -> "" // BRK の場合とりあえずトレースは飛ばしておく
   | _ ->
-    let args = Array.init (int size - 1) (fun i -> cpu.PC + uint16(i + 1) |> memRead bus)
+    let args, bus' = readArgs bus cpu.PC (int size - 1)
     let bin = formatInstructionBytes opcode args
     let mn = getMnemonicName op
     let addr = formatAddress cpu.PC mode args
