@@ -55,6 +55,7 @@ type NesPpu = {
   buffer: byte
   scanline: uint16
   cycles: uint
+  nmiInterrupt: option<byte>
 }
 
 let initialPpu (rom: Rom) = {
@@ -69,6 +70,7 @@ let initialPpu (rom: Rom) = {
   buffer = 0uy
   scanline = 0us
   cycles = 0u
+  nmiInterrupt = None
 }
 
 let hasFlag flag r = r &&& flag <> 0uy
@@ -108,22 +110,29 @@ let writeToAddressRegister value ppu =
   let ar = ppu.addrReg |> updateAddressRegister value
   { ppu with addrReg = ar }
 
+/// -- ここらへんは Control 関係でまとめる？
 let private VramAddressIncrement cr =
   if hasFlag ControlFlags.VramAddIncrement cr then 32uy else 1uy
 
-let generateVblankNmi :bool =
-  // TODO: とりあえず true を返してるけどちゃんと判定する
-  true
+let generateVblankNmi ctrl =
+  hasFlag ControlFlags.GenerateNmi ctrl
+
+let backgroundPatternAddr ctrl =
+  if hasFlag ControlFlags.BackgroundPatternAddress ctrl then 0x1000us else 0x0000us
 
 let updateControl data ppu = { ppu with ctrl = data}
 let writeToControlRegister value ppu =
-  let beforeNmiStatus = generateVblankNmi
-
-  { ppu with ctrl = value }
+  let beforeNmiStatus = generateVblankNmi ppu.ctrl
+  let ppu' = updateControl value ppu
+  if not beforeNmiStatus && generateVblankNmi ppu'.ctrl && hasFlag StatusFlags.Vblank ppu'.status then
+    { ppu' with nmiInterrupt = Some 1uy }
+  else
+    ppu'
 
 let IncrementVramAddress ppu =
   let inc = VramAddressIncrement ppu.ctrl
   { ppu with addrReg = ppu.addrReg |> incrementAddressRegister inc }
+/// --
 
 // Horizontal:
 //   [ A ] [ a ]

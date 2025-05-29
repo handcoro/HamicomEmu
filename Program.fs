@@ -4,6 +4,7 @@ open Cpu
 open Bus
 open Cartridge
 open Tests
+open Screen
 
 open System
 open System.IO
@@ -71,10 +72,11 @@ type pseudoNESGame() as this =
 
   do
     match parsed with
-    | Ok rom -> bus <- initialBus rom
-                let cpu', bus' = (cpu, bus) ||> reset
-                cpu <- cpu'
-                bus <- bus'
+    | Ok rom ->
+      bus <- initialBus rom
+      let cpu', bus' = (cpu, bus) ||> reset
+      cpu <- cpu'
+      bus <- bus'
     | Error e -> failwith $"Failed to parse ROM: {e}"
 
     graphics.PreferredBackBufferWidth <- width * 10
@@ -130,12 +132,71 @@ type pseudoNESGame() as this =
     spriteBatch.End()
     base.Draw(gameTime)
 
+let frameToTexture (graphics: GraphicsDevice) (frame: Frame) : Texture2D =
+    let tex = new Texture2D(graphics, Frame.Width, Frame.Height)
+    let colorData =
+        frame.data
+        |> Array.map (fun (r, g, b) -> Color(int r, int g, int b))
+    tex.SetData(colorData)
+    tex
+
+type tileViewer() as this =
+  inherit Game()
+  let scale = 4
+  let graphics = new GraphicsDeviceManager(this)
+  let mutable spriteBatch = Unchecked.defaultof<SpriteBatch>
+  let mutable texture = Unchecked.defaultof<Texture2D>
+
+  let raw = loadRom "roms/Alter_Ego.nes" // https://www.nesworld.com/article.php?system=nes&data=neshomebrew
+  let parsed = raw |> Result.bind parseRom
+  let mutable cpu = initialCpu
+  let mutable bus = Unchecked.defaultof<Bus>
+
+  do
+    match parsed with
+    | Ok rom ->
+      bus <- initialBus rom
+      let cpu', bus' = (cpu, bus) ||> reset
+      cpu <- cpu'
+      bus <- bus'
+    | Error e -> failwith $"Failed to parse ROM: {e}"
+
+    graphics.PreferredBackBufferWidth <- Screen.Frame.Width * scale
+    graphics.PreferredBackBufferHeight <- Screen.Frame.Height * scale
+    graphics.ApplyChanges()
+  
+  override _.Initialize() =
+    spriteBatch <- new SpriteBatch(this.GraphicsDevice)
+    base.Initialize()
+
+  override _.LoadContent() =
+    let tileFrame = Screen.showTiles bus.Ppu.chr 0 [0 .. 255]  // bank=1, tileN=0
+    texture <- frameToTexture this.GraphicsDevice tileFrame
+
+  override _.Draw(gameTime) =
+    this.GraphicsDevice.Clear(Color.Black)
+    spriteBatch.Begin(samplerState = SamplerState.PointClamp)
+    let destRect = Rectangle(0, 0, Screen.Frame.Width * scale, Screen.Frame.Height * scale)
+    spriteBatch.Draw(texture, destRect, Color.White)
+    spriteBatch.End()
+    base.Draw(gameTime)
+  override _.Update(gameTime) =
+    if Keyboard.GetState().IsKeyDown(Keys.Escape) then this.Exit()
+    base.Update(gameTime)
+
 [<EntryPoint>]
 let main argv =
   if argv |> Array.exists ((=) "--test") then
     // --test を除いた引数だけ Expecto に渡す
     let filteredArgs = argv |> Array.filter (fun a -> a <> "--test")
     runTestsWithArgs defaultConfig filteredArgs Tests.tests
+
+  elif argv |> Array.exists ((=) "--showtiles") then
+    // タイル表示ロジックをここに
+    use game = new tileViewer()
+    game.Run()
+    0
+
   else
     use game = new pseudoNESGame()
     game.Run()

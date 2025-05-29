@@ -577,5 +577,10 @@ let rec run cpu bus =
 
 let rec runWithCallback callback cpu bus =
   callback cpu bus
-  let cpu', bus' = (cpu, bus) ||> step
-  (cpu', bus') ||> runWithCallback callback
+  let cpu', bus' =
+    match pollNmiStatus bus with
+    | Some _ -> interruptNmi cpu bus
+    | None -> cpu, bus
+
+  let cpu'', bus'' = (cpu', bus') ||> step
+  (cpu'', bus'') ||> runWithCallback callback

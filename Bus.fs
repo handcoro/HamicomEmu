@@ -129,8 +129,8 @@ let memWrite16 addr pos bus = // 16ビットデータ書き込み（リトルエ
   let lo = pos &&& 0xFFus |> byte
   bus |> memWrite addr lo |> memWrite (addr + 1us) hi
 
-// let pollNmiStatus bus =
-  // TODO: NMI 状態の取得
+let pollNmiStatus bus =
+  bus.Ppu.nmiInterrupt
 
 let tick cycles bus =
   let cyc = bus.Cycles + uint cycles

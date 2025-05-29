@@ -6,9 +6,12 @@
   <ItemGroup>
     <Compile Include="Instructions.fs" />
     <Compile Include="Cartridge.fs" />
+    <Compile Include="Palette.fs" />
+    <Compile Include="Screen.fs" />
     <Compile Include="Ppu.fs" />
     <Compile Include="Bus.fs" />
     <Compile Include="Cpu.fs" />
+    <Compile Include="Render.fs" />
     <Compile Include="Trace.fs" />
     <Compile Include="Tests.fs" />
     <Compile Include="Program.fs" />

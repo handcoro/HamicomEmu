@@ -34,7 +34,8 @@ let validateVersion (raw: byte[]) =
 let parseRom (raw : byte array) = 
   result {
     do! validateTag raw
-    do! validateVersion raw
+    // NES2.0 は互換性があるのでバージョンチェックしなくても大丈夫
+    // do! validateVersion raw
 
     let mapperLow = raw[6] >>> 4
     let mapperHigh = raw[7] &&& 0b1111_0000uy
