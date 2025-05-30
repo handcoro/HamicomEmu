@@ -12,6 +12,18 @@
 
 じつは Rust も全く知らないので、同時に Rust の仕様もぼんやり程度でもわかるようになるといいなと思ってます。
 
+### 実行オプション
+オプションなし:
+
+```nes/Alter_Ego.nes``` を実行します
+
+```dotnet run --showtiles```:
+
+```nes/Alter_Ego.nes``` の CHR ROM の内容を表示します。
+
+```dotnet run --snake```:
+
+スネークゲームを実行します
 
 ## ビルド方法
 .NET 8 SDK が入っていればコマンドラインから dotnet コマンドでビルドできます。

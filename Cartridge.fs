@@ -8,10 +8,10 @@ type Mirroring =
   | FourScreen
 
 type Rom = {
-  PrgRom: byte array
-  ChrRom: byte array
-  Mapper: byte
-  ScreenMirroring: Mirroring
+  prgRom: byte array
+  chrRom: byte array
+  mapper: byte
+  screenMirroring: Mirroring
 }
 
 let nesTag = [| 0x4Euy; 0x45uy; 0x53uy; 0x1Auy |] // NES<EOF> タグ
@@ -60,27 +60,27 @@ let parseRom (raw : byte array) =
     let chrRom = raw[chrStart .. chrStart + chrRomSize - 1]
 
     return {
-      PrgRom = prgRom
-      ChrRom = chrRom
-      Mapper = mapper
-      ScreenMirroring = screenMirroring
+      prgRom = prgRom
+      chrRom = chrRom
+      mapper = mapper
+      screenMirroring = screenMirroring
     }
   }
 
 type TestRom = {
-  Header: byte array
-  Trainer: byte array option
-  PrgRom: byte array
-  ChrRom: byte array
+  header: byte array
+  trainer: byte array option
+  prgRom: byte array
+  chrRom: byte array
 }
 let createRom rom =
   Array.concat [
-    rom.Header
-    match rom.Trainer with
+    rom.header
+    match rom.trainer with
     | Some t -> t
     | None -> [||]
-    rom.PrgRom
-    rom.ChrRom
+    rom.prgRom
+    rom.chrRom
   ]
 
 let normalizePrgRom (prg : byte array) = // PRG ROM を 32KB に正規化
@@ -96,9 +96,9 @@ let normalizePrgRom (prg : byte array) = // PRG ROM を 32KB に正規化
 let testRom program =
   let prgRomContents = normalizePrgRom program
   let rom = {
-    Header = Array.append nesTag [| 0x02uy; 0x01uy; 0x31uy; 00uy; 00uy; 00uy; 00uy; 00uy; 00uy; 00uy; 00uy; 00uy |]
-    Trainer = None
-    PrgRom = prgRomContents
-    ChrRom = Array.create chrRomPageSize 2uy
+    header = Array.append nesTag [| 0x02uy; 0x01uy; 0x31uy; 00uy; 00uy; 00uy; 00uy; 00uy; 00uy; 00uy; 00uy; 00uy |]
+    trainer = None
+    prgRom = prgRomContents
+    chrRom = Array.create chrRomPageSize 2uy
   }
   rom |> createRom |> parseRom |> Result.defaultWith (fun msg -> failwith $"Cannot create test rom: %s{msg}")

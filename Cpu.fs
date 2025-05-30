@@ -32,6 +32,9 @@ let initialCpu =
     SP = 0xFDuy
     P = Flags.I ||| Flags.U }
 
+let isPageCrossed (a: uint16) (b: uint16) =
+  (a &&& 0xFF00us) <> (b &&& 0xFF00us)
+
 let getOperandAddress cpu bus pc mode =
   match mode with
   | Accumulator ->
@@ -155,23 +158,21 @@ let sbc mode cpu bus = // Subtract with Carry
 
   { cpu with A = result; P = p }, bus'
 
-let lda mode cpu bus = // Load Accumulator
+let ld setReg mode cpu bus =
   let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
-  let a, bus' = memRead addr bus
-  let p = setZeroNegativeFlags a cpu.P
-  { cpu with A = a; P = p }, bus'
+  let v, bus = memRead addr bus
+  let p = setZeroNegativeFlags v cpu.P
+  let cpu = cpu |> setReg v
+  { cpu with P = p }, bus
+
+let lda mode cpu bus = // Load Accumulator
+  (cpu, bus) ||> ld (fun v cpu -> { cpu with A = v }) mode
 
 let ldx mode cpu bus = // Load X Register
-  let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
-  let x, bus' = memRead addr bus
-  let p = setZeroNegativeFlags x cpu.P
-  { cpu with X = x; P = p }, bus'
+  (cpu, bus) ||> ld (fun v cpu -> { cpu with X = v }) mode
 
 let ldy mode cpu bus = // Load Y Register
-  let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
-  let y, bus' = memRead addr bus
-  let p = setZeroNegativeFlags y cpu.P
-  { cpu with Y = y; P = p }, bus'
+  (cpu, bus) ||> ld (fun v cpu -> { cpu with Y = v }) mode
 
 let sta mode cpu bus = // Store Accumulator
   let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
@@ -263,8 +264,10 @@ let ror mode cpu bus =
     r ||| (if carryBefore then 0b1000_0000uy else 0uy))
 // 分岐はこの関数内で PC の進みを管理する
 let branch mode flag expected cpu bus =
-  let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us) |> (+) 1us // 命令の分進める
-  if hasFlag flag cpu.P = expected then { cpu with PC = addr }, bus else (cpu, bus) ||> advancePC 2us
+  let target = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
+  let pc = target + 1us // 命令の分進める
+  let bus = if isPageCrossed target pc then Bus.addCyclePenalty 1u bus else bus
+  if hasFlag flag cpu.P = expected then { cpu with PC = pc }, bus else (cpu, bus) ||> advancePC 2us
 let bcc mode (cpu : CpuState) (bus : Bus) = // BCC - Branch if Carry Clear
   (cpu, bus) ||> branch mode Flags.C false
 let bcs mode cpu bus = // BCS - Branch if Carry Set
@@ -326,7 +329,7 @@ let bit mode cpu bus = // BIT - Bit Test
     |> updateFlag Flags.V (value &&& Flags.V <> 0uy)
   { cpu with P = p }, bus'
 
-let compareInstr lhs mode cpu bus =
+let compare lhs mode cpu bus =
   let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
   let value, bus' = memRead addr bus
   let result = lhs - value
@@ -334,16 +337,17 @@ let compareInstr lhs mode cpu bus =
     cpu.P
     |> updateFlag Flags.C (lhs >= value)
     |> setZeroNegativeFlags result
+
   { cpu with P = p }, bus'
 
 let cmp mode cpu bus = // Compare
-  (cpu, bus) ||> compareInstr cpu.A mode
+  (cpu, bus) ||> compare cpu.A mode
 
 let cpx mode cpu bus = // Compare X Register
-  (cpu, bus) ||> compareInstr cpu.X mode
+  (cpu, bus) ||> compare cpu.X mode
 
 let cpy mode cpu bus = // Compare Y Register
-  (cpu, bus) ||> compareInstr cpu.Y mode
+  (cpu, bus) ||> compare cpu.Y mode
 
 let dec mode cpu bus = // Decrement Memory
   let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
@@ -420,13 +424,15 @@ let pla _ cpu bus = // Pull Accumulator
 
 let brk _ cpu bus = // BRK - Force Break
   // まだ未完成
-  // cpu |> push16 (cpu.PC + 1us)
-  //     |> push cpu.P
-  //     |> fun c -> { c with
-  //                     PC = memRead16 cpu 0xFFFEus
-  //                     P = c.P |> updateFlag Flags.B true
-  //                 } // BRK の場合は 0xFFFE に飛ぶ
-  { cpu with P = cpu.P |> updateFlag Flags.B true }, bus
+  let cpu, bus =
+    (cpu, bus)
+    ||> push16 (cpu.PC + 1us)
+    ||> push cpu.P
+
+  let pc, bus' = memRead16 0xFFFEus bus // BRK の場合は 0xFFFE に飛ぶ
+  let p = cpu.P |> updateFlag Flags.B true
+
+  { cpu with P = p; PC = pc }, bus'
 
 let rti _ cpu bus = // Return from Interrupt
   let p, cpu', bus' = pull cpu bus
@@ -470,7 +476,7 @@ let interruptNmi cpu bus =
   let cpu2, bus2 = push p' cpu' bus'
   let p2 = p' |> updateFlag Flags.I true
 
-  let bus3 = tick 2u bus2
+  let bus3 = fst (tick 2u bus2)
   let pc, busF = memRead16 0xFFFAus bus3
   { cpu2 with P = p2; PC = pc }, busF
 
@@ -481,7 +487,7 @@ let reset cpu bus =
       A = 0uy
       X = 0uy
       Y = 0uy
-      P = 0uy
+      P = Flags.I ||| Flags.U
       PC = pc 
   }, bus'
 
@@ -497,78 +503,109 @@ let reset cpu bus =
 //   let cpu = { cpu with Memory = mem }
 //   cpu, bus |> memWrite16 0xFFFCus 0x0600us
 
-    /// CPU を 1 命令だけ実行する
+let execMap =
+  Map [
+    ADC, adc
+    AND, logicalInstr AND
+    ASL, asl
+    BIT, bit
+    CLC, clc
+    CLD, cld
+    CLI, cli
+    CLV, clv
+    CMP, cmp
+    CPX, cpx
+    CPY, cpy
+    DEC, dec
+    DEX, dex
+    DEY, dey
+    EOR, logicalInstr EOR
+    INC, inc
+    INX, inx
+    INY, iny
+    LDA, lda
+    LDX, ldx
+    LDY, ldy
+    LSR, lsrInstr
+    NOP, nop
+    NOP_, nop
+    ORA, logicalInstr ORA
+    PHA, pha
+    PHP, php
+    PLA, pla
+    PLP, plp
+    ROL, rol
+    ROR, ror
+    SEC, sec
+    SED, sed
+    SEI, sei
+    SBC, sbc
+    SBC_, sbc
+    STA, sta
+    STX, stx
+    STY, sty
+    TAX, tax
+    TAY, tay
+    TSX, tsx
+    TXS, txs
+    TXA, txa
+    TYA, tya
+
+    // 非公式命令
+    LAX_, lax
+    SAX_, sax
+    DCP_, dcp
+    ISB_, isb
+    SLO_, slo
+    RLA_, rla
+    RRA_, rra
+    SRE_, sre
+  ]
+
+
+/// CPU を 1 命令だけ実行する
 let step cpu bus : CpuState * Bus =
-    let opcode, bus' = memRead cpu.PC bus
-    let op, mode, size, cycles = decodeOpcode opcode
-    let execInstr f m c b =
-      (c, b) ||> f m ||> advancePC size
-    match op with
-      | ADC -> (cpu, bus') ||> execInstr adc mode
-      | AND -> (cpu, bus') ||> execInstr (logicalInstr AND) mode
-      | ASL -> (cpu, bus') ||> execInstr asl mode
-      | BCC -> (cpu, bus') ||> bcc mode
-      | BCS -> (cpu, bus') ||> bcs mode
-      | BEQ -> (cpu, bus') ||> beq mode
-      | BIT -> (cpu, bus') ||> execInstr bit mode
-      | BMI -> (cpu, bus') ||> bmi mode
-      | BNE -> (cpu, bus') ||> bne mode
-      | BPL -> (cpu, bus') ||> bpl mode
-      | BRK -> (cpu, bus') ||> execInstr brk mode
-      | BVC -> (cpu, bus') ||> bvc mode
-      | BVS -> (cpu, bus') ||> bvs mode
-      | CLC -> (cpu, bus') ||> execInstr clc mode
-      | CLD -> (cpu, bus') ||> execInstr cld mode
-      | CLI -> (cpu, bus') ||> execInstr cli mode
-      | CLV -> (cpu, bus') ||> execInstr clv mode
-      | CMP -> (cpu, bus') ||> execInstr cmp mode
-      | CPX -> (cpu, bus') ||> execInstr cpx mode
-      | CPY -> (cpu, bus') ||> execInstr cpy mode
-      | DEC -> (cpu, bus') ||> execInstr dec mode
-      | DEX -> (cpu, bus') ||> execInstr dex mode
-      | DEY -> (cpu, bus') ||> execInstr dey mode
-      | EOR -> (cpu, bus') ||> execInstr (logicalInstr EOR) mode
-      | INC -> (cpu, bus') ||> execInstr inc mode
-      | INX -> (cpu, bus') ||> execInstr inx mode
-      | INY -> (cpu, bus') ||> execInstr iny mode
-      | JMP -> (cpu, bus') ||> jmp mode
-      | JSR -> (cpu, bus') ||> jsr mode
-      | LDA -> (cpu, bus') ||> execInstr lda mode
-      | LDX -> (cpu, bus') ||> execInstr ldx mode
-      | LDY -> (cpu, bus') ||> execInstr ldy mode
-      | LSR -> (cpu, bus') ||> execInstr lsrInstr mode
-      | NOP | NOP_ -> (cpu, bus') ||> execInstr nop mode
-      | ORA -> (cpu, bus') ||> execInstr (logicalInstr ORA) mode
-      | PHA -> (cpu, bus') ||> execInstr pha mode
-      | PHP -> (cpu, bus') ||> execInstr php mode
-      | PLA -> (cpu, bus') ||> execInstr pla mode
-      | PLP -> (cpu, bus') ||> execInstr plp mode
-      | ROL -> (cpu, bus') ||> execInstr rol mode
-      | ROR -> (cpu, bus') ||> execInstr ror mode
-      | SEC -> (cpu, bus') ||> execInstr sec mode
-      | SED -> (cpu, bus') ||> execInstr sed mode
-      | SEI -> (cpu, bus') ||> execInstr sei mode
-      | SBC | SBC_ -> (cpu, bus') ||> execInstr sbc mode
-      | STA -> (cpu, bus') ||> execInstr sta mode
-      | STX -> (cpu, bus') ||> execInstr stx mode
-      | STY -> (cpu, bus') ||> execInstr sty mode
-      | RTI -> (cpu, bus') ||> rti mode
-      | RTS -> (cpu, bus') ||> rts mode
-      | TAX -> (cpu, bus') ||> execInstr tax mode
-      | TAY -> (cpu, bus') ||> execInstr tay mode
-      | TSX -> (cpu, bus') ||> execInstr tsx mode
-      | TXS -> (cpu, bus') ||> execInstr txs mode
-      | TXA -> (cpu, bus') ||> execInstr txa mode
-      | TYA -> (cpu, bus') ||> execInstr tya mode
-      | LAX_ -> (cpu, bus') ||> execInstr lax mode
-      | SAX_ -> (cpu, bus') ||> execInstr sax mode
-      | DCP_ -> (cpu, bus') ||> execInstr dcp mode
-      | ISB_ -> (cpu, bus') ||> execInstr isb mode
-      | SLO_ -> (cpu, bus') ||> execInstr slo mode
-      | RLA_ -> (cpu, bus') ||> execInstr rla mode
-      | RRA_ -> (cpu, bus') ||> execInstr rra mode
-      | SRE_ -> (cpu, bus') ||> execInstr sre mode
-      | _ -> failwithf "Unsupported mnemonic: %A" op
+  let opcode, bus' = memRead cpu.PC bus
+  let op, mode, size, cycles, penalty = decodeOpcode opcode
+  let execInstr f m c b =
+    let crsd =
+      match m with
+      | Absolute_X | Absolute_Y | Indirect_X | Indirect_Y ->
+        let addr = getOperandAddress c b c.PC m // 命令内と合わせて2回呼ぶことになるのはできればどうにかしたい
+        isPageCrossed c.PC addr
+      | _ -> false
+    (c, b) ||> f m ||> advancePC size, crsd
+
+  let (cpu', bus2), crossed =
+    match Map.tryFind op execMap with
+    | Some f -> execInstr f mode cpu bus'
+    | None ->
+      match op with
+      | BCC -> bcc mode cpu bus', false // ブランチ系は命令内で追加サイクルを処理する
+      | BCS -> bcs mode cpu bus', false
+      | BEQ -> beq mode cpu bus', false
+      | BMI -> bmi mode cpu bus', false
+      | BNE -> bne mode cpu bus', false
+      | BPL -> bpl mode cpu bus', false
+      | BVC -> bvc mode cpu bus', false
+      | BVS -> bvs mode cpu bus', false
+      | JMP -> jmp mode cpu bus', false
+      | JSR -> jsr mode cpu bus', false
+      | RTI -> rti mode cpu bus', false
+      | RTS -> rts mode cpu bus', false
+      | BRK -> execInstr brk mode cpu bus'
+      | _ -> failwithf "Unsupported opcode: %A" op
+  
+  // サイクル追加発生可能性のある命令でページ境界をまたいだ場合はサイクル追加
+  let penaltyTick = if penalty && crossed then 1u else 0u
+
+  let bus3, nmiOpt = tick (cycles + penaltyTick) bus2
+  let cpuF, busF =
+    match nmiOpt with
+    | Some _ -> interruptNmi cpu' bus3
+    | None -> cpu', bus3
+
+  cpuF, busF
 
 let rec run cpu bus =
   let cpu', bus' = (cpu, bus) ||> step
@@ -577,10 +614,6 @@ let rec run cpu bus =
 
 let rec runWithCallback callback cpu bus =
   callback cpu bus
-  let cpu', bus' =
-    match pollNmiStatus bus with
-    | Some _ -> interruptNmi cpu bus
-    | None -> cpu, bus
-
-  let cpu'', bus'' = (cpu', bus') ||> step
-  (cpu'', bus'') ||> runWithCallback callback
+  (cpu, bus)
+    ||> step
+    ||> runWithCallback callback

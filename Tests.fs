@@ -5,6 +5,7 @@ open System.IO
 open Expecto
 open Cpu
 open Bus
+open Ppu
 open Cartridge
 open Trace
 
@@ -79,6 +80,54 @@ let tests =
       | Error e -> failwith $"Failed to parse ROM: {e}"
       Expect.isOk parsed "nestest.nes should parse successfully"
       writer.Close()
+    }
+    test "Run Alter Ego and Trace" {
+      let writer = System.IO.File.CreateText("alter_ego.log")
+      let callback = fun cpu bus ->
+          writer.WriteLine(trace cpu bus)
+          writer.Flush()
+      let raw = File.ReadAllBytes "roms/Alter_Ego.nes"
+      let parsed = parseRom raw
+      match parsed with
+      | Ok rom ->
+          let bus = initialBus rom
+          let cpu = initialCpu
+          (cpu, bus) ||> reset ||> runWithCallback callback |> ignore
+      | Error e -> failwith $"Failed to parse ROM: {e}"
+      Expect.isOk parsed "Rom file should parse successfully"
+      writer.Close()
+    }
+
+    test "PPU Simple Test" {
+      let ppuAddr = 0x2000us
+      let value = 0x77uy
+
+      let bus0 = initialBus (testRom [||])
+      let mutable ppu = bus0.ppu
+
+      // コントロールレジスタ設定
+      // printfn $"before: {ppu}"
+      ppu <- writeToControlRegister 0x00uy ppu
+      // アドレス設定
+      ppu <- writeToAddressRegister 0x20uy ppu
+      ppu <- writeToAddressRegister 0x00uy ppu
+      // printfn $"1: {ppu}"
+
+      // $2007 に書き込み
+      ppu <- writeToDataRegister value ppu
+      // printfn $"2: {ppu}"
+
+      // 再びアドレス設定（VRAM 読みは1バイトずれている可能性あり）
+      ppu <- writeToAddressRegister 0x20uy ppu
+      ppu <- writeToAddressRegister 0x00uy ppu
+      // printfn $"3: {ppu}"
+
+      // 読み捨て
+      let _, ppu = readFromDataRegister ppu
+      // 実データ読み
+      let actual, _ = readFromDataRegister ppu
+
+      Expect.equal actual value "Should correctly read back the value written to PPU memory"
     }
 
   ]

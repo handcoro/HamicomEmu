@@ -20,23 +20,31 @@ module PrgRom =
   let End = 0xFFFFus
 
 type Bus = {
-  CpuVram: byte array // 0x0000 - 0x1FFF
-  Rom: Rom
-  Ppu: NesPpu
-  Cycles: uint
+  cpuVram: byte array // 0x0000 - 0x1FFF
+  rom: Rom
+  ppu: NesPpu
+  cycles: uint
+  cyclePenalty: uint
 }
 
 let initialBus rom = {
-  CpuVram = Array.create 0x2000 0uy
-  Rom = rom
-  Ppu = initialPpu rom
-  Cycles = 0u
+  cpuVram = Array.create 0x2000 0uy
+  rom = rom
+  ppu = initialPpu rom
+  cycles = 0u
+  cyclePenalty = 0u
 }
+
+module Bus =
+  let resetPenalty bus =
+    { bus with cyclePenalty = 0u }
+  let addCyclePenalty n bus =
+    { bus with cyclePenalty = bus.cyclePenalty + n }
 
 let readPrgRom bus addr = // PRG ROM の読み込み
   let addr' = addr - 0x8000us // 0x8000 - 0xFFFF の範囲を 0x0000 - 0x7FFF に変換
-  let addr2 = if bus.Rom.PrgRom.Length = 0x4000 && addr' >= 0x4000us then addr' % 0x4000us else addr' // 16KB ROM の場合はミラーリング
-  bus.Rom.PrgRom[int addr2]
+  let addr2 = if bus.rom.prgRom.Length = 0x4000 && addr' >= 0x4000us then addr' % 0x4000us else addr' // 16KB ROM の場合はミラーリング
+  bus.rom.prgRom[int addr2]
 
 let inline inRange startAddr endAddr addr =
   addr >= startAddr && addr <= endAddr
@@ -44,20 +52,28 @@ let rec memRead addr bus =
   match addr with
   | addr when addr |> inRange Ram.Begin Ram.MirrorsEnd ->
     let mirrorDownAddr = addr &&& 0b0000_0111_1111_1111us
-    bus.CpuVram[int mirrorDownAddr], bus
+    bus.cpuVram[int mirrorDownAddr], bus
 
   | addr when addr |> inRange ApuRegisters.Begin ApuRegisters.MirrorsEnd ->
-    failwithf "APU is not implemented yet. addr: %04X" addr
+    // printfn "APU is not implemented yet. addr: %04X" addr
+    0uy, bus
 
   | 0x2000us | 0x2001us | 0x2003us | 0x2005us | 0x2006us | 0x4014us ->
-    failwithf "Attempt to read from write-only PPU address: %04X" addr
-  // TODO:
-  // | 0x2002us -> Status
-  // | 0x2004us -> OAM data
+    // printfn "Attempt to read from write-only PPU address: %04X" addr
+    0uy, bus
+
+  | 0x2002us -> // TODO: Status
+    let before, data = readFromStatusRegister bus.ppu.status
+    // printfn "READ PPU Status: before: %02X after: %02X" before data
+    before, { bus with ppu.status = data }
+
+  | 0x2004us -> // TODO: OAM data
+    let data = readFromOamData bus.ppu
+    data, bus
 
   | 0x2007us ->
-    let data, ppu = readFromDataRegister bus.Ppu
-    data, { bus with Ppu = ppu }
+    let data, ppu = readFromDataRegister bus.ppu
+    data, { bus with ppu = ppu }
 
   | addr when addr |> inRange 0x2008us PpuRegisters.MirrorsEnd ->
     let mirrorDownAddr = addr &&& 0b0010_0000_0000_0111us
@@ -72,30 +88,37 @@ let rec memWrite addr value bus =
   match addr with
   | addr when addr |> inRange Ram.Begin Ram.MirrorsEnd ->
     let mirrorDownAddr = addr &&& 0b0000_0111_1111_1111us
-    bus.CpuVram[int mirrorDownAddr] <- value
+    bus.cpuVram[int mirrorDownAddr] <- value
     bus
 
   | addr when addr |> inRange ApuRegisters.Begin ApuRegisters.MirrorsEnd ->
-    failwithf "APU is not implemented yet. addr: %04X\n" addr
+    printfn "APU is not implemented yet. addr: %04X" addr
+    bus
 
   | 0x2000us ->
-    let ppu = writeToControlRegister value bus.Ppu
-    { bus with Ppu = ppu }
+    let ppu = writeToControlRegister value bus.ppu
+    { bus with ppu = ppu }
 
-  // TODO:
-  // | 0x2001us -> // Mask
-  // | 0x2003us -> // OAM Address
-  // | 0x2004us -> // OAM Data
-  // | 0x2005us -> // Scroll
-  // | 0x4014us -> // OAM DMA
+  | 0x2001us -> // TODO: Mask
+    let mask = value
+    { bus with ppu.mask = mask}
+  | 0x2003us -> // TODO: OAM Address
+    bus
+  // | 0x2004us -> // TODO: OAM Data
+  | 0x2005us -> // TODO: Scroll
+    bus
+
+  // | 0x4014us -> // TODO: OAM DMA
 
   | 0x2006us ->
-    let ppu = writeToAddressRegister value bus.Ppu
-    { bus with Ppu = ppu }
+    let ppu = writeToAddressRegister value bus.ppu
+    // printfn "WRITE Addr Reg: %02X" value
+    { bus with ppu = ppu }
 
   | 0x2007us ->
-    let ppu = writeToDataRegister value bus.Ppu
-    { bus with Ppu = ppu }
+    let ppu = writeToDataRegister value bus.ppu
+    // printfn "WRITE PPU Data: %02X" value
+    { bus with ppu = ppu }
 
   | addr when addr |> inRange 0x2008us PpuRegisters.MirrorsEnd ->
     let mirrorDownAddr = addr &&& 0b0010_0000_0000_0111us
@@ -104,7 +127,7 @@ let rec memWrite addr value bus =
   | addr when addr |> inRange PrgRom.Begin PrgRom.End -> // PRG ROM は書き込み禁止
     failwithf "Attempt to write to Cartridge Rom space. addr: %04X\n" addr
 
-  | _ -> failwithf "Invalid Memory write-access at: %04X" addr
+  | _ -> printfn "Invalid Memory write-access at: %04X" addr; bus
 
 let memRead16 pos bus =
   let lo, bus1 = memRead pos bus
@@ -130,9 +153,16 @@ let memWrite16 addr pos bus = // 16ビットデータ書き込み（リトルエ
   bus |> memWrite addr lo |> memWrite (addr + 1us) hi
 
 let pollNmiStatus bus =
-  bus.Ppu.nmiInterrupt
+  bus.ppu.nmiInterrupt
 
 let tick cycles bus =
-  let cyc = bus.Cycles + uint cycles
-  let ppu = ppuTick (cycles * 3u) bus.Ppu
-  { bus with Cycles = cyc; Ppu = ppu }
+  let cyc = bus.cycles + uint cycles
+  let nmiBefore = bus.ppu.nmiInterrupt.IsSome
+  let ppu' = ppuTick (cycles * 3u) bus.ppu
+  let nmiAfter = ppu'.nmiInterrupt.IsSome
+
+  // NMI の立ち上がり検出
+  let nmiEdge = not nmiBefore && nmiAfter
+  let bus' = { bus with cycles = cyc; ppu = ppu' }
+  
+  bus', if nmiEdge then Some ppu' else None

@@ -114,7 +114,7 @@ let readArgs bus start count =
 
 let trace cpu bus =
   let opcode, _ = memRead cpu.PC bus
-  let op, mode, size, cycles = decodeOpcode opcode
+  let op, mode, size, _, _ = decodeOpcode opcode
   match op with
   | BRK -> "" // BRK の場合とりあえずトレースは飛ばしておく
   | _ ->
@@ -127,5 +127,6 @@ let trace cpu bus =
 
     let pc = sprintf "%04X" cpu.PC
     let st = formatCpuStatus cpu
-
-    sprintf "%-6s%-9s%-33s%s" pc bin asm st
+    let ppu = sprintf "PPU:%3d,%3d" bus'.ppu.scanline (bus'.ppu.cycles * 3u)
+    let cyc = sprintf "CYC:%d" bus.cycles
+    sprintf "%-6s%-9s%-33s%-26s%-12s %s" pc bin asm st ppu cyc

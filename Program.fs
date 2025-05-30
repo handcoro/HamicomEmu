@@ -5,6 +5,8 @@ open Bus
 open Cartridge
 open Tests
 open Screen
+open Render
+open Trace
 
 open System
 open System.IO
@@ -166,13 +168,15 @@ type tileViewer() as this =
     graphics.ApplyChanges()
   
   override _.Initialize() =
-    spriteBatch <- new SpriteBatch(this.GraphicsDevice)
+    this.IsFixedTimeStep <- true
+    this.TargetElapsedTime <- TimeSpan.FromMilliseconds(0.15) // フレームの更新間隔
     base.Initialize()
 
   override _.LoadContent() =
-    let tileFrame = Screen.showTiles bus.Ppu.chr 0 [0 .. 255]  // bank=1, tileN=0
+    spriteBatch <- new SpriteBatch(this.GraphicsDevice)
+    let tileFrame = Screen.showTiles bus.ppu.chr 0 [0 .. 255]
     texture <- frameToTexture this.GraphicsDevice tileFrame
-
+    base.LoadContent()
   override _.Draw(gameTime) =
     this.GraphicsDevice.Clear(Color.Black)
     spriteBatch.Begin(samplerState = SamplerState.PointClamp)
@@ -184,6 +188,73 @@ type tileViewer() as this =
     if Keyboard.GetState().IsKeyDown(Keys.Escape) then this.Exit()
     base.Update(gameTime)
 
+let printNameTables ppu =
+    for i in 0 .. 3 do
+        printfn $"--- Name Table {i} ---"
+        printfn "%s" (dumpNameTable ppu i)
+
+type basicNesGame() as this =
+
+  inherit Game()
+  let scale = 4
+  let graphics = new GraphicsDeviceManager(this)
+  let mutable spriteBatch = Unchecked.defaultof<SpriteBatch>
+  let mutable texture = Unchecked.defaultof<Texture2D>
+
+  let raw = loadRom "roms/Alter_Ego.nes" // https://www.nesworld.com/article.php?system=nes&data=neshomebrew
+  let parsed = raw |> Result.bind parseRom
+  let mutable cpu = initialCpu
+  let mutable bus = Unchecked.defaultof<Bus>
+
+  let mutable frame = initialFrame
+
+  do
+    match parsed with
+    | Ok rom ->
+      bus <- initialBus rom
+      let cpu', bus' = reset cpu bus
+      cpu <- cpu'
+      bus <- bus'
+    | Error e -> failwith $"Failed to parse ROM: {e}"
+
+    graphics.PreferredBackBufferWidth <- Screen.Frame.Width * scale
+    graphics.PreferredBackBufferHeight <- Screen.Frame.Height * scale
+    graphics.ApplyChanges()
+
+  override _.Initialize() =
+    this.IsFixedTimeStep <- true
+    this.TargetElapsedTime <- TimeSpan.FromMilliseconds(1) // フレームの更新間隔
+    base.Initialize()
+
+  override _.LoadContent() =
+    spriteBatch <- new SpriteBatch(this.GraphicsDevice)
+    texture <- new Texture2D(this.GraphicsDevice, Frame.Width, Frame.Height)
+    base.LoadContent()
+
+  override _.Draw(gameTime) =
+    this.GraphicsDevice.Clear(Color.Black)
+    spriteBatch.Begin(samplerState = SamplerState.PointClamp)
+    frame <- render bus.ppu frame
+    let colorData =
+      frame.data |> Array.map (fun (r, g, b) -> Color(int r, int g, int b))
+    texture.SetData(colorData)
+    let destRect = Rectangle(0, 0, Screen.Frame.Width * scale, Screen.Frame.Height * scale)
+    spriteBatch.Draw(texture, destRect, Color.White)
+    spriteBatch.End()
+    base.Draw(gameTime)
+
+  override _.Update(gameTime) =
+    if Keyboard.GetState().IsKeyDown(Keys.Escape) then this.Exit()
+    if Keyboard.GetState().IsKeyDown(Keys.D) then printNameTables bus.ppu
+    // printfn "%s" (trace cpu bus)
+
+    for _ in 0 .. 1000 do // 時間がかかるので 1 フレームで一気に命令処理してしまう
+      let cpu', bus' = (cpu, bus) ||> step
+      cpu <- cpu'
+      bus <- bus'
+
+    base.Update(gameTime)
+
 [<EntryPoint>]
 let main argv =
   if argv |> Array.exists ((=) "--test") then
@@ -192,12 +263,17 @@ let main argv =
     runTestsWithArgs defaultConfig filteredArgs Tests.tests
 
   elif argv |> Array.exists ((=) "--showtiles") then
-    // タイル表示ロジックをここに
+    // タイル表示ロジック
     use game = new tileViewer()
     game.Run()
     0
 
-  else
+  elif argv |> Array.exists ((=) "--snake") then
+    // スネークゲーム
     use game = new pseudoNESGame()
+    game.Run()
+    0
+  else
+    use game = new basicNesGame()
     game.Run()
     0
