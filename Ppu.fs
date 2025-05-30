@@ -187,11 +187,10 @@ let readFromDataRegister ppu =
     let result = ppu'.buffer
     result, { ppu' with buffer = ppu'.chr[int addr] }
 
-  | addr when addr <= 0x2FFFus ->
+  | addr when addr <= 0x3EFFus ->
     let result = ppu'.buffer
     result, { ppu' with buffer = ppu'.vram[addr |> mirrorVramAddr ppu'.mirror |> int] }
 
-  | addr when addr <= 0x3EFFus -> failwithf "Address space 0x3000 - 0x3EFF is not expected, addr: %04X" addr
   | addr when addr <= 0x3FFFus -> // TODO: パレットのミラーリング処理
     ppu'.pal[int (addr - 0x3F00us)], ppu'
   | _ -> failwithf "Invalid PPU address: %04X" addr
@@ -209,7 +208,6 @@ let writeToDataRegister value ppu =
     ppu'.vram[addr |> mirrorVramAddr ppu'.mirror |> int] <- value
     ppu'
 
-  // | addr when addr <= 0x3EFFus -> failwithf "Address space 0x3000 - 0x3EFF is not expected, addr: %04X" addr
   | addr when addr <= 0x3FFFus -> // TODO: パレットのミラーリング処理
     ppu'.pal[int (addr - 0x3F00us)] <- value
     ppu'
