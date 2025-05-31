@@ -4,6 +4,7 @@
     <TargetFramework>net8.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="Joypad.fs" />
     <Compile Include="Instructions.fs" />
     <Compile Include="Cartridge.fs" />
     <Compile Include="Palette.fs" />

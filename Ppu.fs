@@ -36,8 +36,8 @@ module StatusFlags =
 
 module MaskFlags =
   let Grayscale = 0b0000_0001uy
-  let ShowBackgroundLeftMost = 0b0000_0010uy
-  let ShowSpritesLeftMost = 0b0000_0100uy
+  let ShowBackgroundInLeftmost = 0b0000_0010uy
+  let ShowSpritesInLeftmost = 0b0000_0100uy
   let BackgroundRendering = 0b0000_1000uy
   let SpriteRendering = 0b0001_0000uy
   let EmphasizeRed = 0b0010_0000uy
@@ -131,8 +131,6 @@ let private incrementAddressRegister inc ar =
 
 let private resetLatchAddressRegister ar = { ar with hiPtr = true }
 
-let readFromOamData ppu = ppu.oam[int ppu.oamAddr]
-
 let writeToAddressRegister value ppu =
   let ar = ppu.addrReg |> updateAddressRegister value
   { ppu with addrReg = ar }
@@ -143,6 +141,12 @@ let private VramAddressIncrement cr =
 
 let backgroundPatternAddr ctrl =
   if hasFlag ControlFlags.BackgroundPatternAddress ctrl then 0x1000us else 0x0000us
+
+let spritePatternAddr ctrl =
+  if not (hasFlag ControlFlags.SpriteSize ctrl) && hasFlag ControlFlags.SpritePatternAddress ctrl then
+    0x1000us
+  else
+    0x0000us
 
 let updateControl data ppu = { ppu with ctrl = data}
 let writeToControlRegister value ppu =
@@ -201,7 +205,7 @@ let writeToDataRegister value ppu =
 
   match addr with
   | addr when addr <= 0x1FFFus ->
-    printfn "Attempt to Write to Chr Rom Space: %04X" addr
+    // printfn "Attempt to Write to Chr Rom Space: %04X" addr
     ppu'
 
   | addr when addr <= 0x3EFFus ->
@@ -216,16 +220,34 @@ let writeToDataRegister value ppu =
 let resetVblankStatus status = clearFlag StatusFlags.Vblank status
 
 let readFromStatusRegister status =
-  let st = resetVblankStatus status
-  status, st
+  let afterSt = resetVblankStatus status
+  status, afterSt
+
+let writeToMaskRegister value ppu =
+  { ppu with mask = value }
+
+let writeToOamAddress value ppu =
+  {ppu with oamAddr = value}
+
+let readFromOamData ppu =
+  ppu.oam[int ppu.oamAddr]
+
+let writeToOamData value ppu =
+  ppu.oam[int ppu.oamAddr] <- value
+  let nextAddr = ppu.oamAddr + 1uy // 書き込み後インクリメント
+  { ppu with oamAddr = nextAddr }
+
+let writeToOamDma values ppu =
+  { ppu with oam = values }
+
 
 let ppuTick cycles ppu =
   let cyc = ppu.cycles + uint cycles
 
-  // OAM アドレスの処理を後で入れる
   // 340 は画面のライン 1 本分
+  let oamAddr = if cyc <= 257u && cyc >= 320u then 0uy else ppu.oamAddr // OAM アドレスを 0 にする処理がこれで合ってるのかよくわからない
   if cyc < 341u then
-    { ppu with cycles = cyc }
+    { ppu with oamAddr = oamAddr; cycles = cyc}
   else
     let cyc' = cyc - 341u
     let nextScanline = ppu.scanline + 1us
@@ -248,4 +270,4 @@ let ppuTick cycles ppu =
 
     | _ ->
         // 通常のスキャンライン進行
-        { ppu with scanline = nextScanline; cycles = cyc' }
+        { ppu with scanline = nextScanline; oamAddr = oamAddr; cycles = cyc' }

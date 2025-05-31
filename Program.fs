@@ -7,6 +7,7 @@ open Tests
 open Screen
 open Render
 open Trace
+open Joypad
 
 open System
 open System.IO
@@ -46,6 +47,24 @@ let handleUserInput (ks: KeyboardState) bus =
   match input with
   | Some v -> bus |> memWrite 0xFFus v
   | None -> bus
+
+let handleJoypadInput (ks: KeyboardState) joy =
+  let keyMap = [
+    Keys.Right, JoyButton.Right
+    Keys.Left,  JoyButton.Left
+    Keys.Down,  JoyButton.Down
+    Keys.Up,    JoyButton.Up
+    Keys.Enter, JoyButton.Start
+    Keys.Space, JoyButton.Select
+    Keys.S,     JoyButton.B
+    Keys.A,     JoyButton.A
+  ]
+  
+  keyMap
+  |> List.fold (fun accJoy (key, button) ->
+      let isDown = ks.IsKeyDown key
+      accJoy |> setButtonPressed button isDown
+    ) joy
 
 let loadRom path =
   try
@@ -205,7 +224,7 @@ type basicNesGame() as this =
   let parsed = raw |> Result.bind parseRom
   let mutable cpu = initialCpu
   let mutable bus = Unchecked.defaultof<Bus>
-
+  
   let mutable frame = initialFrame
 
   do
@@ -245,10 +264,11 @@ type basicNesGame() as this =
 
   override _.Update(gameTime) =
     if Keyboard.GetState().IsKeyDown(Keys.Escape) then this.Exit()
-    if Keyboard.GetState().IsKeyDown(Keys.D) then printNameTables bus.ppu
     // printfn "%s" (trace cpu bus)
+    let joy = bus.joy1 |> handleJoypadInput (Keyboard.GetState())
+    bus <- {bus with joy1 = joy }
 
-    for _ in 0 .. 1000 do // 時間がかかるので 1 フレームで一気に命令処理してしまう
+    for _ in 0 .. 600 do // 時間がかかるので 1 フレームで一気に命令処理してしまう
       let cpu', bus' = (cpu, bus) ||> step
       cpu <- cpu'
       bus <- bus'

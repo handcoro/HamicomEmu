@@ -2,6 +2,7 @@ module Bus
 
 open Cartridge
 open Ppu
+open Joypad
 
 module Ram =
   let Begin = 0x0000us
@@ -13,7 +14,7 @@ module PpuRegisters =
 
 module ApuRegisters =
   let Begin = 0x4000us
-  let MirrorsEnd = 0x4017us
+  let End = 0x4017us
 
 module PrgRom =
   let Begin = 0x8000us
@@ -23,6 +24,8 @@ type Bus = {
   cpuVram: byte array // 0x0000 - 0x1FFF
   rom: Rom
   ppu: NesPpu
+  joy1: Joypad
+  joy2: Joypad
   cycles: uint
   cyclePenalty: uint
 }
@@ -31,6 +34,8 @@ let initialBus rom = {
   cpuVram = Array.create 0x2000 0uy
   rom = rom
   ppu = initialPpu rom
+  joy1 = initialJoypad
+  joy2 = initialJoypad
   cycles = 0u
   cyclePenalty = 0u
 }
@@ -54,10 +59,6 @@ let rec memRead addr bus =
     let mirrorDownAddr = addr &&& 0b0000_0111_1111_1111us
     bus.cpuVram[int mirrorDownAddr], bus
 
-  | addr when addr |> inRange ApuRegisters.Begin ApuRegisters.MirrorsEnd ->
-    // printfn "APU is not implemented yet. addr: %04X" addr
-    0uy, bus
-
   | 0x2000us | 0x2001us | 0x2003us | 0x2005us | 0x2006us | 0x4014us ->
     // printfn "Attempt to read from write-only PPU address: %04X" addr
     0uy, bus
@@ -67,7 +68,7 @@ let rec memRead addr bus =
     // printfn "READ PPU Status: before: %02X after: %02X" before data
     before, { bus with ppu.status = data }
 
-  | 0x2004us -> // TODO: OAM data
+  | 0x2004us ->
     let data = readFromOamData bus.ppu
     data, bus
 
@@ -78,6 +79,18 @@ let rec memRead addr bus =
   | addr when addr |> inRange 0x2008us PpuRegisters.MirrorsEnd ->
     let mirrorDownAddr = addr &&& 0b0010_0000_0000_0111us
     memRead mirrorDownAddr bus
+
+  | 0x4016us -> // TODO: Joypad
+    let data, joy = readJoypad bus.joy1
+    data, {bus with joy1 = joy}
+
+  // | 0x4017us -> // TODO: Joypad
+  //   let data, joy = readJoypad bus.joy2
+  //   data, {bus with joy2 = joy}
+
+  | addr when addr |> inRange ApuRegisters.Begin ApuRegisters.End ->
+    // printfn "APU is not implemented yet. addr: %04X" addr
+    0uy, bus
 
   | addr when addr |> inRange PrgRom.Begin PrgRom.End ->
     readPrgRom bus addr, bus
@@ -91,24 +104,24 @@ let rec memWrite addr value bus =
     bus.cpuVram[int mirrorDownAddr] <- value
     bus
 
-  | addr when addr |> inRange ApuRegisters.Begin ApuRegisters.MirrorsEnd ->
-    printfn "APU is not implemented yet. addr: %04X" addr
-    bus
-
   | 0x2000us ->
     let ppu = writeToControlRegister value bus.ppu
     { bus with ppu = ppu }
 
-  | 0x2001us -> // TODO: Mask
-    let mask = value
-    { bus with ppu.mask = mask}
-  | 0x2003us -> // TODO: OAM Address
-    bus
-  // | 0x2004us -> // TODO: OAM Data
+  | 0x2001us ->
+    let ppu = writeToMaskRegister value bus.ppu
+    { bus with ppu = ppu}
+
+  | 0x2003us ->
+    let ppu = writeToOamAddress value bus.ppu
+    { bus with ppu = ppu }
+
+  | 0x2004us ->
+    let ppu = writeToOamData value bus.ppu
+    { bus with ppu = ppu }
+
   | 0x2005us -> // TODO: Scroll
     bus
-
-  // | 0x4014us -> // TODO: OAM DMA
 
   | 0x2006us ->
     let ppu = writeToAddressRegister value bus.ppu
@@ -123,6 +136,22 @@ let rec memWrite addr value bus =
   | addr when addr |> inRange 0x2008us PpuRegisters.MirrorsEnd ->
     let mirrorDownAddr = addr &&& 0b0010_0000_0000_0111us
     bus |> memWrite mirrorDownAddr value
+
+  | 0x4014us -> // TODO: OAM DMA ティック加算処理
+    let hi = uint16 value <<< 8
+    let mutable data = Array.create 0x100 0uy
+    for i in 0 .. 0xFF do
+      data[i] <- memRead (hi + uint16 i) bus |> fst
+    let ppu = writeToOamDma data bus.ppu
+    { bus with ppu = ppu }
+
+  | 0x4016us -> // TODO: Joypad
+    let joy = bus.joy1 |> writeJoypad value
+    { bus with joy1 = joy }
+
+  | addr when addr |> inRange ApuRegisters.Begin ApuRegisters.End ->
+    // printfn "APU is not implemented yet. addr: %04X" addr
+    bus
 
   | addr when addr |> inRange PrgRom.Begin PrgRom.End -> // PRG ROM は書き込み禁止
     failwithf "Attempt to write to Cartridge Rom space. addr: %04X\n" addr

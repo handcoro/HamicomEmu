@@ -265,9 +265,16 @@ let ror mode cpu bus =
 // 分岐はこの関数内で PC の進みを管理する
 let branch mode flag expected cpu bus =
   let target = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
-  let pc = target + 1us // 命令の分進める
-  let bus = if isPageCrossed target pc then Bus.addCyclePenalty 1u bus else bus
-  if hasFlag flag cpu.P = expected then { cpu with PC = pc }, bus else (cpu, bus) ||> advancePC 2us
+  let nextPc = target + 1us // 命令の分進める
+
+  if hasFlag flag cpu.P <> expected then
+    (cpu, bus) ||> advancePC 2us
+  else
+    let bus =
+      bus
+      |> Bus.addCyclePenalty 1u
+      |> fun b -> if isPageCrossed target nextPc then Bus.addCyclePenalty 1u b else b
+    { cpu with PC = nextPc }, bus
 let bcc mode (cpu : CpuState) (bus : Bus) = // BCC - Branch if Carry Clear
   (cpu, bus) ||> branch mode Flags.C false
 let bcs mode cpu bus = // BCS - Branch if Carry Set
@@ -412,15 +419,21 @@ let pha _ cpu bus = // Push Accumulator
   (cpu, bus) ||> push cpu.A
 
 let php _ cpu bus = // Push Processor Status
-  (cpu, bus) ||> push (cpu.P |> setFlag Flags.B ||| Flags.U) // B フラグをセットしてプッシュ
+  let p = cpu.P |> setFlag (Flags.B ||| Flags.U)
+  (cpu, bus) ||> push p
 
 let plp _ cpu bus = // Pull Processor Status
   let p, cpu', bus' = pull cpu bus
-  { cpu' with P = p |> clearFlag Flags.B |> setFlag Flags.U }, bus'
+  let p' =
+    p
+    |> clearFlag Flags.B
+    |> setFlag Flags.U
+  { cpu' with P = p'}, bus'
 
 let pla _ cpu bus = // Pull Accumulator
   let a, cpu', bus' = pull cpu bus
-  { cpu' with A = a; P = cpu'.P |> setZeroNegativeFlags a }, bus'
+  let p = cpu'.P |> setZeroNegativeFlags a
+  { cpu' with A = a; P = p }, bus'
 
 let brk _ cpu bus = // BRK - Force Break
   // まだ未完成
@@ -430,14 +443,18 @@ let brk _ cpu bus = // BRK - Force Break
     ||> push cpu.P
 
   let pc, bus' = memRead16 0xFFFEus bus // BRK の場合は 0xFFFE に飛ぶ
-  let p = cpu.P |> updateFlag Flags.B true
+  let p = cpu.P |> setFlag Flags.B
 
   { cpu with P = p; PC = pc }, bus'
 
 let rti _ cpu bus = // Return from Interrupt
   let p, cpu', bus' = pull cpu bus
   let pc, cpu'', bus'' = pull16 cpu' bus'
-  { cpu'' with P = p |> clearFlag Flags.B |> setFlag Flags.U; PC = pc }, bus''
+  let p' =
+    p
+    |> clearFlag Flags.B
+    |> setFlag Flags.U
+  { cpu'' with P = p' ; PC = pc }, bus''
 
 let nop _ cpu bus = // No Operation
   cpu, bus
@@ -528,7 +545,6 @@ let execMap =
     LDY, ldy
     LSR, lsrInstr
     NOP, nop
-    NOP_, nop
     ORA, logicalInstr ORA
     PHA, pha
     PHP, php
@@ -540,7 +556,6 @@ let execMap =
     SED, sed
     SEI, sei
     SBC, sbc
-    SBC_, sbc
     STA, sta
     STX, stx
     STY, sty
@@ -556,9 +571,11 @@ let execMap =
     SAX_, sax
     DCP_, dcp
     ISB_, isb
+    NOP_, nop
     SLO_, slo
     RLA_, rla
     RRA_, rra
+    SBC_, sbc
     SRE_, sre
   ]
 
