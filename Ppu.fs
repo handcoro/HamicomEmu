@@ -142,7 +142,8 @@ let private VramAddressIncrement cr =
 let backgroundPatternAddr ctrl =
   if hasFlag ControlFlags.BackgroundPatternAddress ctrl then 0x1000us else 0x0000us
 
-let spritePatternAddr ctrl =
+/// 多分スプライトサイズの扱いがまだ不十分
+let spritePatternAddr ctrl = 
   if not (hasFlag ControlFlags.SpriteSize ctrl) && hasFlag ControlFlags.SpritePatternAddress ctrl then
     0x1000us
   else
@@ -255,18 +256,19 @@ let ppuTick cycles ppu =
     match nextScanline with
     | 241us ->
         // VBlank 開始
+        let st = ppu.status |> setFlag StatusFlags.Vblank
         let nmi = hasFlag ControlFlags.GenerateNmi ppu.ctrl
         let ctrl' = ppu.ctrl |> updateFlag ControlFlags.GenerateNmi true
+        let ppu' = { ppu with scanline = nextScanline; oamAddr = oamAddr; cycles = cyc'; status = st; ctrl = ctrl' }
         if nmi then
-          let st = ppu.status |> updateFlag StatusFlags.Vblank true
-          { ppu with scanline = nextScanline; cycles = cyc'; status = st; ctrl = ctrl'; nmiInterrupt = Some 1uy }
+          { ppu' with nmiInterrupt = Some 1uy }
         else
-          { ppu with scanline = nextScanline; cycles = cyc'; ctrl = ctrl' }
+          ppu'
 
     | s when s >= 262us ->
         // フレーム終了（VBlank 終了）
-        let st = resetVblankStatus ppu.status
-        { ppu with scanline = 0us; status = st; cycles = cyc'; nmiInterrupt = None }
+        let st = ppu.status |> resetVblankStatus
+        { ppu with scanline = 0us; status = st; oamAddr = oamAddr; cycles = cyc'; nmiInterrupt = None }
 
     | _ ->
         // 通常のスキャンライン進行
