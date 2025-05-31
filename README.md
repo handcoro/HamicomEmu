@@ -16,6 +16,9 @@
 オプションなし:
 
 ```nes/Alter_Ego.nes``` を実行します
+|入力対応  |↑|↓|←|→|Select|Start|B|A|
+|:--------:|-|-|-|-|------|-----|-|-|
+|キーボード|↑|↓|←|→|Space|Enter|S|A|
 
 ```dotnet run --showtiles```:
 
