@@ -64,9 +64,8 @@ let rec memRead addr bus =
     0uy, bus
 
   | 0x2002us -> // TODO: Status
-    let before, data = readFromStatusRegister bus.ppu.status
-    // printfn "READ PPU Status: before: %02X after: %02X" before data
-    before, { bus with ppu.status = data }
+    let beforePpu, ppu = readFromStatusRegister bus.ppu
+    beforePpu.status, { bus with ppu = ppu }
 
   | 0x2004us ->
     let data = readFromOamData bus.ppu
@@ -121,7 +120,8 @@ let rec memWrite addr value bus =
     { bus with ppu = ppu }
 
   | 0x2005us -> // TODO: Scroll
-    bus
+    let ppu = writeToScrollRegister value bus.ppu
+    { bus with ppu = ppu }
 
   | 0x2006us ->
     let ppu = writeToAddressRegister value bus.ppu
@@ -154,7 +154,8 @@ let rec memWrite addr value bus =
     bus
 
   | addr when addr |> inRange PrgRom.Begin PrgRom.End -> // PRG ROM は書き込み禁止
-    failwithf "Attempt to write to Cartridge Rom space. addr: %04X\n" addr
+    printfn "Attempt to write to Cartridge Rom space. addr: %04X\n" addr
+    bus
 
   | _ -> printfn "Invalid Memory write-access at: %04X" addr; bus
 

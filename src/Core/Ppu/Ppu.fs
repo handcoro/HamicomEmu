@@ -35,14 +35,14 @@ module StatusFlags =
   let Vblank         = 0b1000_0000uy
 
 module MaskFlags =
-  let Grayscale = 0b0000_0001uy
+  let Grayscale                = 0b0000_0001uy
   let ShowBackgroundInLeftmost = 0b0000_0010uy
-  let ShowSpritesInLeftmost = 0b0000_0100uy
-  let BackgroundRendering = 0b0000_1000uy
-  let SpriteRendering = 0b0001_0000uy
-  let EmphasizeRed = 0b0010_0000uy
-  let EmphasizeGreen = 0b0100_0000uy
-  let EmphasizeBlue = 0b1000_0000uy
+  let ShowSpritesInLeftmost    = 0b0000_0100uy
+  let BackgroundRendering      = 0b0000_1000uy
+  let SpriteRendering          = 0b0001_0000uy
+  let EmphasizeRed             = 0b0010_0000uy
+  let EmphasizeGreen           = 0b0100_0000uy
+  let EmphasizeBlue            = 0b1000_0000uy
 
 type AddressRegister = {
   value: byte * byte
@@ -54,6 +54,16 @@ let initialAddressRegister = {
   hiPtr = true
 }
 
+type ScrollRegister = {
+  xy: byte * byte
+  latchX: bool
+}
+
+let initialScrollRegister = {
+  xy = (0uy, 0uy)
+  latchX = true
+}
+
 type NesPpu = {
   chr: byte array
   pal: byte array
@@ -62,6 +72,7 @@ type NesPpu = {
   oamAddr: byte
   mirror: Mirroring
   addrReg: AddressRegister
+  scrlReg: ScrollRegister
   ctrl: byte
   mask: byte
   status: byte
@@ -79,6 +90,7 @@ let initialPpu (rom: Rom) = {
   oamAddr = 0uy
   mirror = rom.screenMirroring
   addrReg = initialAddressRegister
+  scrlReg = initialScrollRegister
   ctrl = 0uy // 初期状態では制御レジスタは0
   mask = 0uy
   status = 0uy
@@ -91,8 +103,10 @@ let initialPpu (rom: Rom) = {
 let hasFlag flag r = r &&& flag <> 0uy
 let setFlag flag r = r ||| flag
 let clearFlag flag r = r &&& (~~~flag)
-let updateFlag flag condition p =
-  if condition then setFlag flag p else clearFlag flag p
+let updateFlag flag condition b =
+  if condition then setFlag flag b else clearFlag flag b
+
+let private resetLatchScrollRegister sr = { sr with latchX = true }
 
 let private setAddrRegValue (data: uint16) =
   (byte (data >>> 8), byte data)
@@ -139,6 +153,14 @@ let writeToAddressRegister value ppu =
 let private VramAddressIncrement cr =
   if hasFlag ControlFlags.VramAddIncrement cr then 32uy else 1uy
 
+let getNameTableAddress ctrl =
+  match ctrl &&& (ControlFlags.Nametable1 ||| ControlFlags.Nametable2) with
+  | 0uy -> 0x2000us
+  | 1uy -> 0x2400us
+  | 2uy -> 0x2800us
+  | 3uy -> 0x2C00us
+  | _ -> failwith "can't be"
+
 let backgroundPatternAddr ctrl =
   if hasFlag ControlFlags.BackgroundPatternAddress ctrl then 0x1000us else 0x0000us
 
@@ -162,12 +184,10 @@ let writeToControlRegister value ppu =
 let incrementVramAddress ppu =
   let inc = VramAddressIncrement ppu.ctrl
   { ppu with addrReg = ppu.addrReg |> incrementAddressRegister inc }
-/// --
 
 // Horizontal:
 //   [ A ] [ a ]
 //   [ B ] [ b ]
-
 // Vertical:
 //   [ A ] [ B ]
 //   [ a ] [ b ]
@@ -220,9 +240,10 @@ let writeToDataRegister value ppu =
 
 let resetVblankStatus status = clearFlag StatusFlags.Vblank status
 
-let readFromStatusRegister status =
-  let afterSt = resetVblankStatus status
-  status, afterSt
+let readFromStatusRegister ppu =
+  let sr = resetLatchScrollRegister ppu.scrlReg
+  let afterSt = resetVblankStatus ppu.status
+  {ppu with scrlReg = sr }, { ppu with scrlReg = sr; status = afterSt }
 
 let writeToMaskRegister value ppu =
   { ppu with mask = value }
@@ -241,6 +262,32 @@ let writeToOamData value ppu =
 let writeToOamDma values ppu =
   { ppu with oam = values }
 
+let isSpriteZeroHit cycles ppu = // 0 番スプライトにスキャンラインが引っかかったか判定
+  let y = ppu.oam[0] |> uint
+  let x = ppu.oam[3] |> uint
+  (y = uint ppu.scanline) && (x <= cycles) && (hasFlag MaskFlags.SpriteRendering ppu.mask)
+
+let private updateScrollRegister (data: byte) sr =
+  // hiPtr を目印に 2 回に分けて書き込む
+  let sr' = if sr.latchX then
+              { sr with xy = (data, snd sr.xy) }
+            else
+              { sr with xy = (fst sr.xy, data) }
+
+  let toggled = not sr.latchX
+  { sr' with latchX = toggled }
+
+let private incrementScrollRegister inc sr =
+  let y = snd sr.xy
+  let x = fst sr.xy
+
+  let y' = y + inc
+  let x' = x + if y' < y then 1uy else 0uy // 桁上り
+  { sr with xy = x', y' }
+
+let writeToScrollRegister value ppu =
+  let sr = ppu.scrlReg |> updateScrollRegister value
+  { ppu with scrlReg = sr }
 
 let ppuTick cycles ppu =
   let cyc = ppu.cycles + uint cycles
@@ -250,16 +297,17 @@ let ppuTick cycles ppu =
   if cyc < 341u then
     { ppu with oamAddr = oamAddr; cycles = cyc}
   else
+    let st = ppu.status |> updateFlag StatusFlags.SpriteZeroHit (isSpriteZeroHit cyc ppu)
     let cyc' = cyc - 341u
     let nextScanline = ppu.scanline + 1us
 
     match nextScanline with
     | 241us ->
         // VBlank 開始
-        let st = ppu.status |> setFlag StatusFlags.Vblank
+        let st'= st |> setFlag StatusFlags.Vblank |> clearFlag StatusFlags.SpriteZeroHit
         let nmi = hasFlag ControlFlags.GenerateNmi ppu.ctrl
-        let ctrl' = ppu.ctrl |> updateFlag ControlFlags.GenerateNmi true
-        let ppu' = { ppu with scanline = nextScanline; oamAddr = oamAddr; cycles = cyc'; status = st; ctrl = ctrl' }
+        let ctrl' = ppu.ctrl |> setFlag ControlFlags.GenerateNmi
+        let ppu' = { ppu with scanline = nextScanline; oamAddr = oamAddr; cycles = cyc'; status = st'; ctrl = ctrl' }
         if nmi then
           { ppu' with nmiInterrupt = Some 1uy }
         else
@@ -267,8 +315,8 @@ let ppuTick cycles ppu =
 
     | s when s >= 262us ->
         // フレーム終了（VBlank 終了）
-        let st = ppu.status |> resetVblankStatus
-        { ppu with scanline = 0us; status = st; oamAddr = oamAddr; cycles = cyc'; nmiInterrupt = None }
+        let st' = st |> resetVblankStatus |> clearFlag StatusFlags.SpriteZeroHit
+        { ppu with scanline = 0us; status = st'; oamAddr = oamAddr; cycles = cyc'; nmiInterrupt = None }
 
     | _ ->
         // 通常のスキャンライン進行
