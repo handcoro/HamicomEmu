@@ -275,6 +275,7 @@ let branch mode flag expected cpu bus =
       |> Bus.addCyclePenalty 1u
       |> fun b -> if isPageCrossed target nextPc then Bus.addCyclePenalty 1u b else b
     { cpu with PC = nextPc }, bus
+
 let bcc mode (cpu : CpuState) (bus : Bus) = // BCC - Branch if Carry Clear
   (cpu, bus) ||> branch mode Flags.C false
 let bcs mode cpu bus = // BCS - Branch if Carry Set
@@ -487,11 +488,11 @@ let sre mode cpu bus =
 
 let interruptNmi cpu bus =
   let cpu', bus' = push16 cpu.PC cpu bus
-  let p = cpu.P |> updateFlag Flags.B false
-  let p' = p |> updateFlag Flags.U true
+  let p = cpu.P |> clearFlag Flags.B
+  let p' = p |> setFlag Flags.U
 
   let cpu2, bus2 = push p' cpu' bus'
-  let p2 = p' |> updateFlag Flags.I true
+  let p2 = p' |> setFlag Flags.I
 
   let bus3 = fst (tick 2u bus2)
   let pc, busF = memRead16 0xFFFAus bus3

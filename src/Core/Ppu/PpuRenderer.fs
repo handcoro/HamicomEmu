@@ -4,26 +4,6 @@ open Screen
 open Palette
 open Ppu
 
-let dumpNameTable (ppu: NesPpu) (ntIndex: int) =
-  let baseAddr =
-    match ntIndex with
-    | 0 -> 0x2000us
-    | 1 -> 0x2400us
-    | 2 -> 0x2800us
-    | 3 -> 0x2C00us
-    | _ -> failwith "Invalid name table index (must be 0-3)"
-
-  [0 .. 29] |> List.map (fun row ->
-    [0 .. 31] |> List.map (fun col ->
-      let addr = baseAddr + uint16 (row * 32 + col)
-      let mirrored = Ppu.mirrorVramAddr ppu.mirror addr
-      let index = int mirrored
-      sprintf "%02X" ppu.vram.[index]
-    )
-    |> String.concat " "
-  )
-  |> String.concat "\n"
-
 let backgroundPalette ppu tileCol tileRow =
   let attrTableIdx = tileRow / 4 * 8 + tileCol / 4
   let attrByte = ppu.vram[0x3C0 + attrTableIdx] // 一時的に指定
@@ -52,6 +32,78 @@ let spritePalette ppu idx =
     ppu.pal[start + 2]
     ppu.pal[start + 2]
   |]
+
+let showTiles (ppu : NesPpu) (tiles: int list) =
+  let tileSize = 8
+  let tilesPerRow = Frame.Width / tileSize
+  let rows = Frame.Height / tileSize
+  let frame = initialFrame
+
+  [0 .. 1]
+  |> List.fold ( fun frameAcc b ->
+    let bank = b * 0x1000
+    [0 .. min (tiles.Length - 1) (tilesPerRow * rows - 1)]
+    |> List.fold ( fun fr i ->
+      let tileN = tiles[i]
+      let tile = ppu.chr[(bank + tileN * 16)..(bank + tileN * 16 + 15)]
+
+      let tileX = i % tilesPerRow
+      let tileY = i / tilesPerRow
+      let palette = backgroundPalette ppu tileX tileY
+
+      [0 .. 7]
+      |> List.fold ( fun fr' y ->
+        let upper = tile[y]
+        let lower = tile[y + 8]
+        [0 .. 7]
+        |> List.fold ( fun fr'' x ->
+          let value =
+            let bit0 = (upper >>> (7 - x)) &&& 1uy
+            let bit1 = (lower >>> (7 - x)) &&& 1uy
+            (bit1 <<< 1) ||| bit0
+          let rgb =
+            match value with
+            | 0uy -> nesPalette[int ppu.pal[0]]
+            | _ -> nesPalette[int palette[int value]]
+          let px = tileX * tileSize + x
+          let py = tileY * tileSize + y
+          setPixel px py rgb fr''
+        ) fr'
+      ) fr
+    ) frameAcc
+  ) frame
+
+let drawBackground (ppu: NesPpu) (frame: Frame) : Frame =
+  let bank = backgroundPatternAddr ppu.ctrl
+
+  [0 .. 0x03BF] // 今は一時的に指定
+  |> List.fold ( fun frameAcc i ->
+    let tile = ppu.vram[i] |> uint16
+    let tileX = i % 32
+    let tileY = i / 32
+    let tile' = ppu.chr[int (bank + tile * 16us)..int (bank + tile * 16us + 15us)]
+    let palette = backgroundPalette ppu tileX tileY
+
+    [0 .. 7]
+    |> List.fold (fun fr y ->
+      let upper = tile'[y]
+      let lower = tile'[y + 8]
+      [0 .. 7]
+      |> List.fold (fun fr' x ->
+        let value = // CHR データの最後尾が画面上の左
+          let bit0 = (upper >>> (7 - x)) &&& 1uy
+          let bit1 = (lower >>> (7 - x)) &&& 1uy
+          (bit1 <<< 1) ||| bit0
+        let rgb =
+          match value with
+          | 0uy -> nesPalette[int ppu.pal[0]]
+          | _ -> nesPalette[int palette[int value]]
+        let px = tileX * 8 + x
+        let py = tileY * 8 + y
+        setPixel px py rgb fr'
+      ) fr
+    ) frameAcc
+  ) frame
 
 let drawSprites (ppu: NesPpu) (frame: Frame) : Frame =
   let oamIndices =
@@ -93,43 +145,16 @@ let drawSprites (ppu: NesPpu) (frame: Frame) : Frame =
         | 0uy -> fr'
         | _ ->
           let color = nesPalette[int sprPal[int value]]
-          let x', y' =
+          let px, py =
             match flipHorizontal, flipVerical with
             | false, false -> tileX + x,     tileY + y
             | true,  false -> tileX + 7 - x, tileY + y
             | false, true  -> tileX + x,     tileY + 7 - y
             | true,  true  -> tileX + 7 - x, tileY + 7 - y
-          setPixel x' y' color fr'
+          setPixel px py color fr'
       ) fr
     ) frameAcc
   ) frame
 
 let render (ppu: NesPpu) frame =
-  // printfn "ppu vram: %A" ppu.vram
-  let bank = backgroundPatternAddr ppu.ctrl
-  let mutable fr = frame
-  for i in 0 .. 0x03BF do // 今は一時的に指定
-    let tile = ppu.vram[i] |> uint16
-    let tileX = i % 32
-    let tileY = i / 32
-    let tile' = ppu.chr[int (bank + tile * 16us)..int (bank + tile * 16us + 15us)]
-    let palette = backgroundPalette ppu tileX tileY
-
-    for y in 0 .. 7 do
-      let mutable upper = tile'[y]
-      let mutable lower = tile'[y + 8]
-      for x in 0 .. 7 do
-        let value = (1uy &&& lower <<< 1) ||| (1uy &&& upper)
-        upper <- upper >>> 1
-        lower <- lower >>> 1
-        let rgb =
-          match value with
-          | 0uy -> nesPalette[int ppu.pal[0]]
-          | 1uy -> nesPalette[int palette[1]]
-          | 2uy -> nesPalette[int palette[2]]
-          | 3uy -> nesPalette[int palette[3]]
-          | _ -> failwith "can't be"
-        let px = tileX * 8 + (7 - x)
-        let py = tileY * 8 + y
-        fr <- setPixel px py rgb fr
-  drawSprites ppu fr
+  frame |> drawBackground ppu |> drawSprites ppu
