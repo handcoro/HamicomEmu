@@ -4,23 +4,22 @@
     <TargetFramework>net8.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="Joypad.fs" />
-    <Compile Include="Instructions.fs" />
-    <Compile Include="Cartridge.fs" />
-    <Compile Include="Palette.fs" />
-    <Compile Include="Screen.fs" />
-    <Compile Include="Ppu.fs" />
-    <Compile Include="Bus.fs" />
-    <Compile Include="Cpu.fs" />
-    <Compile Include="Render.fs" />
-    <Compile Include="Trace.fs" />
-    <Compile Include="Tests.fs" />
-    <Compile Include="Program.fs" />
+    <Compile Include="src\Core\Joypad.fs" />
+    <Compile Include="src\Core\Instructions.fs" />
+    <Compile Include="src\Core\Cartridge.fs" />
+    <Compile Include="src\Core\Ppu\Palette.fs" />
+    <Compile Include="src\Core\Ppu\Screen.fs" />
+    <Compile Include="src\Core\Ppu\Ppu.fs" />
+    <Compile Include="src\Core\Ppu\PpuRenderer.fs" />
+    <Compile Include="src\Core\Bus.fs" />
+    <Compile Include="src\Core\Cpu.fs" />
+    <Compile Include="src\Core\Trace.fs" />
+    <Compile Include="src\Tests.fs" />
+    <Compile Include="src\Program.fs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Expecto" Version="9.0.4" />
     <PackageReference Include="FsToolkit.ErrorHandling" Version="4.18.0" />
-    <!-- <PackageReference Include="MonoGame.Content.Builder.Task" Version="3.8.3" /> -->
     <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.3" />
   </ItemGroup>
 </Project>
