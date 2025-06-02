@@ -53,6 +53,33 @@ let readPrgRom bus addr = // PRG ROM の読み込み
 
 let inline inRange startAddr endAddr addr =
   addr >= startAddr && addr <= endAddr
+
+let pollNmiStatus bus =
+  if bus.ppu.clearNmiInterrupt then
+    { bus with ppu.clearNmiInterrupt = false; ppu.nmiInterrupt = None }, None
+  else
+    let res = bus.ppu.nmiInterrupt
+    { bus with ppu.nmiInterrupt = None }, res
+    
+let tick cycles bus =
+  let cyc = bus.cycles + uint cycles
+  let nmiBefore = bus.ppu.nmiInterrupt.IsSome
+  let ppu' = ppuTick (cycles * 3u) bus.ppu
+  let nmiAfter = ppu'.nmiInterrupt.IsSome
+
+  // NMI の立ち上がり検出
+  let nmiEdge = not nmiBefore && nmiAfter
+  let bus' = { bus with cycles = cyc; ppu = ppu' }
+  
+  bus', if nmiEdge then Some ppu' else None
+
+let runTicks n bus =
+  [1..n]
+  |> List.fold (fun bus _ ->
+    let bus', _ = tick 1u bus
+    bus'
+  ) bus
+
 let rec memRead addr bus = 
   match addr with
   | addr when addr |> inRange Ram.Begin Ram.MirrorsEnd ->
@@ -137,13 +164,16 @@ let rec memWrite addr value bus =
     let mirrorDownAddr = addr &&& 0b0010_0000_0000_0111us
     bus |> memWrite mirrorDownAddr value
 
+  // DMA 転送はページを指定して 0x100 バイト分転送する
+  // https://www.nesdev.org/wiki/DMA
   | 0x4014us -> // TODO: OAM DMA ティック加算処理
     let hi = uint16 value <<< 8
     let mutable data = Array.create 0x100 0uy
     for i in 0 .. 0xFF do
       data[i] <- memRead (hi + uint16 i) bus |> fst
     let ppu = writeToOamDma data bus.ppu
-    { bus with ppu = ppu }
+    let bus' = runTicks 514 bus
+    { bus' with ppu = ppu }
 
   | 0x4016us -> // TODO: Joypad
     let joy = bus.joy1 |> writeJoypad value
@@ -184,18 +214,3 @@ let memWrite16 addr pos bus =
   let hi = pos >>> 8 |> byte
   let lo = pos &&& 0xFFus |> byte
   bus |> memWrite addr lo |> memWrite (addr + 1us) hi
-
-let pollNmiStatus bus =
-  bus.ppu.nmiInterrupt
-
-let tick cycles bus =
-  let cyc = bus.cycles + uint cycles
-  let nmiBefore = bus.ppu.nmiInterrupt.IsSome
-  let ppu' = ppuTick (cycles * 3u) bus.ppu
-  let nmiAfter = ppu'.nmiInterrupt.IsSome
-
-  // NMI の立ち上がり検出
-  let nmiEdge = not nmiBefore && nmiAfter
-  let bus' = { bus with cycles = cyc; ppu = ppu' }
-  
-  bus', if nmiEdge then Some ppu' else None

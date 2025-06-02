@@ -121,6 +121,6 @@ let main argv =
 
   else
     // https://www.nesworld.com/article.php?system=nes&data=neshomebrew
-    use game = new basicNesGame (loadRom "roms/Alter_Ego.nes")
+    use game = new basicNesGame (loadRom "Alter_Ego.nes")
     game.Run()
     0

@@ -46,22 +46,20 @@ module MaskFlags =
 
 type AddressRegister = {
   value: byte * byte
-  hiPtr: bool
 }
 
 let initialAddressRegister = {
   value = (0uy, 0uy)
-  hiPtr = true
 }
 
+/// この実装は不正確らしい
+/// https://www.nesdev.org/wiki/PPU_scrolling
 type ScrollRegister = {
   xy: byte * byte
-  latchX: bool
 }
 
 let initialScrollRegister = {
   xy = (0uy, 0uy)
-  latchX = true
 }
 
 type NesPpu = {
@@ -80,6 +78,8 @@ type NesPpu = {
   scanline: uint16
   cycles: uint
   nmiInterrupt: option<byte>
+  clearNmiInterrupt: bool
+  latch: bool // PPUSCROLL と PPUADDR のラッチは共有らしい
 }
 
 let initialPpu (rom: Rom) = {
@@ -98,6 +98,8 @@ let initialPpu (rom: Rom) = {
   scanline = 0us
   cycles = 0u
   nmiInterrupt = None
+  clearNmiInterrupt = false
+  latch = true
 }
 
 let hasFlag flag r = r &&& flag <> 0uy
@@ -105,8 +107,6 @@ let setFlag flag r = r ||| flag
 let clearFlag flag r = r &&& (~~~flag)
 let updateFlag flag condition b =
   if condition then setFlag flag b else clearFlag flag b
-
-let private resetLatchScrollRegister sr = { sr with latchX = true }
 
 let private setAddrRegValue (data: uint16) =
   (byte (data >>> 8), byte data)
@@ -116,9 +116,9 @@ let getAddrRegValue ar =
 
 let private ppuAdressMask = 0x3FFFus
 
-let private updateAddressRegister (data: byte) ar =
-  // hiPtr を目印に 2 回に分けて書き込む
-  let ar' = if ar.hiPtr then
+let private updateAddressRegister (data: byte) ppu ar =
+  // latch を目印に 2 回に分けて書き込む
+  let ar' = if ppu.latch then
               { ar with value = (data, snd ar.value) }
             else
               { ar with value = (fst ar.value, data) }
@@ -129,8 +129,8 @@ let private updateAddressRegister (data: byte) ar =
             else
               ar'.value
 
-  let toggledHp = not ar.hiPtr
-  { ar' with value = vt'; hiPtr = toggledHp }
+  let toggled = not ppu.latch
+  { ppu with latch = toggled }, { ar' with value = vt' }
 
 let private incrementAddressRegister inc ar =
   let lo = snd ar.value
@@ -143,11 +143,11 @@ let private incrementAddressRegister inc ar =
   let vt = if v > ppuAdressMask then setAddrRegValue (v &&& 0b11_1111_1111_1111us) else ar'.value
   { ar' with value = vt }
 
-let private resetLatchAddressRegister ar = { ar with hiPtr = true }
+let private resetInternalLatch ppu = { ppu with latch = true }
 
 let writeToAddressRegister value ppu =
-  let ar = ppu.addrReg |> updateAddressRegister value
-  { ppu with addrReg = ar }
+  let ppu', ar = updateAddressRegister value ppu ppu.addrReg
+  { ppu' with addrReg = ar }
 
 /// -- ここらへんは Control 関係でまとめる？
 let private VramAddressIncrement cr =
@@ -241,8 +241,9 @@ let readFromDataRegister ppu =
     let result = ppu'.buffer
     result, { ppu' with buffer = ppu'.vram[addr |> mirrorVramAddr ppu'.mirror |> int] }
 
-  | addr when addr <= 0x3FFFus -> // TODO: バッファを挟むかどうするか
-    ppu'.pal[addr |> mirrorPaletteAddr |> int], ppu'
+  | addr when addr <= 0x3FFFus ->
+    let result = ppu'.buffer
+    result, { ppu' with buffer = ppu'.pal[addr |> mirrorPaletteAddr |> int] }
   | _ -> failwithf "Invalid PPU address: %04X" addr
 
 let writeToDataRegister value ppu =
@@ -266,9 +267,10 @@ let writeToDataRegister value ppu =
 let resetVblankStatus status = clearFlag StatusFlags.Vblank status
 
 let readFromStatusRegister ppu =
-  let sr = resetLatchScrollRegister ppu.scrlReg
-  let afterSt = resetVblankStatus ppu.status
-  {ppu with scrlReg = sr }, { ppu with scrlReg = sr; status = afterSt }
+  let ppu' = resetInternalLatch ppu
+  let afterSt = resetVblankStatus ppu'.status
+  let clearNmi = true
+  ppu, { ppu' with status = afterSt; clearNmiInterrupt = clearNmi }
 
 let writeToMaskRegister value ppu =
   { ppu with mask = value }
@@ -292,19 +294,19 @@ let isSpriteZeroHit cycles ppu = // 0 番スプライトにスキャンライン
   let x = ppu.oam[3] |> uint
   (y = uint ppu.scanline) && (x <= cycles) && (hasFlag MaskFlags.SpriteRendering ppu.mask)
 
-let private updateScrollRegister (data: byte) sr =
-  // hiPtr を目印に 2 回に分けて書き込む
-  let sr' = if sr.latchX then
+let private updateScrollRegister (data: byte) ppu sr =
+  // latch を目印に 2 回に分けて書き込む
+  let sr' = if ppu.latch then
               { sr with xy = (data, snd sr.xy) }
             else
               { sr with xy = (fst sr.xy, data) }
 
-  let toggled = not sr.latchX
-  { sr' with latchX = toggled }
+  let toggled = not ppu.latch
+  { ppu with latch = toggled }, sr'
 
 let writeToScrollRegister value ppu =
-  let sr = ppu.scrlReg |> updateScrollRegister value
-  { ppu with scrlReg = sr }
+  let ppu', sr = updateScrollRegister value ppu ppu.scrlReg
+  { ppu' with scrlReg = sr }
 
 let ppuTick cycles ppu =
   let cyc = ppu.cycles + uint cycles

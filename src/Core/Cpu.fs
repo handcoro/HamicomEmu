@@ -501,15 +501,18 @@ let pla _ cpu bus =
 /// BRK - Force Break
 let brk _ cpu bus =
   // まだ未完成
-  let cpu, bus =
-    (cpu, bus)
-    ||> push16 (cpu.PC + 1us)
-    ||> push cpu.P
+  if hasFlag Flags.I cpu.P then
+    cpu, bus
+  else
+    let cpu, bus =
+      (cpu, bus)
+      ||> push16 (cpu.PC + 1us)
+      ||> push cpu.P
 
-  let pc, bus' = memRead16 0xFFFEus bus // BRK の場合は 0xFFFE に飛ぶ
-  let p = cpu.P |> setFlag Flags.B
+    let pc, bus' = memRead16 0xFFFEus bus // BRK の場合は 0xFFFE に飛ぶ
+    let p = cpu.P |> setFlag Flags.B
 
-  { cpu with P = p; PC = pc }, bus'
+    { cpu with P = p; PC = pc }, bus'
 
 /// Return from Interrupt
 let rti _ cpu bus =
@@ -646,6 +649,12 @@ let execMap =
 
 /// CPU を 1 命令だけ実行する
 let step cpu bus : CpuState * Bus =
+
+  let cpu, bus = // NMI
+    match pollNmiStatus bus with
+    | b, Some _ -> interruptNmi cpu b
+    | b, None -> cpu, b
+
   let opcode, bus' = memRead cpu.PC bus
   let op, mode, size, cycles, penalty = decodeOpcode opcode
   let execInstr f m c b =
@@ -680,13 +689,9 @@ let step cpu bus : CpuState * Bus =
   // サイクル追加発生可能性のある命令でページ境界をまたいだ場合はサイクル追加
   let penaltyTick = if penalty && crossed then 1u else 0u
 
+  // ここで NMI の立ち上がりを検出するのは意味がない？
   let bus3, nmiOpt = tick (cycles + penaltyTick) bus2
-  let cpuF, busF =
-    match nmiOpt with
-    | Some _ -> interruptNmi cpu' bus3
-    | None -> cpu', bus3
-
-  cpuF, busF
+  cpu', bus3
 
 let rec run cpu bus =
   let cpu', bus' = (cpu, bus) ||> step
