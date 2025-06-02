@@ -91,39 +91,42 @@ let showTiles (ppu : NesPpu) (tiles: int list) =
 *)
 
 let renderNameTable (ppu : NesPpu) (nameTable : byte[]) viewPort shiftX shiftY frame =
-  let bank = backgroundPatternAddr ppu.ctrl |> int
-  let attrTable = nameTable[0x3C0 .. 0x3FF]
+  if nameTable |> Array.length < 1 then
+    frame
+  else
+    let bank = backgroundPatternAddr ppu.ctrl |> int
+    let attrTable = nameTable[0x3C0 .. 0x3FF]
 
-  [0 .. 0x3BF]
-  |> List.fold (fun frameAcc i ->
-    let tileX = i % 32
-    let tileY = i / 32
-    let tileIdx = nameTable[i] |> int
-    let tile = ppu.chr[(bank + tileIdx * 16) .. (bank + tileIdx * 16 + 15)]
-    let palette = backgroundPalette ppu attrTable tileX tileY
-    [0 .. 7]
-    |> List.fold (fun fr y ->
-      let upper = tile[y]
-      let lower = tile[y + 8]
+    [0 .. 0x3BF]
+    |> List.fold (fun frameAcc i ->
+      let tileX = i % 32
+      let tileY = i / 32
+      let tileIdx = nameTable[i] |> int
+      let tile = ppu.chr[(bank + tileIdx * 16) .. (bank + tileIdx * 16 + 15)]
+      let palette = backgroundPalette ppu attrTable tileX tileY
       [0 .. 7]
-      |> List.fold (fun fr' x ->
-        let value = // CHR データの最後尾が画面上の左
-          let bit0 = (upper >>> (7 - x)) &&& 1uy
-          let bit1 = (lower >>> (7 - x)) &&& 1uy
-          (bit1 <<< 1) ||| bit0
-        let rgb =
-          match value with
-          | 0uy -> nesPalette[int ppu.pal[0]]
-          | _ -> nesPalette[int palette[int value]]
-        let px = tileX * 8 + x
-        let py = tileY * 8 + y
-        if px >= int viewPort.x1 && px < int viewPort.x2 && py >= int viewPort.y1 && py < int viewPort.y2 then
-          setPixel (shiftX + px) (shiftY + py) rgb fr'
-        else
-          fr'
-      ) fr
-    ) frameAcc
-  ) frame
+      |> List.fold (fun fr y ->
+        let upper = tile[y]
+        let lower = tile[y + 8]
+        [0 .. 7]
+        |> List.fold (fun fr' x ->
+          let value = // CHR データの最後尾が画面上の左
+            let bit0 = (upper >>> (7 - x)) &&& 1uy
+            let bit1 = (lower >>> (7 - x)) &&& 1uy
+            (bit1 <<< 1) ||| bit0
+          let rgb =
+            match value with
+            | 0uy -> nesPalette[int ppu.pal[0]]
+            | _ -> nesPalette[int palette[int value]]
+          let px = tileX * 8 + x
+          let py = tileY * 8 + y
+          if px >= int viewPort.x1 && px < int viewPort.x2 && py >= int viewPort.y1 && py < int viewPort.y2 then
+            setPixel (shiftX + px) (shiftY + py) rgb fr'
+          else
+            fr'
+        ) fr
+      ) frameAcc
+    ) frame
 
 let drawSprites (ppu: NesPpu) (frame: Frame) : Frame =
   let oamIndices =
@@ -181,14 +184,7 @@ let render (ppu: NesPpu) (frame : Frame) =
   let scrlX = fst ppu.scrlReg.xy
   let scrlY = snd ppu.scrlReg.xy
 
-  let mainNameTable, sndNameTable =
-    match ppu.mirror, getNameTableAddress ppu.ctrl with
-    | Vertical, 0x2000us | Vertical, 0x2800us ->
-      ppu.vram[0 .. 0x3FF], ppu.vram[0x400 .. 0x7FF]
-    | Vertical, 0x2400us | Vertical, 0x2C00us ->
-      ppu.vram[0x400 .. 0x7FF], ppu.vram[0x000 .. 0x3FF]
-    | _, _ ->
-      failwithf "Not supported mirroring type %A" ppu.mirror
+  let mainNameTable, sndNameTable = getVisibleNameTables ppu (getNameTableAddress ppu.ctrl)
 
   let mainRect = initialRect (byte scrlX) (byte scrlY) 255uy 239uy
   let sndRect  = initialRect 0uy 0uy scrlX 239uy

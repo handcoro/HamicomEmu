@@ -164,20 +164,23 @@ let memRead16 pos bus =
   let hi, bus2 = memRead (pos + 1us) bus1
   (uint16 hi <<< 8) ||| uint16 lo, bus2
 
-let memRead16ZeroPage (pos: byte) bus = // ゼロページの 16 ビットデータ読み込み（リトルエンディアンをデコード）
+/// ゼロページの 16 ビットデータ読み込み（リトルエンディアンをデコード）
+let memRead16ZeroPage (pos: byte) bus =
   let loPos = pos |> uint16
   let hiPos = pos + 1uy |> uint16
   let lo, bus1 = memRead loPos bus
   let hi, bus2 = memRead hiPos bus1
   (uint16 hi <<< 8) ||| uint16 lo, bus2
 
-let memRead16Wrap pos bus = // 16 ビットデータ読み込み（リトルエンディアンをデコード、ページ境界バグ対応）
+/// 16 ビットデータ読み込み（リトルエンディアンをデコード、ページ境界バグ対応）
+let memRead16Wrap pos bus =
   let lo, bus1 = memRead pos bus
   let hiPos = if pos &&& 0x00FFus = 0x00FFus then pos &&& 0xFF00us else pos + 1us
   let hi, bus2 = memRead hiPos bus1
   (uint16 hi <<< 8) ||| uint16 lo, bus2
 
-let memWrite16 addr pos bus = // 16ビットデータ書き込み（リトルエンディアン化）
+/// 16ビットデータ書き込み（リトルエンディアン化）
+let memWrite16 addr pos bus =
   let hi = pos >>> 8 |> byte
   let lo = pos &&& 0xFFus |> byte
   bus |> memWrite addr lo |> memWrite (addr + 1us) hi

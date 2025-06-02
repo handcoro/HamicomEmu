@@ -202,6 +202,31 @@ let mirrorVramAddr mirror addr =
   | Horizontal, 3us -> vramIndex - 0x800us // b -> B
   | _ -> vramIndex // それ以外はそのまま
 
+/// baseAddr は $2000, $2400, $2800, $2C00 のいずれか
+let getVisibleNameTables ppu baseAddr =
+  let baseIndex =
+    match baseAddr &&& 0x0FFFus with
+    | n when n < 0x400us -> 0us
+    | n when n < 0x800us -> 1us
+    | n when n < 0xC00us -> 2us
+    | _ -> 3us
+
+  // ミラーリング結果に基づいて VRAM のスライスを取得
+  let getTable i =
+    let addr = 0x2000us + (i * 0x400us)
+    let index = mirrorVramAddr ppu.mirror addr |> int
+    ppu.vram[index .. index + 0x3FF]
+
+  let main = baseIndex |> getTable
+  let snd = (baseIndex + 1us) % 4us |> getTable
+  main, snd
+
+let mirrorPaletteAddr addr =
+  let index = addr &&& 0x1Fus
+  match index with
+    | 0x10us | 0x14us | 0x18us | 0x1Cus -> index - 0x10us
+    | _ -> index
+
 let readFromDataRegister ppu =
   let addr = getAddrRegValue ppu.addrReg
   // アドレスをインクリメント
@@ -216,8 +241,8 @@ let readFromDataRegister ppu =
     let result = ppu'.buffer
     result, { ppu' with buffer = ppu'.vram[addr |> mirrorVramAddr ppu'.mirror |> int] }
 
-  | addr when addr <= 0x3FFFus -> // TODO: パレットのミラーリング処理
-    ppu'.pal[int (addr - 0x3F00us)], ppu'
+  | addr when addr <= 0x3FFFus -> // TODO: バッファを挟むかどうするか
+    ppu'.pal[addr |> mirrorPaletteAddr |> int], ppu'
   | _ -> failwithf "Invalid PPU address: %04X" addr
 
 let writeToDataRegister value ppu =
@@ -233,8 +258,8 @@ let writeToDataRegister value ppu =
     ppu'.vram[addr |> mirrorVramAddr ppu'.mirror |> int] <- value
     ppu'
 
-  | addr when addr <= 0x3FFFus -> // TODO: パレットのミラーリング処理
-    ppu'.pal[int (addr - 0x3F00us)] <- value
+  | addr when addr <= 0x3FFFus ->
+    ppu'.pal[addr |> mirrorPaletteAddr |> int] <- value
     ppu'
   | _ -> failwithf "Invalid PPU address: %04X" addr
 
@@ -276,14 +301,6 @@ let private updateScrollRegister (data: byte) sr =
 
   let toggled = not sr.latchX
   { sr' with latchX = toggled }
-
-let private incrementScrollRegister inc sr =
-  let y = snd sr.xy
-  let x = fst sr.xy
-
-  let y' = y + inc
-  let x' = x + if y' < y then 1uy else 0uy // 桁上り
-  { sr with xy = x', y' }
 
 let writeToScrollRegister value ppu =
   let sr = ppu.scrlReg |> updateScrollRegister value

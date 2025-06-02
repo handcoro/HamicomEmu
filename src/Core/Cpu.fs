@@ -35,6 +35,7 @@ let initialCpu =
 let isPageCrossed (a: uint16) (b: uint16) =
   (a &&& 0xFF00us) <> (b &&& 0xFF00us)
 
+/// アドレッシングモードからオペランドとアドレスを割り出す
 let getOperandAddress cpu bus pc mode =
   match mode with
   | Accumulator ->
@@ -92,15 +93,17 @@ let inline clearFlag flag p = p &&& ~~~flag
 let updateFlag flag condition p =
   if condition then setFlag flag p else clearFlag flag p
 
-// 値によってZNフラグをセットする
+/// 値によってZNフラグをセットする
 let setZeroNegativeFlags value p = 
   p
   |> updateFlag Flags.Z (value = 0uy)
   |> updateFlag Flags.N (value &&& 0b1000_0000uy <> 0uy)
+
+/// プログラムカウンタを進める
 let advancePC offset cpu bus =
   { cpu with PC = cpu.PC + offset }, bus
 
-// ビット論理演算
+/// ビット論理演算
 let logicalInstr op mode cpu bus = // AND, EOR, ORA
   let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
   let value, bus' = memRead addr bus
@@ -115,7 +118,7 @@ let logicalInstr op mode cpu bus = // AND, EOR, ORA
   let p = cpu.P |> setZeroNegativeFlags a
   { cpu with A = a; P = p }, bus'
 
-// 加算
+/// 加算
 let adc mode cpu bus = // Add with Carry
   let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
   let value, bus' = memRead addr bus
@@ -137,7 +140,7 @@ let adc mode cpu bus = // Add with Carry
 
   { cpu with A = result; P = p }, bus'
 
-// 減算
+/// 減算
 let sbc mode cpu bus = // Subtract with Carry
   let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
   let value, bus' = memRead addr bus
@@ -165,56 +168,69 @@ let ld setReg mode cpu bus =
   let cpu = cpu |> setReg v
   { cpu with P = p }, bus
 
-let lda mode cpu bus = // Load Accumulator
+/// Load Accumulator
+let lda mode cpu bus =
   (cpu, bus) ||> ld (fun v cpu -> { cpu with A = v }) mode
 
-let ldx mode cpu bus = // Load X Register
+/// Load X Register
+let ldx mode cpu bus =
   (cpu, bus) ||> ld (fun v cpu -> { cpu with X = v }) mode
 
-let ldy mode cpu bus = // Load Y Register
+/// Load Y Register
+let ldy mode cpu bus =
   (cpu, bus) ||> ld (fun v cpu -> { cpu with Y = v }) mode
 
-let sta mode cpu bus = // Store Accumulator
+/// Store Accumulator
+let sta mode cpu bus =
   let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
   cpu, bus |> memWrite addr cpu.A
 
-let stx mode cpu bus = // Store X Register
+/// Store X Register
+let stx mode cpu bus =
   let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
   cpu, bus |> memWrite addr cpu.X
 
-let sty mode cpu bus = // Store Y Register
+/// Store Y Register
+let sty mode cpu bus =
   let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
   cpu, bus |> memWrite addr cpu.Y
 
-let tax _ cpu bus = // Transfer Accumulator to X
+/// Transfer Accumulator to X
+let tax _ cpu bus =
   let x = cpu.A
   let p = cpu.P |> setZeroNegativeFlags x
   { cpu with X = x; P = p }, bus
 
-let tay _ cpu bus = // Transfer Accumulator to Y
+/// Transfer Accumulator to Y
+let tay _ cpu bus =
   let y = cpu.A
   let p = cpu.P |> setZeroNegativeFlags y
   { cpu with Y = y; P = p }, bus
 
-let txa _ cpu bus = // Transfer X to Accumulator
+/// Transfer X to Accumulator
+let txa _ cpu bus =
   let a = cpu.X
   let p = cpu.P |> setZeroNegativeFlags a
   { cpu with A = a; P = p }, bus
 
-let tya _ cpu bus = // Transfer Y to Accumulator
+/// Transfer Y to Accumulator
+let tya _ cpu bus =
   let a = cpu.Y
   let p = cpu.P |> setZeroNegativeFlags a
   { cpu with A = a; P = p }, bus
 
-let tsx _ cpu bus = // Transfer Stack Pointer to X
+/// Transfer Y to Accumulator
+let tsx _ cpu bus =
   let x = cpu.SP
   let p = cpu.P |> setZeroNegativeFlags x
   { cpu with X = x; P = p }, bus
 
-let txs _ cpu bus = // Transfer X to Stack Pointer
+/// Transfer X to Stack Pointer
+let txs _ cpu bus =
   let sp = cpu.X
   { cpu with SP = sp }, bus
 
+/// 左シフトしてキャリーフラグ設定
 let shiftLeftAndUpdate value status =
   let carry = value &&& 0b1000_0000uy > 0uy
   let result = value <<< 1
@@ -223,6 +239,7 @@ let shiftLeftAndUpdate value status =
     |> updateFlag Flags.C carry
   result, p
 
+/// 右シフトしてキャリーフラグ設定
 let shiftRightAndUpdate value status =
   let carry = value &&& 0b0000_0001uy > 0uy
   let result = value >>> 1
@@ -231,6 +248,8 @@ let shiftRightAndUpdate value status =
     |> updateFlag Flags.C carry
   result, p
 
+/// シフト演算
+/// carryInFn はすでに立ってるキャリーフラグを演算結果に含める関数
 let modifyWithShift mode shiftFn carryInFn cpu bus =
   let cIn = hasFlag Flags.C cpu.P
 
@@ -262,7 +281,8 @@ let rol mode cpu bus =
 let ror mode cpu bus =
   (cpu, bus) ||> modifyWithShift mode shiftRightAndUpdate (fun r carryBefore ->
     r ||| (if carryBefore then 0b1000_0000uy else 0uy))
-// 分岐はこの関数内で PC の進みを管理する
+
+/// 分岐はこの関数内で PC の進みを管理する
 let branch mode flag expected cpu bus =
   let target = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
   let nextPc = target + 1us // 命令の分進める
@@ -276,58 +296,75 @@ let branch mode flag expected cpu bus =
       |> fun b -> if isPageCrossed target nextPc then Bus.addCyclePenalty 1u b else b
     { cpu with PC = nextPc }, bus
 
-let bcc mode (cpu : CpuState) (bus : Bus) = // BCC - Branch if Carry Clear
+/// BCC - Branch if Carry Clear
+let bcc mode (cpu : CpuState) (bus : Bus) =
   (cpu, bus) ||> branch mode Flags.C false
-let bcs mode cpu bus = // BCS - Branch if Carry Set
+
+/// BCS - Branch if Carry Set
+let bcs mode cpu bus =
   (cpu, bus) ||> branch mode Flags.C true
 
-let beq mode cpu bus = // BEQ - Branch if Equal
+/// BEQ - Branch if Equal
+let beq mode cpu bus =
   (cpu, bus) ||> branch mode Flags.Z true
 
-let bne mode cpu bus = // BNE - Branch if Not Equal
+/// BNE - Branch if Not Equal
+let bne mode cpu bus =
   (cpu, bus) ||> branch mode Flags.Z false
 
-let bmi mode cpu bus = // Branch if Minus
+/// Branch if Minus
+let bmi mode cpu bus =
   (cpu, bus) ||> branch mode Flags.N true
 
-let bpl mode cpu bus = // Branch if Positive
+/// Branch if Positive
+let bpl mode cpu bus =
   (cpu, bus) ||> branch mode Flags.N false
 
-let bvc mode cpu bus = // Branch if Overflow Clear
+/// Branch if Overflow Clear
+let bvc mode cpu bus =
   (cpu, bus) ||> branch mode Flags.V false
 
-let bvs mode cpu bus = // Branch if Overflow Set
+/// Branch if Overflow Set
+let bvs mode cpu bus =
   (cpu, bus) ||> branch mode Flags.V true
 
-let clc _ cpu bus = // Clear Carry Flag
+/// Clear Carry Flag
+let clc _ cpu bus =
   let p = clearFlag Flags.C cpu.P
   { cpu with P = p }, bus
 
-let sec _ cpu bus = // Set Carry Flag
+/// Set Carry Flag
+let sec _ cpu bus =
   let p = setFlag Flags.C cpu.P
   { cpu with P = p }, bus
 
-let cld _ cpu bus = // Clear Decimal Mode
+/// Clear Decimal Mode
+let cld _ cpu bus =
   let p = clearFlag Flags.D cpu.P
   { cpu with P = p }, bus
 
-let sed _ cpu bus = // Set Decimal Flag
+/// Set Decimal Flag
+let sed _ cpu bus =
   let p = setFlag Flags.D cpu.P
   { cpu with P = p }, bus
 
-let cli _ cpu bus = // Clear Interrupt Disable
+/// Clear Interrupt Disable
+let cli _ cpu bus =
   let p = clearFlag Flags.I cpu.P
   { cpu with P = p }, bus
 
-let sei _ cpu bus = // Set Interrupt Disable
+/// Set Interrupt Disable
+let sei _ cpu bus =
   let p = setFlag Flags.I cpu.P
   { cpu with P = p }, bus
 
-let clv _ cpu bus = // Clear Overflow Flag
+/// Clear Overflow Flag
+let clv _ cpu bus =
   let p = clearFlag Flags.V cpu.P
   { cpu with P = p }, bus
 
-let bit mode cpu bus = // BIT - Bit Test
+/// BIT - Bit Test
+let bit mode cpu bus =
   let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
   let value, bus' = memRead addr bus
   let p =
@@ -337,6 +374,7 @@ let bit mode cpu bus = // BIT - Bit Test
     |> updateFlag Flags.V (value &&& Flags.V <> 0uy)
   { cpu with P = p }, bus'
 
+/// アキュムレータやレジスタとメモリ上の値を比較
 let compare lhs mode cpu bus =
   let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
   let value, bus' = memRead addr bus
@@ -348,82 +386,105 @@ let compare lhs mode cpu bus =
 
   { cpu with P = p }, bus'
 
-let cmp mode cpu bus = // Compare
+/// Compare
+let cmp mode cpu bus =
   (cpu, bus) ||> compare cpu.A mode
 
-let cpx mode cpu bus = // Compare X Register
+/// Compare X Register
+let cpx mode cpu bus =
   (cpu, bus) ||> compare cpu.X mode
 
-let cpy mode cpu bus = // Compare Y Register
+/// Compare Y Register
+let cpy mode cpu bus =
   (cpu, bus) ||> compare cpu.Y mode
 
-let dec mode cpu bus = // Decrement Memory
+/// Decrement Memory
+let dec mode cpu bus =
   let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
   let result, bus' = memRead addr bus
   cpu |> fun c -> { c with P = cpu.P |> setZeroNegativeFlags (result - 1uy) }, bus' |> memWrite addr (result - 1uy)
 
-let dex _ cpu bus = // Decrement X Register
+/// Decrement X Register
+let dex _ cpu bus =
   let x = cpu.X - 1uy
   { cpu with X = x; P = cpu.P |> setZeroNegativeFlags x }, bus
 
-let dey _ cpu bus = // Decrement Y Register
+/// Decrement Y Register
+let dey _ cpu bus =
   let y = cpu.Y - 1uy
   { cpu with Y = y; P = cpu.P |> setZeroNegativeFlags y }, bus
 
-let inc mode cpu bus = // Increment Memory
+/// Increment Memory
+let inc mode cpu bus =
   let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
   let result, bus' = memRead addr bus
   { cpu with P = cpu.P |> setZeroNegativeFlags (result + 1uy) }, bus' |> memWrite addr (result + 1uy)
 
-let inx _ cpu bus = // Increment X Register
+/// Increment X Register
+let inx _ cpu bus =
   let x = cpu.X + 1uy
   { cpu with X = x; P = cpu.P |> setZeroNegativeFlags x }, bus
 
-let iny _ cpu bus = // Increment Y Register
+/// Increment Y Register
+let iny _ cpu bus =
   let y = cpu.Y + 1uy
   { cpu with Y = y; P = cpu.P |> setZeroNegativeFlags y }, bus
 
-let jmp mode cpu bus = // Jump
+/// Jump
+let jmp mode cpu bus =
   let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
   { cpu with PC = addr }, bus
 
-let push value cpu bus = // Push value to stack
+/// Push a value to stack
+let push value cpu bus =
   let addr = 0x0100us + uint16 cpu.SP
-  { cpu with SP = cpu.SP - 1uy }, bus |> memWrite addr value
+  let bus' = memWrite addr value bus
+  let sp' = cpu.SP - 1uy
+  { cpu with SP = sp' }, bus'
 
-let push16 value cpu bus = // Push 16-bit value to stack
-  let addr = 0x0100us + uint16 cpu.SP - 1us
-  { cpu with SP = cpu.SP - 2uy }, bus |> memWrite16 addr value
+/// Push a 16-bit value to the stack (high byte first)
+let push16 value cpu bus =
+  let hi = byte (value >>> 8)
+  let lo = byte (value &&& 0xFFus)
+  let cpu', bus' = push hi cpu bus
+  push lo cpu' bus'
 
-let pull cpu bus = // Pull value from stack
-  let sp = cpu.SP + 1uy
-  let addr = 0x0100us + uint16 sp
+/// Pull a value from stack
+let pull cpu bus =
+  let sp' = cpu.SP + 1uy
+  let addr = 0x0100us + uint16 sp'
   let value, bus' = memRead addr bus
-  value, { cpu with SP = sp }, bus'
+  value, { cpu with SP = sp' }, bus'
 
-let pull16 cpu bus = // Pull 16-bit value from stack
-  let addr = 0x0100us + uint16 cpu.SP + 1us
-  let sp = cpu.SP + 2uy
-  let value, bus' = memRead16 addr bus
-  value, { cpu with SP = sp }, bus'
+/// Pull a 16-bit value from the stack (low byte first)
+let pull16 cpu bus =
+  let lo, cpu', bus' = pull cpu bus
+  let hi, cpu'', bus'' = pull cpu' bus'
+  let value = uint16 hi <<< 8 ||| uint16 lo
+  value, cpu'', bus''
 
-let jsr mode cpu bus = // Jump to Subroutine
+/// Jump to Subroutine
+let jsr mode cpu bus =
   let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
   let cpu', bus' = (cpu, bus) ||> push16 (cpu.PC + 2us) // リターンポイント -1
   { cpu' with PC = addr }, bus'
 
-let rts _ cpu bus = // Return from Subroutine
+/// Return from Subroutine
+let rts _ cpu bus =
   let pc, cpu', bus' = pull16 cpu bus
   { cpu' with PC = pc + 1us }, bus' // +1 してリターンポイントにする
 
-let pha _ cpu bus = // Push Accumulator
+/// Push Accumulator
+let pha _ cpu bus =
   (cpu, bus) ||> push cpu.A
 
-let php _ cpu bus = // Push Processor Status
+/// Push Processor Status
+let php _ cpu bus =
   let p = cpu.P |> setFlag (Flags.B ||| Flags.U)
   (cpu, bus) ||> push p
 
-let plp _ cpu bus = // Pull Processor Status
+/// Pull Processor Status
+let plp _ cpu bus =
   let p, cpu', bus' = pull cpu bus
   let p' =
     p
@@ -431,12 +492,14 @@ let plp _ cpu bus = // Pull Processor Status
     |> setFlag Flags.U
   { cpu' with P = p'}, bus'
 
-let pla _ cpu bus = // Pull Accumulator
+/// Pull Accumulator
+let pla _ cpu bus =
   let a, cpu', bus' = pull cpu bus
   let p = cpu'.P |> setZeroNegativeFlags a
   { cpu' with A = a; P = p }, bus'
 
-let brk _ cpu bus = // BRK - Force Break
+/// BRK - Force Break
+let brk _ cpu bus =
   // まだ未完成
   let cpu, bus =
     (cpu, bus)
@@ -448,7 +511,8 @@ let brk _ cpu bus = // BRK - Force Break
 
   { cpu with P = p; PC = pc }, bus'
 
-let rti _ cpu bus = // Return from Interrupt
+/// Return from Interrupt
+let rti _ cpu bus =
   let p, cpu', bus' = pull cpu bus
   let pc, cpu'', bus'' = pull16 cpu' bus'
   let p' =
@@ -457,35 +521,45 @@ let rti _ cpu bus = // Return from Interrupt
     |> setFlag Flags.U
   { cpu'' with P = p' ; PC = pc }, bus''
 
-let nop _ cpu bus = // No Operation
+/// No Operation
+let nop _ cpu bus =
   cpu, bus
 
-let lax mode cpu bus = // LDA -> TAX
+/// LDA -> TAX
+let lax mode cpu bus =
   (cpu, bus) ||> lda mode ||> tax mode
 
-let sax mode cpu bus = // Store A and X
+/// Store A and X
+let sax mode cpu bus =
   let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
   let value = cpu.A &&& cpu.X
   cpu, bus |> memWrite addr value
 
-let dcp mode cpu bus = // DEC -> CMP
+/// DEC -> CMP
+let dcp mode cpu bus =
   (cpu, bus) ||> dec mode ||> cmp mode
 
-let isb mode cpu bus = // (ISC) INC -> SBC
+/// (ISC) INC -> SBC
+let isb mode cpu bus =
   (cpu, bus) ||> inc mode ||> sbc mode
 
-let slo mode cpu bus = // ASL -> ORA
+/// ASL -> ORA
+let slo mode cpu bus =
   (cpu, bus) ||> asl mode ||> logicalInstr ORA mode
 
+/// ROL -> AND
 let rla mode cpu bus =
   (cpu, bus) ||> rol mode ||> logicalInstr AND mode
 
+/// ROR -> ADC
 let rra mode cpu bus =
   (cpu, bus) ||> ror mode ||> adc mode
 
+/// LSR -> EOR
 let sre mode cpu bus =
   (cpu, bus) ||> lsrInstr mode ||> logicalInstr EOR mode
 
+/// NMI 発生処理
 let interruptNmi cpu bus =
   let cpu', bus' = push16 cpu.PC cpu bus
   let p = cpu.P |> clearFlag Flags.B
@@ -509,18 +583,7 @@ let reset cpu bus =
       PC = pc 
   }, bus'
 
-// let load program cpu bus =
-//   let mem = Array.copy cpu.Memory
-//   Array.blit program 0 mem 0x8000 program.Length
-//   let cpu = { cpu with Memory = mem }
-//   cpu, bus |> memWrite16 0xFFFCus 0x8000us
-
-// let loadSnake program cpu bus =
-//   let mem = Array.copy cpu.Memory
-//   Array.blit program 0 mem 0x0600 program.Length
-//   let cpu = { cpu with Memory = mem }
-//   cpu, bus |> memWrite16 0xFFFCus 0x0600us
-
+/// 命令を関数に対応させる
 let execMap =
   Map [
     ADC, adc
