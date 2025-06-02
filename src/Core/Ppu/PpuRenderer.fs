@@ -102,7 +102,11 @@ let renderNameTable (ppu : NesPpu) (nameTable : byte[]) viewPort shiftX shiftY f
       let tileX = i % 32
       let tileY = i / 32
       let tileIdx = nameTable[i] |> int
-      let tile = ppu.chr[(bank + tileIdx * 16) .. (bank + tileIdx * 16 + 15)]
+      let tile =
+        if ppu.chr <> [||] then
+          ppu.chr[(bank + tileIdx * 16) .. (bank + tileIdx * 16 + 15)]
+        else
+          ppu.chrRam[(bank + tileIdx * 16) .. (bank + tileIdx * 16 + 15)]
       let palette = backgroundPalette ppu attrTable tileX tileY
       [0 .. 7]
       |> List.fold (fun fr y ->
@@ -149,7 +153,11 @@ let drawSprites (ppu: NesPpu) (frame: Frame) : Frame =
 
     let bank = spritePatternAddr ppu.ctrl |> int
     let tileStart = bank + (int tileIdx * 16)
-    let tile = ppu.chr[tileStart .. tileStart + 15]
+    let tile =
+      if ppu.chr <> [||] then
+        ppu.chr[tileStart .. tileStart + 15]
+      else
+        ppu.chrRam[tileStart .. tileStart + 15]
 
     // タイルを描画して frameAcc を更新する
     [0 .. 7]

@@ -101,16 +101,19 @@ type basicNesGame(loadedRom) as this =
 
   override _.Update(gameTime) =
     if Keyboard.GetState().IsKeyDown(Keys.Escape) then this.Exit()
-    // printfn "%s" (trace cpu bus)
     let joy = bus.joy1 |> handleJoypadInput (Keyboard.GetState())
     bus <- {bus with joy1 = joy }
 
     for _ in 0 .. 600 do // 時間がかかるので 1 フレームで一気に命令処理してしまう
+      // printfn "%s" (trace cpu bus)
       let cpu', bus' = (cpu, bus) ||> step
       cpu <- cpu'
       bus <- bus'
 
     base.Update(gameTime)
+
+/// https://www.nesworld.com/article.php?system=nes&data=neshomebrew
+let defaultRom = "roms/Alter_Ego.nes"
 
 [<EntryPoint>]
 let main argv =
@@ -118,9 +121,19 @@ let main argv =
     // --test を除いた引数だけ Expecto に渡す
     let filteredArgs = argv |> Array.filter (fun a -> a <> "--test")
     runTestsWithArgs defaultConfig filteredArgs Tests.tests
-
   else
-    // https://www.nesworld.com/article.php?system=nes&data=neshomebrew
-    use game = new basicNesGame (loadRom "Alter_Ego.nes")
+    match argv |> Array.tryHead with
+    | Some romPath ->
+      match loadRom romPath with
+      | Ok rom ->
+        use game = new basicNesGame(loadRom romPath)
+        game.Run()
+        0
+      | Error msg ->
+        use game = new basicNesGame (loadRom defaultRom)
+        game.Run()
+        0
+    | None ->
+    use game = new basicNesGame (loadRom defaultRom)
     game.Run()
     0

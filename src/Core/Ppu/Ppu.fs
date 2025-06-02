@@ -64,6 +64,7 @@ let initialScrollRegister = {
 
 type NesPpu = {
   chr: byte array
+  chrRam: byte array
   pal: byte array
   vram: byte array
   oam: byte array
@@ -84,6 +85,7 @@ type NesPpu = {
 
 let initialPpu (rom: Rom) = {
   chr = rom.chrRom
+  chrRam = rom.chrRam
   pal = Array.create 32 0uy // パレットテーブルは32バイト
   vram = Array.create 0x2000 0uy // PPU VRAM は8KB
   oam = Array.create 256 0uy // OAM データは256バイト
@@ -172,6 +174,7 @@ let spritePatternAddr ctrl =
     0x0000us
 
 let updateControl data ppu = { ppu with ctrl = data}
+
 let writeToControlRegister value ppu =
   let beforeNmiStatus = hasFlag ControlFlags.GenerateNmi ppu.ctrl
   let ppu' = updateControl value ppu
@@ -235,7 +238,8 @@ let readFromDataRegister ppu =
   match addr with
   | addr when addr <= 0x1FFFus ->
     let result = ppu'.buffer
-    result, { ppu' with buffer = ppu'.chr[int addr] }
+    let chr = if ppu.chr <> [||] then ppu'.chr[int addr] else ppu'.chrRam[int addr]
+    result, { ppu' with buffer = chr }
 
   | addr when addr <= 0x3EFFus ->
     let result = ppu'.buffer
@@ -252,8 +256,11 @@ let writeToDataRegister value ppu =
 
   match addr with
   | addr when addr <= 0x1FFFus ->
-    // printfn "Attempt to Write to Chr Rom Space: %04X" addr
-    ppu'
+    if ppu.chr <> [||] then
+      ppu'
+    else
+      ppu'.chrRam[int addr] <- value
+      ppu'
 
   | addr when addr <= 0x3EFFus ->
     ppu'.vram[addr |> mirrorVramAddr ppu'.mirror |> int] <- value
@@ -266,6 +273,7 @@ let writeToDataRegister value ppu =
 
 let resetVblankStatus status = clearFlag StatusFlags.Vblank status
 
+/// コントロールレジスタ読み込みでラッチと VBlank が初期化され、次回の NMI が抑制されるらしい
 let readFromStatusRegister ppu =
   let ppu' = resetInternalLatch ppu
   let afterSt = resetVblankStatus ppu'.status
@@ -289,7 +297,8 @@ let writeToOamData value ppu =
 let writeToOamDma values ppu =
   { ppu with oam = values }
 
-let isSpriteZeroHit cycles ppu = // 0 番スプライトにスキャンラインが引っかかったか判定
+/// TODO: 0 番スプライトにスキャンラインが引っかかったか判定（多分まだ不十分）
+let isSpriteZeroHit cycles ppu =
   let y = ppu.oam[0] |> uint
   let x = ppu.oam[3] |> uint
   (y = uint ppu.scanline) && (x <= cycles) && (hasFlag MaskFlags.SpriteRendering ppu.mask)
@@ -324,10 +333,8 @@ let ppuTick cycles ppu =
     | 241us ->
         // VBlank 開始
         let st'= st |> setFlag StatusFlags.Vblank |> clearFlag StatusFlags.SpriteZeroHit
-        let nmi = hasFlag ControlFlags.GenerateNmi ppu.ctrl
-        let ctrl' = ppu.ctrl |> setFlag ControlFlags.GenerateNmi
-        let ppu' = { ppu with scanline = nextScanline; oamAddr = oamAddr; cycles = cyc'; status = st'; ctrl = ctrl' }
-        if nmi then
+        let ppu' = { ppu with scanline = nextScanline; oamAddr = oamAddr; cycles = cyc'; status = st'; }
+        if hasFlag ControlFlags.GenerateNmi ppu.ctrl then
           { ppu' with nmiInterrupt = Some 1uy }
         else
           ppu'

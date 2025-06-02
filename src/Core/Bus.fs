@@ -62,14 +62,14 @@ let pollNmiStatus bus =
     { bus with ppu.nmiInterrupt = None }, res
     
 let tick cycles bus =
-  let cyc = bus.cycles + uint cycles
+  let cyc = bus.cycles + uint cycles + bus.cyclePenalty
   let nmiBefore = bus.ppu.nmiInterrupt.IsSome
   let ppu' = ppuTick (cycles * 3u) bus.ppu
   let nmiAfter = ppu'.nmiInterrupt.IsSome
 
   // NMI の立ち上がり検出
   let nmiEdge = not nmiBefore && nmiAfter
-  let bus' = { bus with cycles = cyc; ppu = ppu' }
+  let bus' = { bus with cycles = cyc; cyclePenalty = 0u; ppu = ppu' }
   
   bus', if nmiEdge then Some ppu' else None
 
@@ -178,6 +178,10 @@ let rec memWrite addr value bus =
   | 0x4016us -> // TODO: Joypad
     let joy = bus.joy1 |> writeJoypad value
     { bus with joy1 = joy }
+
+  | 0x4017us -> // TODO: APU Frame counter
+    printfn "Attempt to write APU frame counter."
+    bus
 
   | addr when addr |> inRange ApuRegisters.Begin ApuRegisters.End ->
     // printfn "APU is not implemented yet. addr: %04X" addr

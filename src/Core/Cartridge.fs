@@ -10,6 +10,7 @@ type Mirroring =
 type Rom = {
   prgRom: byte array
   chrRom: byte array
+  chrRam: byte array
   mapper: byte
   screenMirroring: Mirroring
 }
@@ -56,12 +57,15 @@ let parseRom (raw : byte array) =
     let prgStart = 16 + if hasTrainer then 512 else 0
     let chrStart = prgStart + prgRomSize
     // ロムのレイアウト
-    let prgRom = raw[prgStart .. prgStart + prgRomSize - 1]
-    let chrRom = raw[chrStart .. chrStart + chrRomSize - 1]
+    let prgRom = Array.sub raw prgStart prgRomSize
+    let chrRom = Array.sub raw chrStart chrRomSize
+    // とりあえず CHR RAM は 8 KB とする
+    let chrRam = if chrRomSize = 0 then Array.zeroCreate 0x2000 else [||]
 
     return {
       prgRom = prgRom
       chrRom = chrRom
+      chrRam = chrRam
       mapper = mapper
       screenMirroring = screenMirroring
     }

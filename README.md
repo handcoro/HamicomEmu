@@ -16,17 +16,13 @@
 オプションなし:
 
 ```nes/Alter_Ego.nes``` を実行します
+
+```ファイルパス```
+指定された NES ファイルを実行します
+
 |入力対応  |↑|↓|←|→|Select|Start|B|A|
 |:--------:|-|-|-|-|------|-----|-|-|
 |キーボード|↑|↓|←|→|Space|Enter|S|A|
-
-```dotnet run --showtiles```:
-
-```nes/Alter_Ego.nes``` の CHR ROM の内容を表示します。
-
-```dotnet run --snake```:
-
-スネークゲームを実行します
 
 ## ビルド方法
 .NET 8 SDK が入っていればコマンドラインから dotnet コマンドでビルドできます。
