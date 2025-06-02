@@ -94,7 +94,7 @@ let initialPpu (rom: Rom) = {
   addrReg = initialAddressRegister
   scrlReg = initialScrollRegister
   ctrl = 0uy // 初期状態では制御レジスタは0
-  mask = 0uy
+  mask = 0b0001_0000uy
   status = 0uy
   buffer = 0uy
   scanline = 0us
@@ -294,14 +294,14 @@ let writeToOamData value ppu =
   let nextAddr = ppu.oamAddr + 1uy // 書き込み後インクリメント
   { ppu with oamAddr = nextAddr }
 
-let writeToOamDma values ppu =
+let writeToOamDma (values : byte[]) ppu =
   { ppu with oam = values }
 
 /// TODO: 0 番スプライトにスキャンラインが引っかかったか判定（多分まだ不十分）
 let isSpriteZeroHit cycles ppu =
   let y = ppu.oam[0] |> uint
   let x = ppu.oam[3] |> uint
-  (y = uint ppu.scanline) && (x <= cycles) && (hasFlag MaskFlags.SpriteRendering ppu.mask)
+  y = uint ppu.scanline && x <= cycles && hasFlag MaskFlags.SpriteRendering ppu.mask
 
 let private updateScrollRegister (data: byte) ppu sr =
   // latch を目印に 2 回に分けて書き込む
@@ -321,7 +321,7 @@ let ppuTick cycles ppu =
   let cyc = ppu.cycles + uint cycles
 
   // 340 は画面のライン 1 本分
-  let oamAddr = if cyc <= 257u && cyc >= 320u then 0uy else ppu.oamAddr // OAM アドレスを 0 にする処理がこれで合ってるのかよくわからない
+  let oamAddr = if cyc >= 257u && cyc <= 320u then 0uy else ppu.oamAddr // OAM アドレスを 0 にする処理がこれで合ってるのかよくわからない
   if cyc < 341u then
     { ppu with oamAddr = oamAddr; cycles = cyc}
   else
@@ -332,8 +332,14 @@ let ppuTick cycles ppu =
     match nextScanline with
     | 241us ->
         // VBlank 開始
-        let st'= st |> setFlag StatusFlags.Vblank |> clearFlag StatusFlags.SpriteZeroHit
-        let ppu' = { ppu with scanline = nextScanline; oamAddr = oamAddr; cycles = cyc'; status = st'; }
+        let st' = st |> setFlag StatusFlags.Vblank
+        let ppu' =
+          { ppu with
+              scanline = nextScanline
+              oamAddr = oamAddr
+              cycles = cyc'
+              status = st'
+          }
         if hasFlag ControlFlags.GenerateNmi ppu.ctrl then
           { ppu' with nmiInterrupt = Some 1uy }
         else
@@ -342,8 +348,19 @@ let ppuTick cycles ppu =
     | s when s >= 262us ->
         // フレーム終了（VBlank 終了）
         let st' = st |> resetVblankStatus |> clearFlag StatusFlags.SpriteZeroHit
-        { ppu with scanline = 0us; status = st'; oamAddr = oamAddr; cycles = cyc'; nmiInterrupt = None }
+        { ppu with
+            scanline = 0us
+            status = st'
+            oamAddr = oamAddr
+            cycles = cyc'
+            nmiInterrupt = None
+        }
 
     | _ ->
         // 通常のスキャンライン進行
-        { ppu with scanline = nextScanline; oamAddr = oamAddr; cycles = cyc' }
+        { ppu with
+            scanline = nextScanline
+            status   = st
+            oamAddr  = oamAddr
+            cycles   = cyc'
+        }

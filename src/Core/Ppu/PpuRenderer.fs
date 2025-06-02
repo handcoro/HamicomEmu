@@ -44,7 +44,7 @@ let spritePalette ppu idx =
   [|
     0uy
     ppu.pal[start]
-    ppu.pal[start + 2]
+    ppu.pal[start + 1]
     ppu.pal[start + 2]
   |]
 
