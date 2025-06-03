@@ -15,7 +15,7 @@ let initialFrame = {
 }
 
 let setPixel x y rgb fr =
-  let pos = y * Frame.Width + x
-  if pos < fr.data.Length then
-    fr.data[pos] <- rgb
+  let pos = y * uint Frame.Width + x
+  if pos < uint fr.data.Length then
+    fr.data[int pos] <- rgb
   fr
