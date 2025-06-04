@@ -12,7 +12,7 @@
     <Compile Include="src\Core\Ppu\Palette.fs" />
     <Compile Include="src\Core\Ppu\Screen.fs" />
     <Compile Include="src\Core\Ppu\Ppu.fs" />
-    <Compile Include="src\Core\Ppu\PpuRenderer.fs" />
+    <Compile Include="src\Core\Ppu\Renderer.fs" />
     <Compile Include="src\Core\Bus.fs" />
     <Compile Include="src\Core\Cpu.fs" />
     <Compile Include="src\Core\Trace.fs" />
