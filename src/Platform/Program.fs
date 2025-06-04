@@ -1,10 +1,10 @@
-﻿open Cpu
-open Bus
-open Cartridge
+﻿open HamicomEmu.Cpu.Cpu
+open HamicomEmu.Bus.Bus
+open HamicomEmu.Cartridge
 open Tests
-open Screen
-open Render
-open Trace
+open HamicomEmu.Ppu.Screen
+open HamicomEmu.Ppu.Renderer
+open HamicomEmu.Trace
 open Joypad
 
 open System
@@ -31,8 +31,8 @@ let handleJoypadInput (ks: KeyboardState) joy =
   
   keyMap
   |> List.fold (fun accJoy (key, button) ->
-      let isDown = ks.IsKeyDown key
-      accJoy |> setButtonPressed button isDown
+    let isDown = ks.IsKeyDown key
+    accJoy |> setButtonPressed button isDown
     ) joy
 
 let loadRom path =
@@ -42,12 +42,12 @@ let loadRom path =
   | e -> Error $"Failed to load ROM: {e.Message}"
 
 let frameToTexture (graphics: GraphicsDevice) (frame: Frame) : Texture2D =
-    let tex = new Texture2D(graphics, Frame.Width, Frame.Height)
-    let colorData =
-        frame.data
-        |> Array.map (fun (r, g, b) -> Color(int r, int g, int b))
-    tex.SetData(colorData)
-    tex
+  let tex = new Texture2D(graphics, Frame.Width, Frame.Height)
+  let colorData =
+    frame.data
+    |> Array.map (fun (r, g, b) -> Color(int r, int g, int b))
+  tex.SetData(colorData)
+  tex
 
 type basicNesGame(loadedRom) as this =
 
@@ -73,8 +73,8 @@ type basicNesGame(loadedRom) as this =
       bus <- bus'
     | Error e -> failwith $"Failed to parse ROM: {e}"
 
-    graphics.PreferredBackBufferWidth <- Screen.Frame.Width * scale
-    graphics.PreferredBackBufferHeight <- Screen.Frame.Height * scale
+    graphics.PreferredBackBufferWidth <- Frame.Width * scale
+    graphics.PreferredBackBufferHeight <- Frame.Height * scale
     graphics.ApplyChanges()
 
   override _.Initialize() =
@@ -94,7 +94,7 @@ type basicNesGame(loadedRom) as this =
     let colorData =
       frame.data |> Array.map (fun (r, g, b) -> Color(int r, int g, int b))
     texture.SetData(colorData)
-    let destRect = Rectangle(0, 0, Screen.Frame.Width * scale, Screen.Frame.Height * scale)
+    let destRect = Rectangle(0, 0, Frame.Width * scale, Frame.Height * scale)
     spriteBatch.Draw(texture, destRect, Color.White)
     spriteBatch.End()
     base.Draw(gameTime)

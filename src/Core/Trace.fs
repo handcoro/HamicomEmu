@@ -1,8 +1,8 @@
-module Trace
+module HamicomEmu.Trace
 
-open Instructions
-open Cpu
-open Bus
+open HamicomEmu.Cpu.Instructions
+open HamicomEmu.Cpu.Cpu
+open HamicomEmu.Bus.Bus
 
 open Microsoft.FSharp.Reflection
 
