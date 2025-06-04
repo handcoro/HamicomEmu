@@ -127,6 +127,6 @@ let trace cpu bus =
 
     let pc = sprintf "%04X" cpu.PC
     let st = formatCpuStatus cpu
-    let ppu = sprintf "PPU:%3d,%3d" bus'.ppu.scanline (bus'.ppu.cycles * 3u)
-    let cyc = sprintf "CYC:%d" bus.cycles
+    let ppu = sprintf "PPU:%3d,%3d" bus'.ppu.scanline (bus'.ppu.cycle * 3u)
+    let cyc = sprintf "CYC:%d" bus.cycleTotal
     sprintf "%-6s%-9s%-33s%-26s%-12s %s" pc bin asm st ppu cyc

@@ -4,7 +4,7 @@ module Bus =
 
   open HamicomEmu.Cartridge
   open HamicomEmu.Ppu.Types
-  open HamicomEmu.Ppu.Ppu
+  open HamicomEmu.Ppu
   open Joypad
 
   module Ram =
@@ -23,31 +23,31 @@ module Bus =
     let Begin = 0x8000us
     let End = 0xFFFFus
 
-  type Bus = {
+  type BusState = {
     cpuVram: byte array // 0x0000 - 0x1FFF
     rom: Rom
-    ppu: NesPpu
+    ppu: PpuState
     joy1: Joypad
     joy2: Joypad
-    cycles: uint
+    cycleTotal: uint
     cyclePenalty: uint
   }
 
-  let initialBus rom = {
+  let initial rom = {
     cpuVram = Array.create 0x2000 0uy
     rom = rom
-    ppu = initialPpu rom
+    ppu = Ppu.initial rom
     joy1 = initialJoypad
     joy2 = initialJoypad
-    cycles = 0u
+    cycleTotal = 0u
     cyclePenalty = 0u
   }
 
-  module Bus =
-    let resetPenalty bus =
-      { bus with cyclePenalty = 0u }
-    let addCyclePenalty n bus =
-      { bus with cyclePenalty = bus.cyclePenalty + n }
+
+  let resetPenalty bus =
+    { bus with cyclePenalty = 0u }
+  let addCyclePenalty n bus =
+    { bus with cyclePenalty = bus.cyclePenalty + n }
 
   let readPrgRom bus addr = // PRG ROM の読み込み
     let addr' = addr - 0x8000us // 0x8000 - 0xFFFF の範囲を 0x0000 - 0x7FFF に変換
@@ -64,15 +64,15 @@ module Bus =
       let res = bus.ppu.nmiInterrupt
       { bus with ppu.nmiInterrupt = None }, res
       
-  let tick cycles bus =
-    let cyc = bus.cycles + uint cycles + bus.cyclePenalty
+  let tick cycle bus =
+    let cyc = bus.cycleTotal + uint cycle + bus.cyclePenalty
     let nmiBefore = bus.ppu.nmiInterrupt.IsSome
-    let ppu' = ppuTick (cycles * 3u) bus.ppu
+    let ppu' = Ppu.tick (cycle * 3u) bus.ppu
     let nmiAfter = ppu'.nmiInterrupt.IsSome
 
     // NMI の立ち上がり検出
     let nmiEdge = not nmiBefore && nmiAfter
-    let bus' = { bus with cycles = cyc; cyclePenalty = 0u; ppu = ppu' }
+    let bus' = { bus with cycleTotal = cyc; cyclePenalty = 0u; ppu = ppu' }
     
     bus', if nmiEdge then Some ppu' else None
 
@@ -94,15 +94,15 @@ module Bus =
       0uy, bus
 
     | 0x2002us -> // TODO: Status
-      let beforePpu, ppu = readFromStatusRegister bus.ppu
+      let beforePpu, ppu = Ppu.readFromStatusRegister bus.ppu
       beforePpu.status, { bus with ppu = ppu }
 
     | 0x2004us ->
-      let data = readFromOamData bus.ppu
+      let data = Ppu.readFromOamData bus.ppu
       data, bus
 
     | 0x2007us ->
-      let data, ppu = readFromDataRegister bus.ppu
+      let data, ppu = Ppu.readFromDataRegister bus.ppu
       data, { bus with ppu = ppu }
 
     | addr when addr |> inRange 0x2008us PpuRegisters.MirrorsEnd ->
@@ -134,32 +134,32 @@ module Bus =
       bus
 
     | 0x2000us ->
-      let ppu = writeToControlRegister value bus.ppu
+      let ppu = Ppu.writeToControlRegister value bus.ppu
       { bus with ppu = ppu }
 
     | 0x2001us ->
-      let ppu = writeToMaskRegister value bus.ppu
+      let ppu = Ppu.writeToMaskRegister value bus.ppu
       { bus with ppu = ppu}
 
     | 0x2003us ->
-      let ppu = writeToOamAddress value bus.ppu
+      let ppu = Ppu.writeToOamAddress value bus.ppu
       { bus with ppu = ppu }
 
     | 0x2004us ->
-      let ppu = writeToOamData value bus.ppu
+      let ppu = Ppu.writeToOamData value bus.ppu
       { bus with ppu = ppu }
 
     | 0x2005us -> // TODO: Scroll
-      let ppu = writeToScrollRegister value bus.ppu
+      let ppu = Ppu.writeToScrollRegister value bus.ppu
       { bus with ppu = ppu }
 
     | 0x2006us ->
-      let ppu = writeToAddressRegister value bus.ppu
+      let ppu = Ppu.writeToAddressRegister value bus.ppu
       // printfn "WRITE Addr Reg: %02X" value
       { bus with ppu = ppu }
 
     | 0x2007us ->
-      let ppu = writeToDataRegister value bus.ppu
+      let ppu = Ppu.writeToDataRegister value bus.ppu
       // printfn "WRITE PPU Data: %02X" value
       { bus with ppu = ppu }
 
@@ -174,7 +174,7 @@ module Bus =
       let mutable data = Array.create 0x100 0uy
       for i in 0 .. 0xFF do
         data[i] <- memRead (hi + uint16 i) bus |> fst
-      let ppu = writeToOamDma data bus.ppu
+      let ppu = Ppu.writeToOamDma data bus.ppu
       let bus' = runTicks 514 bus
       { bus' with ppu = ppu }
 

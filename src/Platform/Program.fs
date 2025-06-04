@@ -1,5 +1,5 @@
-﻿open HamicomEmu.Cpu.Cpu
-open HamicomEmu.Bus.Bus
+﻿open HamicomEmu.Cpu
+open HamicomEmu.Bus
 open HamicomEmu.Cartridge
 open Tests
 open HamicomEmu.Ppu.Screen
@@ -59,16 +59,16 @@ type basicNesGame(loadedRom) as this =
 
   let raw = loadedRom
   let parsed = raw |> Result.bind parseRom
-  let mutable cpu = initialCpu
-  let mutable bus = Unchecked.defaultof<Bus>
+  let mutable cpu = Cpu.initial
+  let mutable bus = Unchecked.defaultof<Bus.BusState>
   
   let mutable frame = initialFrame
 
   do
     match parsed with
     | Ok rom ->
-      bus <- initialBus rom
-      let cpu', bus' = reset cpu bus
+      bus <- Bus.initial rom
+      let cpu', bus' = Cpu.reset cpu bus
       cpu <- cpu'
       bus <- bus'
     | Error e -> failwith $"Failed to parse ROM: {e}"
@@ -106,7 +106,7 @@ type basicNesGame(loadedRom) as this =
 
     for _ in 0 .. 600 do // 時間がかかるので 1 フレームで一気に命令処理してしまう
       // printfn "%s" (trace cpu bus)
-      let cpu', bus' = (cpu, bus) ||> step
+      let cpu', bus' = (cpu, bus) ||> Cpu.step
       cpu <- cpu'
       bus <- bus'
 

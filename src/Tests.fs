@@ -3,9 +3,9 @@ module Tests
 open System.IO
 
 open Expecto
-open HamicomEmu.Cpu.Cpu
-open HamicomEmu.Bus.Bus
-open HamicomEmu.Ppu.Ppu
+open HamicomEmu.Cpu
+open HamicomEmu.Bus
+open HamicomEmu.Ppu
 open HamicomEmu.Cartridge
 open HamicomEmu.Trace
 
@@ -90,9 +90,9 @@ let tests =
       let parsed = parseRom raw
       match parsed with
       | Ok rom ->
-          let bus = initialBus rom
-          let cpu = initialCpu
-          (cpu, bus) ||> reset ||> runWithCallback callback |> ignore
+          let bus = Bus.initial rom
+          let cpu = Cpu.initial
+          (cpu, bus) ||> Cpu.reset ||> Cpu.runWithCallback callback |> ignore
       | Error e -> failwith $"Failed to parse ROM: {e}"
       Expect.isOk parsed "Rom file should parse successfully"
       writer.Close()
@@ -102,30 +102,30 @@ let tests =
       let ppuAddr = 0x2000us
       let value = 0x77uy
 
-      let bus0 = initialBus (testRom [||])
+      let bus0 = Bus.initial (testRom [||])
       let mutable ppu = bus0.ppu
 
       // コントロールレジスタ設定
       // printfn $"before: {ppu}"
-      ppu <- writeToControlRegister 0x00uy ppu
+      ppu <- Ppu.writeToControlRegister 0x00uy ppu
       // アドレス設定
-      ppu <- writeToAddressRegister 0x20uy ppu
-      ppu <- writeToAddressRegister 0x00uy ppu
+      ppu <- Ppu.writeToAddressRegister 0x20uy ppu
+      ppu <- Ppu.writeToAddressRegister 0x00uy ppu
       // printfn $"1: {ppu}"
 
       // $2007 に書き込み
-      ppu <- writeToDataRegister value ppu
+      ppu <- Ppu.writeToDataRegister value ppu
       // printfn $"2: {ppu}"
 
       // 再びアドレス設定（VRAM 読みは1バイトずれている可能性あり）
-      ppu <- writeToAddressRegister 0x20uy ppu
-      ppu <- writeToAddressRegister 0x00uy ppu
+      ppu <- Ppu.writeToAddressRegister 0x20uy ppu
+      ppu <- Ppu.writeToAddressRegister 0x00uy ppu
       // printfn $"3: {ppu}"
 
       // 読み捨て
-      let _, ppu = readFromDataRegister ppu
+      let _, ppu = Ppu.readFromDataRegister ppu
       // 実データ読み
-      let actual, _ = readFromDataRegister ppu
+      let actual, _ = Ppu.readFromDataRegister ppu
 
       Expect.equal actual value "Should correctly read back the value written to PPU memory"
     }

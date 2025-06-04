@@ -5,7 +5,7 @@ module Renderer =
   open HamicomEmu.Ppu.Screen
   open HamicomEmu.Ppu.Palette
   open HamicomEmu.Ppu.Types
-  open HamicomEmu.Ppu.Ppu
+  open HamicomEmu.Ppu
 
   /// 画面に見える範囲
   type Rect = {
@@ -52,11 +52,11 @@ module Renderer =
       ppu.pal[start + 2]
     |]
 
-  let renderNameTable (ppu : NesPpu) (nameTable : byte[]) viewPort shiftX shiftY frame =
+  let renderNameTable (ppu : PpuState) (nameTable : byte[]) viewPort shiftX shiftY frame =
     if nameTable |> Array.length < 1 then
       frame
     else
-      let bank = backgroundPatternAddr ppu.ctrl |> int
+      let bank = Ppu.backgroundPatternAddr ppu.ctrl |> int
       let attrTable = nameTable[0x3C0 .. 0x3FF]
 
       [0 .. 0x3BF]
@@ -95,7 +95,7 @@ module Renderer =
         ) frameAcc
       ) frame
 
-  let drawSprites (ppu: NesPpu) (frame: Frame) : Frame =
+  let drawSprites (ppu: PpuState) (frame: Frame) : Frame =
     let oamIndices =
       [0 .. ppu.oam.Length - 4]
       |> List.filter (fun i -> i % 4 = 0) // スプライトごとに4バイト
@@ -114,7 +114,7 @@ module Renderer =
       let paletteIdx = attr &&& 0b11uy
       let sprPal = spritePalette ppu paletteIdx
 
-      let bank = spritePatternAddr ppu.ctrl |> int
+      let bank = Ppu.spritePatternAddr ppu.ctrl |> int
       let tileStart = bank + (int tileIdx * 16)
       let tile =
         if ppu.chr <> [||] then
@@ -152,12 +152,12 @@ module Renderer =
 
   let screenW = 256u
   let screenH = 240u
-  let render (ppu: NesPpu) (frame : Frame) =
+  let render (ppu: PpuState) (frame : Frame) =
 
     let scrlX = fst ppu.scrlReg.xy
     let scrlY = snd ppu.scrlReg.xy
 
-    let mainNameTable, sndNameTable = getVisibleNameTables ppu (getNameTableAddress ppu.ctrl)
+    let mainNameTable, sndNameTable = Ppu.getVisibleNameTables ppu (Ppu.getNameTableAddress ppu.ctrl)
 
     let rect1 = initialRect (uint scrlX) (uint scrlY) screenW screenH
     let rect2 = initialRect 0u 0u (uint scrlX) screenH

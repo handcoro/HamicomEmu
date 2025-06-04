@@ -3,7 +3,7 @@ namespace HamicomEmu.Cpu
 module Cpu =
 
   open HamicomEmu.Cpu.Instructions
-  open HamicomEmu.Bus.Bus
+  open HamicomEmu.Bus
 
   module Flags =
     let C = 0b0000_0001uy // Carry
@@ -26,7 +26,7 @@ module Cpu =
       SP: byte
       P: byte }
 
-  let initialCpu =
+  let initial =
     { A = 0uy
       X = 0uy
       Y = 0uy
@@ -45,43 +45,43 @@ module Cpu =
     | Immediate ->
       pc
     | ZeroPage ->
-      let addr, _ = memRead pc bus
+      let addr, _ = Bus.memRead pc bus
       addr |> uint16
     | Absolute ->
-      let addr, _ = memRead16 pc bus
+      let addr, _ = Bus.memRead16 pc bus
       addr |> uint16
     | ZeroPage_X ->
-      let pos, _ = memRead pc bus
+      let pos, _ = Bus.memRead pc bus
       let addr = pos + cpu.X |> uint16
       addr
     | ZeroPage_Y ->
-      let pos, _ = memRead pc bus
+      let pos, _ = Bus.memRead pc bus
       let addr = pos + cpu.Y |> uint16
       addr
     | Absolute_X ->
-      let bpos, _ = memRead16 pc bus
+      let bpos, _ = Bus.memRead16 pc bus
       let addr = bpos + (cpu.X |> uint16)
       addr
     | Absolute_Y ->
-      let bpos, _ = memRead16 pc bus
+      let bpos, _ = Bus.memRead16 pc bus
       let addr = bpos + (cpu.Y |> uint16)
       addr
     | Indirect_X ->
-      let bpos, _ = memRead pc bus
+      let bpos, _ = Bus.memRead pc bus
       let ptr = bpos + cpu.X
-      let addr, _ = memRead16ZeroPage ptr bus
+      let addr, _ = Bus.memRead16ZeroPage ptr bus
       addr
     | Indirect_Y ->
-      let bpos, _ = memRead pc bus
-      let deRefBase, _ = memRead16ZeroPage bpos bus
+      let bpos, _ = Bus.memRead pc bus
+      let deRefBase, _ = Bus.memRead16ZeroPage bpos bus
       let deRef = deRefBase + (cpu.Y |> uint16)
       deRef
     | Indirect ->
-      let bpos, _ = memRead16 pc bus
-      let addr, _ = memRead16Wrap bpos bus // JMP のページ境界バグ
+      let bpos, _ = Bus.memRead16 pc bus
+      let addr, _ = Bus.memRead16Wrap bpos bus // JMP のページ境界バグ
       addr
     | Relative ->
-      let offset, _ = memRead pc bus
+      let offset, _ = Bus.memRead pc bus
       let addr = int pc + (offset |> int8 |> int)
       uint16 addr
     | Implied ->
@@ -108,7 +108,7 @@ module Cpu =
   /// ビット論理演算
   let logicalInstr op mode cpu bus = // AND, EOR, ORA
     let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
-    let value, bus' = memRead addr bus
+    let value, bus' = Bus.memRead addr bus
 
     let a =
       match op with
@@ -123,7 +123,7 @@ module Cpu =
   /// 加算
   let adc mode cpu bus = // Add with Carry
     let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
-    let value, bus' = memRead addr bus
+    let value, bus' = Bus.memRead addr bus
     let carry = if hasFlag Flags.C cpu.P then 1 else 0
     let sum = int cpu.A + int value + carry
     let result = byte sum
@@ -145,7 +145,7 @@ module Cpu =
   /// 減算
   let sbc mode cpu bus = // Subtract with Carry
     let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
-    let value, bus' = memRead addr bus
+    let value, bus' = Bus.memRead addr bus
     let carry = if hasFlag Flags.C cpu.P then 1 else 0
     let valueInverted = ~~~ value
     let sum = int cpu.A + int valueInverted + carry
@@ -165,7 +165,7 @@ module Cpu =
 
   let ld setReg mode cpu bus =
     let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
-    let v, bus = memRead addr bus
+    let v, bus = Bus.memRead addr bus
     let p = setZeroNegativeFlags v cpu.P
     let cpu = cpu |> setReg v
     { cpu with P = p }, bus
@@ -185,17 +185,17 @@ module Cpu =
   /// Store Accumulator
   let sta mode cpu bus =
     let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
-    cpu, bus |> memWrite addr cpu.A
+    cpu, bus |> Bus.memWrite addr cpu.A
 
   /// Store X Register
   let stx mode cpu bus =
     let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
-    cpu, bus |> memWrite addr cpu.X
+    cpu, bus |> Bus.memWrite addr cpu.X
 
   /// Store Y Register
   let sty mode cpu bus =
     let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
-    cpu, bus |> memWrite addr cpu.Y
+    cpu, bus |> Bus.memWrite addr cpu.Y
 
   /// Transfer Accumulator to X
   let tax _ cpu bus =
@@ -261,8 +261,8 @@ module Cpu =
           cpu.A, fun r -> { cpu with A = r }, bus
       | _ ->
           let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
-          let v, b' = memRead addr bus
-          v, fun r -> cpu, b' |> memWrite addr r
+          let v, b' = Bus.memRead addr bus
+          v, fun r -> cpu, b' |> Bus.memWrite addr r
 
     let shifted, p = shiftFn value cpu.P
     let result = carryInFn shifted cIn
@@ -299,7 +299,7 @@ module Cpu =
       { cpu with PC = nextPc }, bus
 
   /// BCC - Branch if Carry Clear
-  let bcc mode (cpu : CpuState) (bus : Bus) =
+  let bcc mode cpu bus =
     (cpu, bus) ||> branch mode Flags.C false
 
   /// BCS - Branch if Carry Set
@@ -368,7 +368,7 @@ module Cpu =
   /// BIT - Bit Test
   let bit mode cpu bus =
     let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
-    let value, bus' = memRead addr bus
+    let value, bus' = Bus.memRead addr bus
     let p =
       cpu.P
       |> updateFlag Flags.Z (cpu.A &&& value    = 0uy)
@@ -379,7 +379,7 @@ module Cpu =
   /// アキュムレータやレジスタとメモリ上の値を比較
   let compare lhs mode cpu bus =
     let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
-    let value, bus' = memRead addr bus
+    let value, bus' = Bus.memRead addr bus
     let result = lhs - value
     let p =
       cpu.P
@@ -403,8 +403,8 @@ module Cpu =
   /// Decrement Memory
   let dec mode cpu bus =
     let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
-    let result, bus' = memRead addr bus
-    cpu |> fun c -> { c with P = cpu.P |> setZeroNegativeFlags (result - 1uy) }, bus' |> memWrite addr (result - 1uy)
+    let result, bus' = Bus.memRead addr bus
+    cpu |> fun c -> { c with P = cpu.P |> setZeroNegativeFlags (result - 1uy) }, bus' |> Bus.memWrite addr (result - 1uy)
 
   /// Decrement X Register
   let dex _ cpu bus =
@@ -419,8 +419,8 @@ module Cpu =
   /// Increment Memory
   let inc mode cpu bus =
     let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
-    let result, bus' = memRead addr bus
-    { cpu with P = cpu.P |> setZeroNegativeFlags (result + 1uy) }, bus' |> memWrite addr (result + 1uy)
+    let result, bus' = Bus.memRead addr bus
+    { cpu with P = cpu.P |> setZeroNegativeFlags (result + 1uy) }, bus' |> Bus.memWrite addr (result + 1uy)
 
   /// Increment X Register
   let inx _ cpu bus =
@@ -440,7 +440,7 @@ module Cpu =
   /// Push a value to stack
   let push value cpu bus =
     let addr = 0x0100us + uint16 cpu.SP
-    let bus' = memWrite addr value bus
+    let bus' = Bus.memWrite addr value bus
     let sp' = cpu.SP - 1uy
     { cpu with SP = sp' }, bus'
 
@@ -455,7 +455,7 @@ module Cpu =
   let pull cpu bus =
     let sp' = cpu.SP + 1uy
     let addr = 0x0100us + uint16 sp'
-    let value, bus' = memRead addr bus
+    let value, bus' = Bus.memRead addr bus
     value, { cpu with SP = sp' }, bus'
 
   /// Pull a 16-bit value from the stack (low byte first)
@@ -511,7 +511,7 @@ module Cpu =
         ||> push16 (cpu.PC + 1us)
         ||> push cpu.P
 
-      let pc, bus' = memRead16 0xFFFEus bus // BRK の場合は 0xFFFE に飛ぶ
+      let pc, bus' = Bus.memRead16 0xFFFEus bus // BRK の場合は 0xFFFE に飛ぶ
       let p = cpu.P |> setFlag Flags.B
 
       { cpu with P = p; PC = pc }, bus'
@@ -538,7 +538,7 @@ module Cpu =
   let sax mode cpu bus =
     let addr = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
     let value = cpu.A &&& cpu.X
-    cpu, bus |> memWrite addr value
+    cpu, bus |> Bus.memWrite addr value
 
   /// DEC -> CMP
   let dcp mode cpu bus =
@@ -573,13 +573,13 @@ module Cpu =
     let cpu2, bus2 = push p' cpu' bus'
     let p2 = p' |> setFlag Flags.I
 
-    let bus3 = fst (tick 2u bus2)
-    let pc, busF = memRead16 0xFFFAus bus3
+    let bus3 = fst (Bus.tick 2u bus2)
+    let pc, busF = Bus.memRead16 0xFFFAus bus3
     { cpu2 with P = p2; PC = pc }, busF
 
 
   let reset cpu bus =
-    let pc, bus' = memRead16 0xFFFCus bus // リセットベクタを読み込む
+    let pc, bus' = Bus.memRead16 0xFFFCus bus // リセットベクタを読み込む
     { cpu with
         A = 0uy
         X = 0uy
@@ -650,14 +650,14 @@ module Cpu =
 
 
   /// CPU を 1 命令だけ実行する
-  let step cpu bus : CpuState * Bus =
+  let step cpu bus =
 
     let cpu, bus = // NMI
-      match pollNmiStatus bus with
+      match Bus.pollNmiStatus bus with
       | b, Some _ -> interruptNmi cpu b
       | b, None -> cpu, b
 
-    let opcode, bus' = memRead cpu.PC bus
+    let opcode, bus' = Bus.memRead cpu.PC bus
     let op, mode, size, cycles, penalty = decodeOpcode opcode
     let execInstr f m c b =
       let crsd =
@@ -692,7 +692,7 @@ module Cpu =
     let penaltyTick = if penalty && crossed then 1u else 0u
 
     // ここで NMI の立ち上がりを検出するのは意味がない？
-    let bus3, nmiOpt = tick (cycles + penaltyTick) bus2
+    let bus3, nmiOpt = Bus.tick (cycles + penaltyTick) bus2
     cpu', bus3
 
   let rec run cpu bus =

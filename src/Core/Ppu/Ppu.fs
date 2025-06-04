@@ -6,6 +6,28 @@ module Ppu =
   open HamicomEmu.Ppu.Registers
   open HamicomEmu.Ppu.Types
 
+  let initial (rom: Rom) = {
+    chr = rom.chrRom
+    chrRam = rom.chrRam
+    pal = Array.create 32 0uy // パレットテーブルは32バイト
+    vram = Array.create 0x2000 0uy // PPU VRAM は8KB
+    oam = Array.create 256 0uy // OAM データは256バイト
+    oamAddr = 0uy
+    mirror = rom.screenMirroring
+    addrReg = initialAddressRegister
+    scrlReg = initialScrollRegister
+    ctrl = 0uy // 初期状態では制御レジスタは0
+    mask = 0b0001_0000uy
+    status = 0uy
+    buffer = 0uy
+    scanline = 0us
+    cycle = 0u
+    nmiInterrupt = None
+    clearNmiInterrupt = false
+    latch = true
+  }
+
+
   let hasFlag flag r = r &&& flag <> 0uy
   let setFlag flag r = r ||| flag
   let clearFlag flag r = r &&& (~~~flag)
@@ -200,10 +222,10 @@ module Ppu =
     { ppu with oam = values }
 
   /// TODO: 0 番スプライトにスキャンラインが引っかかったか判定（多分まだ不十分）
-  let isSpriteZeroHit cycles ppu =
+  let isSpriteZeroHit cycle ppu =
     let y = ppu.oam[0] |> uint
     let x = ppu.oam[3] |> uint
-    y = uint ppu.scanline && x <= cycles && hasFlag MaskFlags.SpriteRendering ppu.mask
+    y = uint ppu.scanline && x <= cycle && hasFlag MaskFlags.SpriteRendering ppu.mask
 
   let private updateScrollRegister (data: byte) ppu sr =
     // latch を目印に 2 回に分けて書き込む
@@ -219,13 +241,13 @@ module Ppu =
     let ppu', sr = updateScrollRegister value ppu ppu.scrlReg
     { ppu' with scrlReg = sr }
 
-  let ppuTick cycles ppu =
-    let cyc = ppu.cycles + uint cycles
+  let tick cycle ppu =
+    let cyc = ppu.cycle + uint cycle
 
     // 340 は画面のライン 1 本分
     let oamAddr = if cyc >= 257u && cyc <= 320u then 0uy else ppu.oamAddr // OAM アドレスを 0 にする処理がこれで合ってるのかよくわからない
     if cyc < 341u then
-      { ppu with oamAddr = oamAddr; cycles = cyc}
+      { ppu with oamAddr = oamAddr; cycle = cyc}
     else
       let st = ppu.status |> updateFlag StatusFlags.SpriteZeroHit (isSpriteZeroHit cyc ppu)
       let cyc' = cyc - 341u
@@ -239,7 +261,7 @@ module Ppu =
             { ppu with
                 scanline = nextScanline
                 oamAddr = oamAddr
-                cycles = cyc'
+                cycle = cyc'
                 status = st'
             }
           if hasFlag ControlFlags.GenerateNmi ppu.ctrl then
@@ -254,7 +276,7 @@ module Ppu =
               scanline = 0us
               status = st'
               oamAddr = oamAddr
-              cycles = cyc'
+              cycle = cyc'
               nmiInterrupt = None
           }
 
@@ -264,5 +286,5 @@ module Ppu =
               scanline = nextScanline
               status   = st
               oamAddr  = oamAddr
-              cycles   = cyc'
+              cycle   = cyc'
           }
