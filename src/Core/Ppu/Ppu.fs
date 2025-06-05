@@ -27,6 +27,7 @@ module Ppu =
     latch = true
     // スクロール情報のキャッシュ
     scrollPerScanline = Array.init 240 (fun _ -> { xy = (0uy, 0uy) })
+    ctrlPerScanline = Array.zeroCreate 240
   }
 
   // let initialRenderCache = {
@@ -286,6 +287,7 @@ module Ppu =
         }
       | s when s < 241us ->
         ppu.scrollPerScanline[int ppu.scanline] <- ppu.scrlReg
+        ppu.ctrlPerScanline[int ppu.scanline] <- ppu.ctrl
         { ppu with
             scanline = nextScanline
             status   = st

@@ -161,6 +161,7 @@ module Renderer =
       (shiftX: int)
       (shiftY: int)
       (scanline: int)
+      drawLines
       (frame: Frame) : Frame =
 
     if nameTable.Length < 1 then
@@ -174,7 +175,7 @@ module Renderer =
       |> List.filter (fun i ->
         let tileY = i / 32
         let y = tileY * 8
-        scanline >= y && scanline < y + 8
+        scanline >= y && scanline < y + drawLines
       )
       |> List.fold (fun frameAcc i ->
         let tileX = i % 32
@@ -284,35 +285,47 @@ module Renderer =
     |> renderNameTable ppu sndNameTable rect4 (int screenW - int scrlX) (- int scrlY)
     |> drawSprites ppu
 
+
+
+  let drawLines = 8
+
+  /// 分割スクロールのためのスキャンラインごとの描画
   let renderScanlineBased (ppu: PpuState) (frame: Frame) : Frame =
-    let mainNameTable, subNameTable =
-      Ppu.getVisibleNameTables ppu (Ppu.getNameTableAddress ppu.ctrl)
 
-    [0 .. 239]
-    |> List.fold (fun frameAcc y ->
-      let scrollX, scrollY = ppu.scrollPerScanline[y].xy
-      let scrlX, scrlY = int scrollX, int scrollY
+    let n = 240 / drawLines - 1 // スキャンライン一本ずつだと非効率なのである程度まとめて描いてみる
 
-      // スキャンラインyに対応するviewPort（1ライン分のみ）
-      let rect1 = initialRect (uint scrlX) (uint y + uint scrlY) screenW (uint y + 1u)
+    let f =
+      [0 .. n]
+      |> List.fold (fun frameAcc y ->
+        let drawStartY = y * drawLines |> uint
 
-      // 背景描画（メインネームテーブル）
-      let frame1 = renderNameTableScanline ppu mainNameTable rect1 (-scrlX) (-scrlY) y frameAcc
+        let scrollX, scrollY = ppu.scrollPerScanline[int drawStartY].xy
+        let scrlX, scrlY = int scrollX, int scrollY
 
-      // 背景描画（補完としてサブネームテーブルを描く必要があれば）
-      let needSub =
-        scrlX <> 0 || scrlY <> 0
+        let correctedAddr = Ppu.getNameTableAddress ppu.ctrlPerScanline[int drawStartY]
+        let mainNameTable, subNameTable =
+          Ppu.getVisibleNameTables ppu correctedAddr
 
-      let frame2 =
+        // drawLines 分の描画範囲
+        // パフォーマンスのためには狭めることも必要になるかも
+        let rect1 = initialRect (uint scrlX) (drawStartY + uint scrlY) screenW (drawStartY + uint drawLines)
+        let rect2 = initialRect 0u drawStartY (uint scrlX) (drawStartY + uint drawLines)
+
+        // 背景描画
+        let frame1 = renderNameTableScanline ppu mainNameTable rect1 (-scrlX) (-scrlY) (int drawStartY) drawLines frameAcc
+
+        let needSub =
+          scrlX > 0
+        // サブ背景
         if needSub then
-          let rect2 = initialRect 0u 0u (uint scrlX) (uint y + 1u)
-          renderNameTableScanline ppu subNameTable rect2 (int screenW - int scrlX) (- int scrlY) y frame1
+          renderNameTableScanline ppu subNameTable rect2 (int screenW - int scrlX) 0 (int drawStartY) drawLines frame1
         else
           frame1
 
-      // スプライト描画（スキャンラインごと）
-      drawSpriteScanline ppu y frame2
-    ) frame
+        // // スプライト描画（スキャンラインごと）
+        // drawSpriteScanline ppu y frame2
+      ) frame
+    drawSprites ppu f
 
 
   (* あとあと機能としてあったらいいかもしれない
