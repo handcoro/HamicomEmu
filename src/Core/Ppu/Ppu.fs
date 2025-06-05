@@ -25,8 +25,13 @@ module Ppu =
     nmiInterrupt = None
     clearNmiInterrupt = false
     latch = true
+    // スクロール情報のキャッシュ
+    scrollPerScanline = Array.init 240 (fun _ -> { xy = (0uy, 0uy) })
   }
 
+  // let initialRenderCache = {
+  //   scrollPerScanline = Array.init 240 (fun _ -> { xy = (0uy, 0uy) })
+  // }
 
   let hasFlag flag r = r &&& flag <> 0uy
   let setFlag flag r = r ||| flag
@@ -255,36 +260,43 @@ module Ppu =
 
       match nextScanline with
       | 241us ->
-          // VBlank 開始
-          let st' = st |> setFlag StatusFlags.Vblank
-          let ppu' =
-            { ppu with
-                scanline = nextScanline
-                oamAddr = oamAddr
-                cycle = cyc'
-                status = st'
-            }
-          if hasFlag ControlFlags.GenerateNmi ppu.ctrl then
-            { ppu' with nmiInterrupt = Some 1uy }
-          else
-            ppu'
-
-      | s when s >= 262us ->
-          // フレーム終了（VBlank 終了）
-          let st' = st |> resetVblankStatus |> clearFlag StatusFlags.SpriteZeroHit
-          { ppu with
-              scanline = 0us
-              status = st'
-              oamAddr = oamAddr
-              cycle = cyc'
-              nmiInterrupt = None
-          }
-
-      | _ ->
-          // 通常のスキャンライン進行
+        // VBlank 開始
+        let st' = st |> setFlag StatusFlags.Vblank
+        let ppu' =
           { ppu with
               scanline = nextScanline
-              status   = st
-              oamAddr  = oamAddr
-              cycle   = cyc'
+              oamAddr = oamAddr
+              cycle = cyc'
+              status = st'
           }
+        if hasFlag ControlFlags.GenerateNmi ppu.ctrl then
+          { ppu' with nmiInterrupt = Some 1uy }
+        else
+          ppu'
+
+      | s when s >= 262us ->
+        // フレーム終了（VBlank 終了）
+        let st' = st |> resetVblankStatus |> clearFlag StatusFlags.SpriteZeroHit
+        { ppu with
+            scanline = 0us
+            status = st'
+            oamAddr = oamAddr
+            cycle = cyc'
+            nmiInterrupt = None
+        }
+      | s when s < 241us ->
+        ppu.scrollPerScanline[int ppu.scanline] <- ppu.scrlReg
+        { ppu with
+            scanline = nextScanline
+            status   = st
+            oamAddr  = oamAddr
+            cycle   = cyc'
+        }
+      | _ ->
+        // 通常のスキャンライン進行
+        { ppu with
+            scanline = nextScanline
+            status   = st
+            oamAddr  = oamAddr
+            cycle   = cyc'
+        }

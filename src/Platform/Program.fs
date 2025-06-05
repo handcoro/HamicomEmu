@@ -90,7 +90,7 @@ type basicNesGame(loadedRom) as this =
   override _.Draw(gameTime) =
     this.GraphicsDevice.Clear(Color.Black)
     spriteBatch.Begin(samplerState = SamplerState.PointClamp)
-    frame <- render bus.ppu frame
+    frame <- renderScanlineBased bus.ppu frame
     let colorData =
       frame.data |> Array.map (fun (r, g, b) -> Color(int r, int g, int b))
     texture.SetData(colorData)

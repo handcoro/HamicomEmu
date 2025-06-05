@@ -22,4 +22,9 @@ type PpuState = {
   nmiInterrupt: option<byte>
   clearNmiInterrupt: bool
   latch: bool // PPUSCROLL と PPUADDR のラッチは共有らしい
+  mutable scrollPerScanline: ScrollRegister array
 }
+
+// type RenderCache = {
+//   mutable scrollPerScanline : ScrollRegister array
+// }
