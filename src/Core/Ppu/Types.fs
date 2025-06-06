@@ -26,6 +26,3 @@ type PpuState = {
   mutable ctrlPerScanline: byte array
 }
 
-// type RenderCache = {
-//   mutable scrollPerScanline : ScrollRegister array
-// }

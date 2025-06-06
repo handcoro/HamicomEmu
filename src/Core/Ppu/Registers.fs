@@ -39,6 +39,8 @@ module Registers =
 
   /// この実装は不正確らしい
   /// v, t, x レジスタとか？
+  /// どうやら内部レジスタとしてアドレスレジスタと共有しているらしい
+  /// 複雑な分割スクロールを表現するためにはアドレスレジスタとともに内部レジスタに実装を変更するかも
   /// https://www.nesdev.org/wiki/PPU_scrolling
   /// yyy NN YYYYY XXXXX
   /// ||| || ||||| +++++-- coarse X scroll (5 bits)

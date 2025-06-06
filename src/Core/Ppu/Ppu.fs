@@ -25,7 +25,7 @@ module Ppu =
     nmiInterrupt = None
     clearNmiInterrupt = false
     latch = true
-    // スクロール情報のキャッシュ
+    // スクロール情報のスナップショット
     scrollPerScanline = Array.init 240 (fun _ -> { xy = (0uy, 0uy) })
     ctrlPerScanline = Array.zeroCreate 240
   }

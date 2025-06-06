@@ -322,8 +322,6 @@ module Renderer =
         else
           frame1
 
-        // // スプライト描画（スキャンラインごと）
-        // drawSpriteScanline ppu y frame2
       ) frame
     drawSprites ppu f
 
