@@ -4,11 +4,15 @@ open HamicomEmu.Cartridge
 open Tests
 open HamicomEmu.Ppu.Screen
 open HamicomEmu.Ppu.Renderer
+open HamicomEmu.Apu
 open HamicomEmu.Trace
+open HamicomEmu.Platform.AudioEngine
 open Joypad
 
 open System
+open System.Threading
 open System.IO
+open System.Timers
 open FsToolkit.ErrorHandling
 open Expecto
 
@@ -53,9 +57,13 @@ type basicNesGame(loadedRom) as this =
 
   inherit Game()
   let scale = 4
+  let sampleRate = 44100
   let graphics = new GraphicsDeviceManager(this)
   let mutable spriteBatch = Unchecked.defaultof<SpriteBatch>
   let mutable texture = Unchecked.defaultof<Texture2D>
+  let mutable audioEngine = AudioEngine(sampleRate)
+  let mutable timeOffset = 0.0
+  let timer = new Timer(1000.0 / 60.0) // 60fps 相当 仮置き
 
   let raw = loadedRom
   let parsed = raw |> Result.bind parseRom
@@ -79,7 +87,7 @@ type basicNesGame(loadedRom) as this =
 
   override _.Initialize() =
     this.IsFixedTimeStep <- true
-    this.TargetElapsedTime <- TimeSpan.FromMilliseconds(1) // フレームの更新間隔
+    this.TargetElapsedTime <- TimeSpan.FromSeconds(1.0 / 60.0) // フレームの更新間隔
     base.Initialize()
 
   override _.LoadContent() =
@@ -104,11 +112,18 @@ type basicNesGame(loadedRom) as this =
     let joy = bus.joy1 |> handleJoypadInput (Keyboard.GetState())
     bus <- {bus with joy1 = joy }
 
-    for _ in 0 .. 600 do // 時間がかかるので 1 フレームで一気に命令処理してしまう
+    for _ in 1 .. 10000 do // 時間がかかるので 1 フレームで一気に命令処理してしまう
       // printfn "%s" (trace cpu bus)
       let cpu', bus' = (cpu, bus) ||> Cpu.step
       cpu <- cpu'
       bus <- bus'
+
+    let generator t =
+      let sample, apu' = Apu.mix t bus.apu
+      bus <- { bus with apu = apu' }
+      sample
+
+    audioEngine.PushSample(generator)
 
     base.Update(gameTime)
 

@@ -5,6 +5,7 @@ module Bus =
   open HamicomEmu.Cartridge
   open HamicomEmu.Ppu.Types
   open HamicomEmu.Ppu
+  open HamicomEmu.Apu
   open Joypad
 
   module Ram =
@@ -27,6 +28,7 @@ module Bus =
     cpuVram: byte array // 0x0000 - 0x1FFF
     rom: Rom
     ppu: PpuState
+    apu: Apu.ApuState
     joy1: Joypad
     joy2: Joypad
     cycleTotal: uint
@@ -37,6 +39,7 @@ module Bus =
     cpuVram = Array.create 0x2000 0uy
     rom = rom
     ppu = Ppu.initial rom
+    apu = Apu.initial
     joy1 = initialJoypad
     joy2 = initialJoypad
     cycleTotal = 0u
@@ -109,7 +112,7 @@ module Bus =
       let mirrorDownAddr = addr &&& 0b0010_0000_0000_0111us
       memRead mirrorDownAddr bus
 
-    | 0x4016us -> // TODO: Joypad
+    | 0x4016us ->
       let data, joy = readJoypad bus.joy1
       data, {bus with joy1 = joy}
 
@@ -187,8 +190,8 @@ module Bus =
       bus
 
     | addr when addr |> inRange ApuRegisters.Begin ApuRegisters.End ->
-      // printfn "APU is not implemented yet. addr: %04X" addr
-      bus
+      let apu = Apu.write addr value bus.apu
+      { bus with apu = apu }
 
     | addr when addr |> inRange PrgRom.Begin PrgRom.End -> // PRG ROM は書き込み禁止
       printfn "Attempt to write to Cartridge Rom space. addr: %04X\n" addr
