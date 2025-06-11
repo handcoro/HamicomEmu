@@ -6,30 +6,68 @@ module ApuConstants =
 module Registers =
 
   module PulseBitMasks =
-
-    let volumeMask = 0b0000_1111uy
-    let envelopeFlag = 0b0001_0000uy
-    let envelopeLoopFlag = 0b0010_0000uy
-    let dutyCycleMask = 0b1100_0000uy
-
-    let timerHiMask = 0b0000_0111uy
+    // $4000, $4004
+    let volumeMask        = 0b0000_1111uy
+    let envelopeMask      = 0b0000_1111uy
+    let envelopeFlag      = 0b0001_0000uy
+    let envelopeLoopFlag  = 0b0010_0000uy
+    let dutyCycleMask     = 0b1100_0000uy
+    // $4003, $4007
+    let timerHiMask       = 0b0000_0111uy
     let lengthCounterMask = 0b1111_1000uy
 
   module TriangleBitMasks =
-
-    let linerCounterMask = 0b0111_1111uy
-    let controlFlag = 0b1000_0000uy
-    let timerHiMask = 0b0000_0111uy
+    // $4008
+    let linerCounterMask  = 0b0111_1111uy
+    let linerCounterFlag  = 0b1000_0000uy
+    // $400B
+    let timerHiMask       = 0b0000_0111uy
     let lengthCounterMask = 0b1111_1000uy
 
   module NoiseBitMasks =
-
-    let volumeMask = 0b0000_1111uy
-    let envelopeFlag = 0b0001_0000uy
-    let envelopeLoopFlag = 0b0010_0000uy
-    let modeFlag = 0b1000_0000uy
-    let periodMask = 0b0000_1111uy
+    // $400C
+    let volumeMask        = 0b0000_1111uy
+    let envelopeMask      = 0b0000_1111uy
+    let envelopeFlag      = 0b0001_0000uy
+    let envelopeLoopFlag  = 0b0010_0000uy
+    let modeFlag          = 0b1000_0000uy
+    // $400E
+    let periodMask        = 0b0000_1111uy
     let lengthCounterMask = 0b1111_1000uy
+  
+  module DeltaModulationBitMasks =
+    // $4010
+    let irqEnabledFlag = 0b1000_0000uy
+    let loopFlag       = 0b0100_0000uy
+    let rateIndexMask  = 0b0000_1111uy
+    // $4011
+    let directLoadMask = 0b0111_1111uy
+
+  module StatusFlags =
+    // $4015 write
+    let deltaModulationEnable = 0b0001_0000uy
+    let noiseEnable           = 0b0000_1000uy
+    let triangleEnable        = 0b0000_0100uy
+    let pulse2Enable          = 0b0000_0010uy
+    let pulse1Enable          = 0b0000_0001uy
+    // $4015 read
+    let dmcInterrupt                        = 0b1000_0000uy
+    let frameInterrupt                      = 0b0100_0000uy
+    let deltaModulationActive               = 0b0001_0000uy
+    let noiseLengthCounterLargerThanZero    = 0b0000_1000uy
+    let triangleLengthCounterLargerThanZero = 0b0000_0100uy
+    let pulse2LengthCounterLargerThanZero   = 0b0000_0010uy
+    let pulse1LengthCounterLargerThanZero   = 0b0000_0001uy
+  
+  module FrameCounterFlags =
+    // $4017
+    // mode 0:    mode 1:       function
+    // ---------  -----------  -----------------------------
+    // - - - f    - - - - -    IRQ (if bit 6 is clear)
+    // - l - l    - l - - l    Length counter and sweep
+    // e e e e    e e e - e    Envelope and linear counter
+    let mode       = 0b1000_0000uy // 0 = 4-step, 1 = 5-step
+    let irqInhibit = 0b0100_0000uy
 
   type Pulse = {
     volumeTone: byte // Volume & duty cycle
@@ -37,6 +75,8 @@ module Registers =
     // timer は値が低いほど周波数が高くなる
     timerLo: byte
     timerHiLen: byte  // High bits of timer & length counter load
+
+    counter: byte
   }
 
   let defaultPulse = {
@@ -44,41 +84,60 @@ module Registers =
     sweep = 0uy
     timerLo = 0uy
     timerHiLen = 0uy
+
+    counter = 0uy
   }
 
   type Triangle = {
     linearCounterCtrl: byte
     timerLo: byte
     timerHiLen: byte
+
+    counter: byte
   }
 
   let defaultTriangle = {
     linearCounterCtrl = 0uy
     timerLo = 0uy
     timerHiLen = 0uy
+
+    counter = 0uy
   }
 
   type Noise = {
     volume: byte
     periodMode: byte
     length: byte
-    mutable shift: uint16
-    mutable phase: int
+
+    counter: byte
+    shift: uint16
+    phase: int
   }
   let defaultNoise = {
     volume = 0uy
     periodMode = 0uy
     length = 0uy
+
+    counter = 0uy
     shift = 1us
     phase = 0
   }
 
+
+  let hasFlag flag b = b &&& flag <> 0uy
+  let setFlag flag b = b ||| flag
+  let clearFlag flag b = b &&& (~~~flag)
+  let updateFlag flag condition b =
+    if condition then setFlag flag b else clearFlag flag b
   let volumePulse pulse = pulse.volumeTone &&& PulseBitMasks.volumeMask
 
   let volumeNoise noise = noise.volume &&& NoiseBitMasks.volumeMask
 
   /// 00: 12.5%, 01: 25%, 10: 50%, 11: 75%
   let duty pulse = pulse.volumeTone &&& PulseBitMasks.dutyCycleMask >>> 6
+
+  let lengthCounterPulse (pulse : Pulse) =
+    pulse.timerHiLen &&& PulseBitMasks.lengthCounterMask >>> 3
 
   let timerPulse (pulse: Pulse) =
     let lo = pulse.timerLo |> uint16
@@ -116,6 +175,7 @@ module Apu =
     triangle: Registers.Triangle
     noise: Registers.Noise
     // TODO: DPCM
+    status: byte
   }
 
   let initial = {
@@ -123,9 +183,33 @@ module Apu =
     pulse2 = Registers.defaultPulse
     triangle = Registers.defaultTriangle
     noise = Registers.defaultNoise
+    status = 0uy
   }
 
- 
+  /// TODO: DMC 関連の操作
+  let writeToStatus value apu =
+    let pulse1EnableCond = Registers.hasFlag Registers.StatusFlags.pulse1Enable value
+    let pulse2EnableCond = Registers.hasFlag Registers.StatusFlags.pulse2Enable value
+    let triEnableCond = Registers.hasFlag Registers.StatusFlags.triangleEnable value
+    let noiseEnableCond = Registers.hasFlag Registers.StatusFlags.noiseEnable value 
+
+    let pulse1Counter = if pulse1EnableCond then apu.pulse1.counter else 0uy
+    let pulse2Counter = if pulse2EnableCond then apu.pulse2.counter else 0uy
+    let triCounter = if triEnableCond then apu.triangle.counter else 0uy
+    let noiCounter = if noiseEnableCond then apu.noise.counter else 0uy
+
+    let status' =
+      value
+      |> Registers.clearFlag Registers.StatusFlags.dmcInterrupt
+
+    { apu with
+        pulse1.counter = pulse1Counter
+        pulse2.counter = pulse2Counter
+        triangle.counter = triCounter
+        noise.counter = noiCounter
+        status = status'
+    }
+
   let write addr value apu =
     match addr with
     // Ch1: 矩形波
@@ -161,10 +245,32 @@ module Apu =
     | 0x400Fus ->
       { apu with noise.length = value }
     | 0x4015us ->
-      // TODO: ステータスレジスタ
-      apu
+      // TODO: DMC 関連の処理
+      let apu' = writeToStatus value apu
+      apu'
     // TODO: DPCM
 
+    | _ ->
+      printfn "This APU register is not implemented yet. %04X" addr
+      apu
+  
+  let read addr apu =
+    match addr with
+    | 0x4015us -> // TODO: オープンバスの挙動
+      let noiCond = Registers.hasFlag Registers.StatusFlags.noiseEnable apu.status && apu.noise.counter > 0uy
+      let triCond = Registers.hasFlag Registers.StatusFlags.triangleEnable apu.status && apu.triangle.counter > 0uy
+      let p2Cond = Registers.hasFlag Registers.StatusFlags.pulse2Enable apu.status && apu.pulse2.counter > 0uy
+      let p1Cond = Registers.hasFlag Registers.StatusFlags.pulse1Enable apu.status && apu.pulse1.counter > 0uy
+      let status' =
+        apu.status
+        |> Registers.clearFlag Registers.StatusFlags.frameInterrupt
+        // TODO: DMC
+        // |> Registers.updateFlag Registers.StatusFlags.deltaModulationActive (dmcBytes > 0) 
+        |> Registers.updateFlag Registers.StatusFlags.noiseLengthCounterLargerThanZero noiCond
+        |> Registers.updateFlag Registers.StatusFlags.triangleLengthCounterLargerThanZero triCond
+        |> Registers.updateFlag Registers.StatusFlags.pulse2LengthCounterLargerThanZero p2Cond
+        |> Registers.updateFlag Registers.StatusFlags.pulse1LengthCounterLargerThanZero p1Cond
+      { apu with status = status' }
     | _ ->
       printfn "This APU register is not implemented yet. %04X" addr
       apu

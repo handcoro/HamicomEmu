@@ -10,9 +10,7 @@ open HamicomEmu.Platform.AudioEngine
 open Joypad
 
 open System
-open System.Threading
 open System.IO
-open System.Timers
 open FsToolkit.ErrorHandling
 open Expecto
 
@@ -62,8 +60,6 @@ type basicNesGame(loadedRom) as this =
   let mutable spriteBatch = Unchecked.defaultof<SpriteBatch>
   let mutable texture = Unchecked.defaultof<Texture2D>
   let mutable audioEngine = AudioEngine(sampleRate)
-  let mutable timeOffset = 0.0
-  let timer = new Timer(1000.0 / 60.0) // 60fps 相当 仮置き
 
   let raw = loadedRom
   let parsed = raw |> Result.bind parseRom
