@@ -66,16 +66,23 @@ module Bus =
     else
       let res = bus.ppu.nmiInterrupt
       { bus with ppu.nmiInterrupt = None }, res
-      
-  let tick cycle bus =
-    let cyc = bus.cycleTotal + uint cycle + bus.cyclePenalty
+
+  
+  let clearIrqStatus bus =
+    { bus with apu.irq = false }
+  
+  let isIrqAsserted bus = bus.apu.irq
+  
+  let tick n bus =
+    let cyc = bus.cycleTotal + uint n + bus.cyclePenalty
     let nmiBefore = bus.ppu.nmiInterrupt.IsSome
-    let ppu' = Ppu.tick (cycle * 3u) bus.ppu
+    let ppu' = Ppu.tick (n * 3u) bus.ppu
+    let apu' = Apu.tick n bus.apu
     let nmiAfter = ppu'.nmiInterrupt.IsSome
 
     // NMI の立ち上がり検出
     let nmiEdge = not nmiBefore && nmiAfter
-    let bus' = { bus with cycleTotal = cyc; cyclePenalty = 0u; ppu = ppu' }
+    let bus' = { bus with cycleTotal = cyc; cyclePenalty = 0u; ppu = ppu'; apu = apu' }
     
     bus', if nmiEdge then Some ppu' else None
 
@@ -184,10 +191,6 @@ module Bus =
     | 0x4016us -> // TODO: Joypad
       let joy = bus.joy1 |> writeJoypad value
       { bus with joy1 = joy }
-
-    | 0x4017us -> // TODO: APU Frame counter
-      printfn "Attempt to write APU frame counter."
-      bus
 
     | addr when addr |> inRange ApuRegisters.Begin ApuRegisters.End ->
       let apu = Apu.write addr value bus.apu

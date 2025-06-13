@@ -564,18 +564,36 @@ module Cpu =
   let sre mode cpu bus =
     (cpu, bus) ||> lsrInstr mode ||> logicalInstr EOR mode
 
+  /// 主に APU からの割り込み要求
+  let irq cpu bus =
+    if hasFlag Flags.I cpu.P then
+      cpu, bus
+    else
+      let cpu, bus =
+        (cpu, bus)
+        ||> push16 (cpu.PC + 1us)
+        ||> push cpu.P
+
+      let pc, bus' = Bus.memRead16 0xFFFEus bus // IRQ は 0xFFFE に飛ぶ
+      let p = cpu.P |> clearFlag Flags.B
+
+      let busF = Bus.clearIrqStatus bus' // 割り込み要求を消す
+
+      { cpu with P = p; PC = pc }, busF
+
   /// NMI 発生処理
   let interruptNmi cpu bus =
     let cpu', bus' = push16 cpu.PC cpu bus
-    let p = cpu.P |> clearFlag Flags.B
-    let p' = p |> setFlag Flags.U
+    let p =
+      cpu.P |> clearFlag Flags.B
+            |> setFlag Flags.U
 
-    let cpu2, bus2 = push p' cpu' bus'
-    let p2 = p' |> setFlag Flags.I
+    let cpu2, bus2 = push p cpu' bus'
+    let p' = p |> setFlag Flags.I
 
     let bus3 = fst (Bus.tick 2u bus2)
     let pc, busF = Bus.memRead16 0xFFFAus bus3
-    { cpu2 with P = p2; PC = pc }, busF
+    { cpu2 with P = p'; PC = pc }, busF
 
 
   let reset cpu bus =
@@ -656,6 +674,12 @@ module Cpu =
       match Bus.pollNmiStatus bus with
       | b, Some _ -> interruptNmi cpu b
       | b, None -> cpu, b
+
+    let cpu, bus = // IRQ
+      if Bus.isIrqAsserted bus then
+        irq cpu bus
+      else
+        cpu, bus
 
     let opcode, bus' = Bus.memRead cpu.PC bus
     let op, mode, size, cycles, penalty = decodeOpcode opcode
