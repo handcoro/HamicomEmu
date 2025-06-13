@@ -22,6 +22,11 @@ module Registers =
     let envelopeLoopFlag      = 0b0010_0000uy
     let lengthCounterHaltFlag = 0b0010_0000uy
     let dutyCycleMask         = 0b1100_0000uy
+    // $4001, $4005
+    let sweepFlag       = 0b1000_0000uy
+    let sweepPeriodMask = 0b0111_0000uy
+    let sweepNegateFlag = 0b0000_1000uy
+    let sweepShiftMask  = 0b0000_0111uy
     // $4003, $4007
     let timerHiMask       = 0b0000_0111uy
     let lengthCounterMask = 0b1111_1000uy
@@ -76,40 +81,76 @@ module Registers =
     let mode       = 0b1000_0000uy // 0 = 4-step, 1 = 5-step
     let irqInhibit = 0b0100_0000uy
 
-  type Envelope = {
-    envVolume: byte
-    mutable envDivider: byte
-    mutable envDecay: byte
-    mutable envStart: bool
+  let hasFlag flag b = b &&& flag <> 0uy
+  let setFlag flag b = b ||| flag
+  let clearFlag flag b = b &&& (~~~flag)
+  let updateFlag flag condition b =
+    if condition then setFlag flag b else clearFlag flag b
+
+  type EnvelopeState = {
+    volume: byte
+    mutable divider: byte
+    mutable decay: byte
+    mutable reload: bool
   }
 
-  let initEnvelope = {
-    envVolume = 0uy
-    envDivider = 0uy
-    envDecay = 0uy
-    envStart = false
+  let initialEnvelope = {
+    volume = 0uy
+    divider = 0uy
+    decay = 0uy
+    reload = false
   }
+
+  type SweepState = {
+    enabled: bool
+    negate: bool
+    period: byte
+    shift: byte
+    mutable reload: bool
+    mutable divider: byte
+  }
+
+  let initialSweep = {
+    enabled = false
+    negate = false
+    period = 0uy
+    shift = 0uy
+    reload = false
+    divider = 0uy
+  }
+
+  let parseSweep v = {
+    enabled = hasFlag PulseBitMasks.sweepFlag v
+    negate = hasFlag PulseBitMasks.sweepNegateFlag v
+    period = v &&& PulseBitMasks.sweepPeriodMask >>> 4
+    shift = v &&& PulseBitMasks.sweepShiftMask
+    reload = true
+    divider = 0uy
+  }
+
+  type PulseChannel =
+  | One | Two
 
   type Pulse = {
+    channel: PulseChannel
     volumeTone: byte // Volume & duty cycle
-    sweep: byte
+    sweep: SweepState
     // timer は値が低いほど周波数が高くなる
-    timerLo: byte
-    timerHiLen: byte  // High bits of timer & length counter load
+    timer: uint16
 
-    envelope: Envelope
+    envelope: EnvelopeState
 
     // 長さカウンタ内部状態
     lengthCounter: byte
   }
 
-  let defaultPulse = {
+  let initialPulse ch = {
+    channel = ch
     volumeTone = 0uy
-    sweep = 0uy
-    timerLo = 0uy
-    timerHiLen = 0uy
+    sweep = initialSweep
+    timer = 0us
 
-    envelope = initEnvelope
+    envelope = initialEnvelope
 
     lengthCounter = 1uy
   }
@@ -125,7 +166,7 @@ module Registers =
     lengthCounter: byte
   }
 
-  let defaultTriangle = {
+  let initialTriangle = {
     linearCounterCtrl = 0uy
     timerLo = 0uy
     timerHiLen = 0uy
@@ -139,51 +180,43 @@ module Registers =
   type Noise = {
     volume: byte
     periodMode: byte
-    length: byte
+    length: byte // 多分これは不要になる
 
-    envelope: Envelope
+    envelope: EnvelopeState
 
     lengthCounter: byte
     shift: uint16
     phase: int
   }
-  let defaultNoise = {
+  let initialNoise = {
     volume = 0uy
     periodMode = 0uy
     length = 0uy
 
-    envelope = initEnvelope
+    envelope = initialEnvelope
 
     lengthCounter = 1uy
     shift = 1us
     phase = 0
   }
 
-  type frameCounter = {
+  type FrameCounter = {
     irqInhibitMode: byte
   }
 
-  let defaultframeCounter = {
+  let initialFrameCounter = {
     irqInhibitMode = 0uy;
   }
-
-  let hasFlag flag b = b &&& flag <> 0uy
-  let setFlag flag b = b ||| flag
-  let clearFlag flag b = b &&& (~~~flag)
-  let updateFlag flag condition b =
-    if condition then setFlag flag b else clearFlag flag b
 
   let reloadEnvelope v = v &&& GeneralMasks.envelopeMask
 
   let hasLoopFlag v = hasFlag GeneralMasks.envelopeLoopFlag v
-  let volume ev v =
+  let volume (ev : EnvelopeState) v =
     let constant = hasFlag GeneralMasks.constantVolumeFlag v
     if constant then
       v &&& GeneralMasks.volumeMask
     else
-      ev.envVolume
-
-  let volumeNoise noise = noise.volume &&& NoiseBitMasks.volumeMask
+      ev.volume
 
   /// 00: 12.5%, 01: 25%, 10: 50%, 11: 75%
   let duty pulse = pulse.volumeTone &&& PulseBitMasks.dutyCycleMask >>> 6
@@ -207,10 +240,6 @@ module Registers =
 
   let hasControl (tri: Triangle) = hasFlag TriangleBitMasks.controlFlag tri.linearCounterCtrl
 
-  let timerPulse (pulse: Pulse) =
-    let lo = pulse.timerLo |> uint16
-    let hi = pulse.timerHiLen &&& PulseBitMasks.timerHiMask |> uint16 <<< 8
-    hi ||| lo
 
   let timerTriangle (tri: Triangle) =
     let lo = tri.timerLo |> uint16
@@ -239,25 +268,57 @@ module Registers =
   
 
   /// エンベロープを進める
-  let tickEnvelope ev reload loop =
+  let tickEnvelope (ev : EnvelopeState) reload loop =
     let vol =
-      if ev.envStart then
-        ev.envDivider <- reload
-        ev.envDecay <- 15uy
-        ev.envStart <- false
+      if ev.reload then
+        ev.divider <- reload
+        ev.decay <- 15uy
+        ev.reload <- false
         15uy
-      else if ev.envDivider = 0uy then // 分周器の励起
-        ev.envDivider <- reload
-        if ev.envDecay = 0uy then
+      else if ev.divider = 0uy then // 分周器の励起
+        ev.divider <- reload
+        if ev.decay = 0uy then
           if loop then 15uy else 0uy
         else
-          ev.envDecay <- ev.envDecay - 1uy
-          ev.envDecay
+          ev.decay <- ev.decay - 1uy
+          ev.decay
       else
-        ev.envDivider <- ev.envDivider - 1uy
-        ev.envDecay
+        ev.divider <- ev.divider - 1uy
+        ev.decay
 
-    { ev with envVolume = vol }
+    { ev with volume = vol }
+
+  let isMutedPulse (pulse : Pulse) = pulse.timer < 8us || pulse.timer > 0x7FFus
+
+  let tickSweep pulse =
+    let sw = pulse.sweep
+    let shouldSweep =
+      sw.enabled &&
+      sw.divider = 0uy &&
+      sw.shift <> 0uy &&
+      not (isMutedPulse pulse)
+
+    let newTimer =
+      if shouldSweep then
+        let delta = pulse.timer >>> int sw.shift
+        if sw.negate then
+          pulse.timer - delta - if pulse.channel = One then 1us else 0us
+        else
+          pulse.timer + delta
+      else
+        pulse.timer
+
+    if sw.reload || sw.divider = 0uy then
+      sw.divider <- sw.period
+      sw.reload <- false
+    else
+      sw.divider <- sw.divider - 1uy
+
+    if shouldSweep then
+      printfn "sweep: ch=%A timer=%A → %A (delta=%A neg=%A)" pulse.channel pulse.timer newTimer (pulse.timer >>> int sw.shift) sw.negate
+
+
+    { pulse with timer = newTimer }
 
   let tickLinearCounter tri =
     let counter =
@@ -309,19 +370,19 @@ module Apu =
     noise: Registers.Noise
     // TODO: DPCM
     status: byte
-    frameCounter: Registers.frameCounter
+    frameCounter: Registers.FrameCounter
     mutable cycle: uint
     mutable step: ApuStep
     irq: bool
   }
 
   let initial = {
-    pulse1 = Registers.defaultPulse
-    pulse2 = Registers.defaultPulse
-    triangle = Registers.defaultTriangle
-    noise = Registers.defaultNoise
+    pulse1 = Registers.initialPulse Registers.One
+    pulse2 = Registers.initialPulse Registers.Two
+    triangle = Registers.initialTriangle
+    noise = Registers.initialNoise
     status = 0uy
-    frameCounter = Registers.defaultframeCounter
+    frameCounter = Registers.initialFrameCounter
     cycle = 0u
     step = Step1
     irq = false
@@ -374,8 +435,16 @@ module Apu =
     }
 
   let tickLengthAndSweep apu =
-    let ch1 = Registers.tickLengthCounterPulse apu.pulse1
-    let ch2 = Registers.tickLengthCounterPulse apu.pulse2
+    let ch1 =
+      apu.pulse1
+      |> Registers.tickLengthCounterPulse
+      |> Registers.tickSweep
+
+    let ch2 =
+      apu.pulse2
+      |> Registers.tickLengthCounterPulse
+      |> Registers.tickSweep
+
     let ch3 = Registers.tickLengthCounterTriangle apu.triangle
     let ch4 = Registers.tickLengthCounterNoise apu.noise
 
@@ -419,10 +488,10 @@ module Apu =
   | Step4 -> Step5
   | Step5 -> Step1
 
-  let frameStepCycles = 7457u // これで割ることで 240Hz を表現する
+  let frameStepCycles = 7457u // 1 step のサイクル数
 
   /// APU のサイクルを進める
-  /// 4-step モードは 240Hz で 1 step 進む
+  /// 4-step モードは 240Hz で 1 フレーム
   let tick n apu =
     apu.cycle <- apu.cycle + n
 
@@ -472,22 +541,36 @@ module Apu =
     | 0x4000us ->
       { apu with pulse1.volumeTone = value }
     | 0x4001us ->
-      { apu with pulse1.sweep = value }
-    | 0x4002us ->
-      { apu with pulse1.timerLo = value }
-    | 0x4003us ->
+      { apu with pulse1.sweep = Registers.parseSweep value }
+    | 0x4002us -> // timer lo 部分の上書き
+      let v = (apu.pulse1.timer &&& (uint16 Registers.PulseBitMasks.timerHiMask <<< 8)) ||| uint16 value
+      { apu with pulse1.timer = v }
+    | 0x4003us -> // timer hi と長さカウンタ
+      let hi = uint16 (value &&& Registers.PulseBitMasks.timerHiMask) <<< 8
+      let timer = (apu.pulse1.timer &&& 0xFFus) ||| hi
       let c = Registers.lengthCounter value
-      { apu with pulse1.timerHiLen = value; pulse1.envelope.envStart = true; pulse1.lengthCounter = c }
+      { apu with
+          pulse1.timer = timer
+          pulse1.envelope.reload = true
+          pulse1.lengthCounter = c
+      }
     // Ch2: 矩形波
     | 0x4004us ->
       { apu with pulse2.volumeTone = value}
     | 0x4005us ->
-      { apu with pulse2.sweep = value }
+      { apu with pulse2.sweep = Registers.parseSweep value }
     | 0x4006us ->
-      { apu with pulse2.timerLo = value }
+      let v = (apu.pulse2.timer &&& (uint16 Registers.PulseBitMasks.timerHiMask <<< 8)) ||| uint16 value
+      { apu with pulse2.timer = v }
     | 0x4007us ->
+      let hi = uint16 (value &&& Registers.PulseBitMasks.timerHiMask) <<< 8
+      let timer = (apu.pulse2.timer &&& 0xFFus) ||| hi
       let c = Registers.lengthCounter value
-      { apu with pulse2.timerHiLen = value; pulse2.envelope.envStart = true; pulse2.lengthCounter = c }
+      { apu with
+          pulse2.timer = timer
+          pulse2.envelope.reload = true
+          pulse2.lengthCounter = c
+      }
     // Ch3: 三角波
     | 0x4008us ->
       { apu with triangle.linearCounterCtrl = value; triangle.linearReloadFlag = true }
@@ -503,7 +586,7 @@ module Apu =
       { apu with noise.periodMode = value }
     | 0x400Fus ->
       let c = Registers.lengthCounter value
-      { apu with noise.length = value; noise.envelope.envStart = true; noise.lengthCounter = c }
+      { apu with noise.length = value; noise.envelope.reload = true; noise.lengthCounter = c }
     | 0x4015us ->
       // TODO: DMC 関連の処理
       let apu' = writeToStatus value apu
@@ -552,9 +635,9 @@ module Apu =
   /// 矩形波出力
   /// TODO: スウィープ、ミュートによる位相のリセット
   let outputPulse t (pulse : Registers.Pulse) =
-    if pulse.lengthCounter = 0uy then 0.0f
+    if Registers.isMutedPulse pulse then 0.0f
     else
-      let timer = Registers.timerPulse pulse
+      let timer = pulse.timer
       let freq = Registers.freqPulseHz timer
       let duty = Registers.duty pulse
 
