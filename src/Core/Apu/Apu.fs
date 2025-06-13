@@ -288,7 +288,7 @@ module Registers =
 
     { ev with volume = vol }
 
-  let isMutedPulse (pulse : Pulse) = pulse.timer < 8us || pulse.timer > 0x7FFus
+  let isMutedPulse (pulse : Pulse) = pulse.lengthCounter = 0uy || pulse.timer < 8us || pulse.timer > 0x7FFus
 
   let tickSweep pulse =
     let sw = pulse.sweep
