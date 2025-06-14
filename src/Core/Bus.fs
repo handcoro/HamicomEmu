@@ -103,7 +103,7 @@ module Bus =
       // printfn "Attempt to read from write-only PPU address: %04X" addr
       0uy, bus
 
-    | 0x2002us -> // TODO: Status
+    | 0x2002us ->
       let beforePpu, ppu = Ppu.readFromStatusRegister bus.ppu
       beforePpu.status, { bus with ppu = ppu }
 
@@ -121,20 +121,23 @@ module Bus =
 
     | 0x4016us ->
       let data, joy = readJoypad bus.joy1
-      data, {bus with joy1 = joy}
+      data, { bus with joy1 = joy }
 
-    // | 0x4017us -> // TODO: Joypad
+    | 0x4017us -> // TODO: Joypad
     //   let data, joy = readJoypad bus.joy2
     //   data, {bus with joy2 = joy}
+      0uy, bus
 
     | addr when addr |> inRange ApuRegisters.Begin ApuRegisters.End ->
-      // printfn "APU is not implemented yet. addr: %04X" addr
-      0uy, bus
+      let data, apu = Apu.read addr bus.apu
+      data, { bus with apu = apu }
 
     | addr when addr |> inRange PrgRom.Begin PrgRom.End ->
       readPrgRom bus addr, bus
 
-    | _ -> failwithf "Invalid Memory access at: %04X" addr
+    | _ ->
+      printfn "Invalid Memory access at: %04X" addr
+      0uy, bus
 
   let rec memWrite addr value bus =
     match addr with

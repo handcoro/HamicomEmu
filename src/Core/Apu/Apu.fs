@@ -503,11 +503,12 @@ module Apu =
       let mode = if Registers.hasFlag Registers.FrameCounterFlags.mode apu.status then FiveStep else FourStep
       let apu' = runFrameStep apu.step mode apu
 
-      match apu.step, mode with
+      apu'.step <- nextStep apu.step
+
+      match apu'.step, mode with
       | Step4, FourStep | Step5, FiveStep -> apu'.step <- Step1
       | _ -> ()
 
-      apu.step <- nextStep apu.step
 
       apu'
 
@@ -588,10 +589,9 @@ module Apu =
       let c = Registers.lengthCounter value
       { apu with noise.length = value; noise.envelope.reload = true; noise.lengthCounter = c }
     | 0x4015us ->
-      // TODO: DMC 関連の処理
       let apu' = writeToStatus value apu
       apu'
-    // TODO: DPCM
+    // TODO: DMC (DPCM) 関連の処理
 
     | 0x4017us ->
       // * If the write occurs during an APU cycle, the effects occur 3 CPU cycles after the $4017 write cycle,
@@ -620,10 +620,10 @@ module Apu =
         |> Registers.updateFlag Registers.StatusFlags.triangleLengthCounterLargerThanZero triCond
         |> Registers.updateFlag Registers.StatusFlags.pulse2LengthCounterLargerThanZero p2Cond
         |> Registers.updateFlag Registers.StatusFlags.pulse1LengthCounterLargerThanZero p1Cond
-      { apu with status = status' }
+      status', { apu with status = status' }
     | _ ->
-      printfn "This APU register is not implemented yet. %04X" addr
-      apu
+      // printfn "This APU register is not implemented yet. %04X" addr
+      0uy, apu
 
   // TODO: 本当の出力は以下の通りなのでこのテーブルを参照したい
   // 0 1 0 0 0 0 0 0 （12.5%）
@@ -633,7 +633,7 @@ module Apu =
   let dutyTable = [| 0.125; 0.25; 0.5; 0.75 |]
 
   /// 矩形波出力
-  /// TODO: スウィープ、ミュートによる位相のリセット
+  /// TODO: ミュートによる位相のリセット
   let outputPulse t (pulse : Registers.Pulse) =
     if Registers.isMutedPulse pulse then 0.0f
     else
