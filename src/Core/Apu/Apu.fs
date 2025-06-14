@@ -142,6 +142,8 @@ module Registers =
 
     // 長さカウンタ内部状態
     lengthCounter: byte
+
+    phase: float
   }
 
   let initialPulse ch = {
@@ -153,6 +155,8 @@ module Registers =
     envelope = initialEnvelope
 
     lengthCounter = 1uy
+
+    phase = 0.0
   }
 
   type Triangle = {
@@ -164,6 +168,8 @@ module Registers =
     linearReloadFlag: bool
 
     lengthCounter: byte
+
+    phase: float
   }
 
   let initialTriangle = {
@@ -175,6 +181,8 @@ module Registers =
     linearReloadFlag = false
 
     lengthCounter = 1uy
+
+    phase = 0.0
   }
 
   type Noise = {
@@ -186,7 +194,7 @@ module Registers =
 
     lengthCounter: byte
     shift: uint16
-    phase: int
+    phase: float
   }
   let initialNoise = {
     volume = 0uy
@@ -197,7 +205,7 @@ module Registers =
 
     lengthCounter = 1uy
     shift = 1us
-    phase = 0
+    phase = 0.0
   }
 
   type FrameCounter = {
@@ -634,39 +642,49 @@ module Apu =
 
   /// 矩形波出力
   /// TODO: ミュートによる位相のリセット
-  let outputPulse t (pulse : Registers.Pulse) =
-    if Registers.isMutedPulse pulse then 0.0f
+  let outputPulse dt (pulse : Registers.Pulse) =
+    if Registers.isMutedPulse pulse then 0.0f, pulse
     else
       let timer = pulse.timer
       let freq = Registers.freqPulseHz timer
-      let duty = Registers.duty pulse
 
-      if freq = 0.0 then 0.0f
+      if freq = 0.0 then 0.0f, pulse
       else
         let period = 1.0 / float freq
-        let phase = (t % period) / period
-        let v = if phase < dutyTable[int duty] then 1.0 else -1.0
-        v * float (Registers.volume pulse.envelope pulse.volumeTone) / 15.0 |> float32
+        let newPhase = (pulse.phase + dt) % period
+        let phaseRatio = newPhase / period
 
-  let triangleTable =
-    [| 0 .. 31 |]
-    |> Array.map ( fun i ->
-      let v = if i < 16 then i else 31 - i
-      float32 (v - 15) / 15.0f // -1.0 - +1.0 正規化
-    )
+        let duty = Registers.duty pulse
+        let v = if phaseRatio < dutyTable[int duty] then 1.0 else -1.0
+        let volume = float (Registers.volume pulse.envelope pulse.volumeTone) / 15.0
+
+        let pulse' = { pulse with phase = newPhase }
+        float32 (v * volume), pulse'
+
+  let triangleTable : float32[] =
+    Array.append [|15.. -1 .. 0|] [|0..15|]
+    |> Array.map (fun x -> float32 x / 15.0f * 2.0f - 1.0f) // 正規化
 
   /// 三角波出力
   /// TODO: ミュートしてもゼロの出力にはしない、位相はリセットされない
-  let outputTriangle t (tri : Registers.Triangle ) =
-    if tri.lengthCounter = 0uy || tri.linearCounter = 0uy then 0.0f 
+  let outputTriangle dt (tri : Registers.Triangle ) =
+    let timer = Registers.timerTriangle tri
+    let freq = Registers.freqTriangleHz timer
+    if freq = 0.0 then 0.0f, tri
     else
-      let timer = Registers.timerTriangle tri
-      let freq = Registers.freqTriangleHz timer
-      if freq = 0.0 then 0.0f
-      else
-        let period = 1.0 / float freq
-        let index = int ((t % period) / period * 32.0) % 32
-        triangleTable[index]
+      let period = 1.0 / float freq
+
+      let isMuted = tri.lengthCounter = 0uy || tri.linearCounter = 0uy
+
+      let newPhase =
+        if isMuted then tri.phase // ミュート時は位相を維持する
+        else (tri.phase + dt) % period
+
+      let index = int (tri.phase / period * 32.0) % 32
+      let sample = triangleTable[index]
+
+      sample, { tri with phase = newPhase }
+      
 
   /// 除数インデックス
   let noisePeriods = 
@@ -682,37 +700,51 @@ module Apu =
   /// 以下の場合に出力:
   /// * シフトレジスタの bit 0 がセットされていない
   /// * 長さカウンタが 0 でない
-  let outputNoise t (noi: Registers.Noise) =
+  let outputNoise dt (noi: Registers.Noise) =
     if noi.lengthCounter = 0uy then 0.0f, noi
     else
       let index = noi.periodMode &&& Registers.NoiseBitMasks.periodMask |> int
       let freq = noiseFreqs[index]
       let period = 1.0 / freq
-      let phase = int (t / period)
 
-      let newShift, newPhase =
-        if phase <> noi.phase then
-          let shift = Registers.nextNoise noi.periodMode noi.shift
-          shift, phase
+      let newPhase = (noi.phase + dt) % period
+      let newShift =
+        if newPhase < noi.phase then
+          Registers.nextNoise noi.periodMode noi.shift
         else
-          noi.shift, noi.phase
+          noi.shift
 
       let bit = noi.shift &&& 1us
-      let out =
+      let sample =
         if bit = 0us then
           float (Registers.volume noi.envelope noi.volume) / 15.0
         else
           0.0
       let noi' = { noi with shift = newShift; phase = newPhase }
-      float32 out, noi'
+      float32 sample, noi'
 
 
   /// 1 サンプル合成出力
-  let mix t apu =
-    let ch1 = outputPulse t apu.pulse1
-    let ch2 = outputPulse t apu.pulse2
-    let ch3 = outputTriangle t apu.triangle
-    let ch4, noi = outputNoise t apu.noise
+  // let mix t apu =
+  //   let ch1 = outputPulse t apu.pulse1
+  //   let ch2 = outputPulse t apu.pulse2
+  //   let ch3, tri = outputTriangle t apu.triangle
+  //   let ch4, noi = outputNoise t apu.noise
 
-    // ボリューム平均化
-    (ch1 + ch2 + ch3 + ch4) * 0.25f, { apu with noise = noi }
+  //   // ボリューム平均化
+  //   (ch1 + ch2 + ch3 + ch4) * 0.25f, { apu with triangle = tri; noise = noi }
+
+/// 1 サンプル合成出力（dtベース）
+  let mix (dt: float) apu =
+    let ch1, pu1 = outputPulse dt apu.pulse1
+    let ch2, pu2 = outputPulse dt apu.pulse2
+    let ch3, tri = outputTriangle dt apu.triangle
+    let ch4, noi = outputNoise dt apu.noise
+
+    let sample = (ch1 + ch2 + ch3 + ch4) * 0.25f
+    sample, { apu with
+                pulse1 = pu1
+                pulse2 = pu2
+                triangle = tri
+                noise = noi
+            }

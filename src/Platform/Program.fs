@@ -56,6 +56,7 @@ type basicNesGame(loadedRom) as this =
   inherit Game()
   let scale = 4
   let sampleRate = 44100
+  let mutable prevT = 0.0
   let graphics = new GraphicsDeviceManager(this)
   let mutable spriteBatch = Unchecked.defaultof<SpriteBatch>
   let mutable texture = Unchecked.defaultof<Texture2D>
@@ -113,9 +114,12 @@ type basicNesGame(loadedRom) as this =
       let cpu', bus' = (cpu, bus) ||> Cpu.step
       cpu <- cpu'
       bus <- bus'
+    
 
     let generator t =
-      let sample, apu' = Apu.mix t bus.apu
+      let dt = t - prevT
+      prevT <- t
+      let sample, apu' = Apu.mix dt bus.apu
       bus <- { bus with apu = apu' }
       sample
 
