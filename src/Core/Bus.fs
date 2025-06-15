@@ -5,6 +5,7 @@ module Bus =
   open HamicomEmu.Cartridge
   open HamicomEmu.Ppu.Types
   open HamicomEmu.Ppu
+  open HamicomEmu.Apu.Types
   open HamicomEmu.Apu
   open Joypad
 
@@ -28,7 +29,7 @@ module Bus =
     cpuVram: byte array // 0x0000 - 0x1FFF
     rom: Rom
     ppu: PpuState
-    apu: Apu.ApuState
+    apu: ApuState
     joy1: Joypad
     joy2: Joypad
     cycleTotal: uint

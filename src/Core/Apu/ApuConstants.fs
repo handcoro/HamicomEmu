@@ -1,0 +1,83 @@
+namespace HamicomEmu.Apu
+
+module Constants =
+  let cpuClockNTSC = 1_789_773.0 // NTSC NES の CPU クロック
+
+module GeneralMasks =
+  // 矩形波とノイズ共通
+  let volumeMask   = 0b0000_1111uy
+  let envelopeMask = 0b0000_1111uy
+  let constantVolumeFlag    = 0b0001_0000uy
+  let envelopeLoopFlag      = 0b0010_0000uy
+  let lengthCounterHaltFlag = 0b0010_0000uy
+  
+  // 矩形波と三角波とノイズ共通
+  let lengthCounterMask = 0b1111_1000uy
+  let timerHiMask       = 0b0000_0111uy
+
+module PulseBitMasks =
+  // $4000, $4004
+  let volumeMask            = 0b0000_1111uy
+  let envelopeMask          = 0b0000_1111uy
+  let constantVolumeFlag    = 0b0001_0000uy
+  let envelopeLoopFlag      = 0b0010_0000uy
+  let lengthCounterHaltFlag = 0b0010_0000uy
+  let dutyCycleMask         = 0b1100_0000uy
+  // $4001, $4005
+  let sweepFlag       = 0b1000_0000uy
+  let sweepPeriodMask = 0b0111_0000uy
+  let sweepNegateFlag = 0b0000_1000uy
+  let sweepShiftMask  = 0b0000_0111uy
+  // $4003, $4007
+  let timerHiMask       = 0b0000_0111uy
+  let lengthCounterMask = 0b1111_1000uy
+
+module TriangleBitMasks =
+  // $4008
+  let linearCounterMask     = 0b0111_1111uy
+  let controlFlag           = 0b1000_0000uy
+  let lengthCounterHaltFlag = 0b1000_0000uy
+  // $400B
+  let timerHiMask       = 0b0000_0111uy
+  let lengthCounterMask = 0b1111_1000uy
+
+module NoiseBitMasks =
+  // $400C
+  let volumeMask            = 0b0000_1111uy
+  let envelopeMask          = 0b0000_1111uy
+  let constantVolumeFlag    = 0b0001_0000uy
+  let envelopeLoopFlag      = 0b0010_0000uy
+  let lengthCounterHaltFlag = 0b0010_0000uy
+  let modeFlag              = 0b1000_0000uy
+  // $400E
+  let periodMask        = 0b0000_1111uy
+  let lengthCounterMask = 0b1111_1000uy
+
+module DeltaModulationBitMasks =
+  // $4010
+  let irqEnabledFlag = 0b1000_0000uy
+  let loopFlag       = 0b0100_0000uy
+  let rateIndexMask  = 0b0000_1111uy
+  // $4011
+  let directLoadMask = 0b0111_1111uy
+
+module StatusFlags =
+  // $4015 write
+  let deltaModulationEnable = 0b0001_0000uy
+  let noiseEnable           = 0b0000_1000uy
+  let triangleEnable        = 0b0000_0100uy
+  let pulse2Enable          = 0b0000_0010uy
+  let pulse1Enable          = 0b0000_0001uy
+  // $4015 read
+  let dmcInterrupt                        = 0b1000_0000uy
+  let frameInterrupt                      = 0b0100_0000uy
+  let deltaModulationActive               = 0b0001_0000uy
+  let noiseLengthCounterLargerThanZero    = 0b0000_1000uy
+  let triangleLengthCounterLargerThanZero = 0b0000_0100uy
+  let pulse2LengthCounterLargerThanZero   = 0b0000_0010uy
+  let pulse1LengthCounterLargerThanZero   = 0b0000_0001uy
+
+module FrameCounterFlags =
+  // $4017
+  let mode       = 0b1000_0000uy // 0 = 4-step, 1 = 5-step
+  let irqInhibit = 0b0100_0000uy
