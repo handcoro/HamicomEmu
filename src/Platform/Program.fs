@@ -56,7 +56,7 @@ type basicNesGame(loadedRom) as this =
   inherit Game()
   let scale = 4
   let sampleRate = 44100
-  let mutable prevT = 0.0
+  let mutable prevT = 0.0 // 音声の時間差分計算用
   let graphics = new GraphicsDeviceManager(this)
   let mutable spriteBatch = Unchecked.defaultof<SpriteBatch>
   let mutable texture = Unchecked.defaultof<Texture2D>

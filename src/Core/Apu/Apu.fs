@@ -5,14 +5,18 @@ module ApuConstants =
 
 module Registers =
 
-  /// 矩形波とノイズ共通
+
   module GeneralMasks =
+    // 矩形波とノイズ共通
     let volumeMask   = 0b0000_1111uy
     let envelopeMask = 0b0000_1111uy
     let constantVolumeFlag    = 0b0001_0000uy
     let envelopeLoopFlag      = 0b0010_0000uy
     let lengthCounterHaltFlag = 0b0010_0000uy
+    
+    // 矩形波と三角波とノイズ共通
     let lengthCounterMask = 0b1111_1000uy
+    let timerHiMask       = 0b0000_0111uy
 
   module PulseBitMasks =
     // $4000, $4004
@@ -133,7 +137,11 @@ module Registers =
 
   type Pulse = {
     channel: PulseChannel
-    volumeTone: byte // Volume & duty cycle
+    volume: byte
+    duty: byte
+    isLoopAndLengthCounterHalt: bool // エンベロープのループと長さカウンタ停止フラグ兼用
+    isConstant: bool
+
     sweep: SweepState
     // timer は値が低いほど周波数が高くなる
     timer: uint16
@@ -148,7 +156,11 @@ module Registers =
 
   let initialPulse ch = {
     channel = ch
-    volumeTone = 0uy
+    volume = 0uy
+    duty = 0uy
+    isLoopAndLengthCounterHalt = false
+    isConstant = false
+
     sweep = initialSweep
     timer = 0us
 
@@ -160,9 +172,10 @@ module Registers =
   }
 
   type Triangle = {
-    linearCounterCtrl: byte
-    timerLo: byte
-    timerHiLen: byte
+    linearCounterLoad: byte
+    isLinearCtrlAndLengthCounterHalt: bool
+
+    timer: uint16
 
     linearCounter: byte
     linearReloadFlag: bool
@@ -173,9 +186,10 @@ module Registers =
   }
 
   let initialTriangle = {
-    linearCounterCtrl = 0uy
-    timerLo = 0uy
-    timerHiLen = 0uy
+    linearCounterLoad = 0uy
+    isLinearCtrlAndLengthCounterHalt = false
+
+    timer = 0us
 
     linearCounter = 0uy
     linearReloadFlag = false
@@ -187,8 +201,11 @@ module Registers =
 
   type Noise = {
     volume: byte
-    periodMode: byte
-    length: byte // 多分これは不要になる
+    isLoopAndLengthCounterHalt : bool
+    isConstant : bool
+
+    periodIndex: byte
+    isShortMode: bool
 
     envelope: EnvelopeState
 
@@ -198,8 +215,11 @@ module Registers =
   }
   let initialNoise = {
     volume = 0uy
-    periodMode = 0uy
-    length = 0uy
+    isLoopAndLengthCounterHalt = false
+    isConstant = false
+
+    periodIndex = 0uy
+    isShortMode = false
 
     envelope = initialEnvelope
 
@@ -216,19 +236,10 @@ module Registers =
     irqInhibitMode = 0uy;
   }
 
-  let reloadEnvelope v = v &&& GeneralMasks.envelopeMask
-
   let hasLoopFlag v = hasFlag GeneralMasks.envelopeLoopFlag v
-  let volume (ev : EnvelopeState) v =
-    let constant = hasFlag GeneralMasks.constantVolumeFlag v
-    if constant then
-      v &&& GeneralMasks.volumeMask
-    else
-      ev.volume
 
   /// 00: 12.5%, 01: 25%, 10: 50%, 11: 75%
-  let duty pulse = pulse.volumeTone &&& PulseBitMasks.dutyCycleMask >>> 6
-
+  let parseDuty v = v &&& PulseBitMasks.dutyCycleMask >>> 6
   let lengthTable = [|
     10uy; 254uy; 20uy;  2uy; 40uy;  4uy; 80uy;  6uy;
     160uy; 8uy; 60uy; 10uy; 14uy; 12uy; 26uy; 14uy;
@@ -236,22 +247,47 @@ module Registers =
     192uy; 24uy; 72uy; 26uy; 16uy; 28uy; 32uy; 30uy
   |]
 
-  let lengthCounter v = lengthTable[int v >>> 3]
+  let parseLengthCounter v = lengthTable[int v >>> 3]
  
-  let isLengthHaltPulse (pulse : Pulse) = hasFlag PulseBitMasks.lengthCounterHaltFlag pulse.volumeTone
-
-  let isLengthHaltTriangle (tri : Triangle) = hasFlag TriangleBitMasks.lengthCounterHaltFlag tri.linearCounterCtrl
-
-  let isLengthHaltNoise (noi : Noise) = hasFlag NoiseBitMasks.lengthCounterHaltFlag noi.volume
-
-  let reloadLinearCounter (tri : Triangle) = tri.linearCounterCtrl &&& TriangleBitMasks.linearCounterMask
-
-  let hasControl (tri: Triangle) = hasFlag TriangleBitMasks.controlFlag tri.linearCounterCtrl
 
 
-  let timerTriangle (tri: Triangle) =
-    let lo = tri.timerLo |> uint16
-    let hi = tri.timerHiLen &&& TriangleBitMasks.timerHiMask |> uint16 <<< 8
+  let parseVolumeControlPulse (pulse : Pulse) v =
+    { pulse with
+        volume = PulseBitMasks.volumeMask &&& v
+        duty = parseDuty v
+        isConstant = hasFlag PulseBitMasks.constantVolumeFlag v
+        isLoopAndLengthCounterHalt = hasFlag PulseBitMasks.lengthCounterHaltFlag v
+    }
+
+  let parselinearCounterTriangle v = TriangleBitMasks.linearCounterMask &&& v
+
+  let parseControlTriangle v = hasFlag TriangleBitMasks.controlFlag v
+
+  let isLengthHaltTriangle (tri : Triangle) = tri.isLinearCtrlAndLengthCounterHalt
+
+  let hasControlTriangle (tri: Triangle) = tri.isLinearCtrlAndLengthCounterHalt
+  
+  let parseVolumeControlNoise (noise : Noise) v =
+    { noise with
+        volume = NoiseBitMasks.volumeMask &&& v
+        isConstant = hasFlag NoiseBitMasks.constantVolumeFlag v
+        isLoopAndLengthCounterHalt = hasFlag NoiseBitMasks.lengthCounterHaltFlag v
+    }
+  
+  let parsePeriodIndexNoise v = NoiseBitMasks.periodMask &&& v
+
+  let parseModeNoise v = hasFlag NoiseBitMasks.modeFlag v
+
+  /// タイマーの下位 8 ビットを更新
+  let updateTimerLo timer lo =
+    let hi = timer &&& (uint16 PulseBitMasks.timerHiMask <<< 8)
+    let lo = uint16 lo
+    hi ||| lo
+
+  /// タイマーの上位 3 ビットを更新
+  let updateTimerHi timer hi =
+    let hi = hi &&& GeneralMasks.timerHiMask |> uint16 <<< 8
+    let lo = timer &&& 0xFFus
     hi ||| lo
 
   let freqPulseHz timer =
@@ -261,19 +297,7 @@ module Registers =
   let freqTriangleHz timer =
     ApuConstants.cpuClockNTSC / (32.0 * float (timer + 1us))
 
-  let isShortFreq v = v &&& NoiseBitMasks.modeFlag <> 0uy
-
   let isIrqInhibited v = hasFlag FrameCounterFlags.irqInhibit v
-
-  /// ノイズ生成
-  /// シフトレジスタをいじって疑似乱数を生む
-  let nextNoise periodMode shift =
-    let x = if isShortFreq periodMode then 6 else 1 // 比較するビットを周期モードによって変える
-    let feedback = (shift &&& 1us) ^^^ (shift >>> x &&& 1us)
-    let shifted = shift >>> 1
-    let newShift = feedback <<< 14 ||| shifted
-    newShift
-  
 
   /// エンベロープを進める
   let tickEnvelope (ev : EnvelopeState) reload loop =
@@ -298,6 +322,8 @@ module Registers =
 
   let isMutedPulse (pulse : Pulse) = pulse.lengthCounter = 0uy || pulse.timer < 8us || pulse.timer > 0x7FFus
 
+  /// スウィープ
+  /// ミュートされてても分周器は進む
   let tickSweep pulse =
     let sw = pulse.sweep
     let shouldSweep =
@@ -322,22 +348,21 @@ module Registers =
     else
       sw.divider <- sw.divider - 1uy
 
-    if shouldSweep then
-      printfn "sweep: ch=%A timer=%A → %A (delta=%A neg=%A)" pulse.channel pulse.timer newTimer (pulse.timer >>> int sw.shift) sw.negate
-
+    // if shouldSweep then
+    //   printfn "sweep: ch=%A timer=%A → %A (delta=%A neg=%A)" pulse.channel pulse.timer newTimer (pulse.timer >>> int sw.shift) sw.negate
 
     { pulse with timer = newTimer }
 
   let tickLinearCounter tri =
     let counter =
       if tri.linearReloadFlag then
-        reloadLinearCounter tri
+        tri.linearCounterLoad
       elif tri.linearCounter > 0uy then
         tri.linearCounter - 1uy
       else 0uy
 
     let reloadFlag =
-      if hasControl tri then tri.linearReloadFlag
+      if hasControlTriangle tri then tri.linearReloadFlag
       else false
 
     { tri with
@@ -345,7 +370,7 @@ module Registers =
         linearReloadFlag = reloadFlag }
 
   let tickLengthCounterPulse (ch : Pulse) =
-    if not (isLengthHaltPulse ch) && ch.lengthCounter > 0uy then
+    if not ch.isLoopAndLengthCounterHalt && ch.lengthCounter > 0uy then
       { ch with lengthCounter = ch.lengthCounter - 1uy }
     else
       ch
@@ -357,7 +382,7 @@ module Registers =
       ch
   
   let tickLengthCounterNoise (ch : Noise) =
-    if not (isLengthHaltNoise ch) && ch.lengthCounter > 0uy then
+    if not ch.isLoopAndLengthCounterHalt && ch.lengthCounter > 0uy then
       { ch with lengthCounter = ch.lengthCounter - 1uy }
     else
       ch
@@ -422,18 +447,11 @@ module Apu =
     }
 
   let tickEnvelopeAndLinear apu =
-    let ch1Rld = Registers.reloadEnvelope apu.pulse1.volumeTone
-    let ch1Loop = Registers.hasLoopFlag apu.pulse1.volumeTone
-    let ch2Rld = Registers.reloadEnvelope apu.pulse2.volumeTone
-    let ch2Loop = Registers.hasLoopFlag apu.pulse2.volumeTone
 
-    let ch4Rld = Registers.reloadEnvelope apu.noise.volume
-    let ch4Loop = Registers.hasLoopFlag apu.noise.volume
-
-    let ch1Ev = Registers.tickEnvelope apu.pulse1.envelope ch1Rld ch1Loop
-    let ch2Ev = Registers.tickEnvelope apu.pulse2.envelope ch2Rld ch2Loop
+    let ch1Ev = Registers.tickEnvelope apu.pulse1.envelope apu.pulse1.volume apu.pulse1.isLoopAndLengthCounterHalt
+    let ch2Ev = Registers.tickEnvelope apu.pulse2.envelope apu.pulse2.volume apu.pulse2.isLoopAndLengthCounterHalt
     let ch3 = Registers.tickLinearCounter apu.triangle
-    let ch4Ev = Registers.tickEnvelope apu.noise.envelope ch4Rld ch4Loop
+    let ch4Ev = Registers.tickEnvelope apu.noise.envelope apu.noise.volume apu.noise.isLoopAndLengthCounterHalt
 
     { apu with
         pulse1.envelope = ch1Ev
@@ -517,7 +535,6 @@ module Apu =
       | Step4, FourStep | Step5, FiveStep -> apu'.step <- Step1
       | _ -> ()
 
-
       apu'
 
   let rec tickNTimes n apu =
@@ -548,16 +565,15 @@ module Apu =
     match addr with
     // Ch1: 矩形波
     | 0x4000us ->
-      { apu with pulse1.volumeTone = value }
+      { apu with pulse1 = Registers.parseVolumeControlPulse apu.pulse1 value }
     | 0x4001us ->
       { apu with pulse1.sweep = Registers.parseSweep value }
     | 0x4002us -> // timer lo 部分の上書き
-      let v = (apu.pulse1.timer &&& (uint16 Registers.PulseBitMasks.timerHiMask <<< 8)) ||| uint16 value
-      { apu with pulse1.timer = v }
+      let timer = Registers.updateTimerLo apu.pulse1.timer value
+      { apu with pulse1.timer = timer }
     | 0x4003us -> // timer hi と長さカウンタ
-      let hi = uint16 (value &&& Registers.PulseBitMasks.timerHiMask) <<< 8
-      let timer = (apu.pulse1.timer &&& 0xFFus) ||| hi
-      let c = Registers.lengthCounter value
+      let timer = Registers.updateTimerHi apu.pulse1.timer value
+      let c = Registers.parseLengthCounter value
       { apu with
           pulse1.timer = timer
           pulse1.envelope.reload = true
@@ -565,16 +581,15 @@ module Apu =
       }
     // Ch2: 矩形波
     | 0x4004us ->
-      { apu with pulse2.volumeTone = value}
+      { apu with pulse2 = Registers.parseVolumeControlPulse apu.pulse2 value}
     | 0x4005us ->
       { apu with pulse2.sweep = Registers.parseSweep value }
     | 0x4006us ->
-      let v = (apu.pulse2.timer &&& (uint16 Registers.PulseBitMasks.timerHiMask <<< 8)) ||| uint16 value
-      { apu with pulse2.timer = v }
+      let timer = Registers.updateTimerLo apu.pulse2.timer value
+      { apu with pulse2.timer = timer }
     | 0x4007us ->
-      let hi = uint16 (value &&& Registers.PulseBitMasks.timerHiMask) <<< 8
-      let timer = (apu.pulse2.timer &&& 0xFFus) ||| hi
-      let c = Registers.lengthCounter value
+      let timer = Registers.updateTimerHi apu.pulse2.timer value
+      let c = Registers.parseLengthCounter value
       { apu with
           pulse2.timer = timer
           pulse2.envelope.reload = true
@@ -582,20 +597,35 @@ module Apu =
       }
     // Ch3: 三角波
     | 0x4008us ->
-      { apu with triangle.linearCounterCtrl = value; triangle.linearReloadFlag = true }
+      { apu with
+          triangle.linearCounterLoad = Registers.parselinearCounterTriangle value
+          triangle.isLinearCtrlAndLengthCounterHalt = Registers.parseControlTriangle value
+          triangle.linearReloadFlag = true
+      }
     | 0x400Aus ->
-      { apu with triangle.timerLo = value }
+      let timer = Registers.updateTimerLo apu.triangle.timer value
+      { apu with triangle.timer = timer }
     | 0x400Bus ->
-      let c = Registers.lengthCounter value
-      { apu with triangle.timerHiLen = value; triangle.lengthCounter = c }
+      let c = Registers.parseLengthCounter value
+      let timer = Registers.updateTimerHi apu.triangle.timer value
+      { apu with
+          triangle.timer = timer
+          triangle.lengthCounter = c
+          triangle.linearReloadFlag = true
+      }
     // Ch4: ノイズ
     | 0x400Cus ->
-      { apu with noise.volume = value }
+      { apu with noise = Registers.parseVolumeControlNoise apu.noise value }
     | 0x400Eus ->
-      { apu with noise.periodMode = value }
+      let pIdx = Registers.parsePeriodIndexNoise value
+      let mode = Registers.parseModeNoise value
+      { apu with noise.periodIndex = pIdx; noise.isShortMode = mode }
     | 0x400Fus ->
-      let c = Registers.lengthCounter value
-      { apu with noise.length = value; noise.envelope.reload = true; noise.lengthCounter = c }
+      let c = Registers.parseLengthCounter value
+      { apu with
+          noise.envelope.reload = true
+          noise.lengthCounter = c
+      }
     | 0x4015us ->
       let apu' = writeToStatus value apu
       apu'
@@ -633,43 +663,45 @@ module Apu =
       // printfn "This APU register is not implemented yet. %04X" addr
       0uy, apu
 
-  // TODO: 本当の出力は以下の通りなのでこのテーブルを参照したい
-  // 0 1 0 0 0 0 0 0 （12.5%）
-  // 0 1 1 0 0 0 0 0 （25%）
-  // 0 1 1 1 1 0 0 0 （50%）
-  // 1 0 0 1 1 1 1 1 （25% 反転） 
-  let dutyTable = [| 0.125; 0.25; 0.5; 0.75 |]
+  let pulseDutyTable : int[][] = [|
+    [| 0;1;0;0;0;0;0;0 |]; // 12.5%
+    [| 0;1;1;0;0;0;0;0 |]; // 25%
+    [| 0;1;1;1;1;0;0;0 |]; // 50%
+    [| 1;0;0;1;1;1;1;1 |]; // 25% negated
+  |]
 
   /// 矩形波出力
-  /// TODO: ミュートによる位相のリセット
+  /// TODO: ミュートによる位相のリセットをするかどうかは後で決めたい
   let outputPulse dt (pulse : Registers.Pulse) =
-    if Registers.isMutedPulse pulse then 0.0f, pulse
+    let freq = Registers.freqPulseHz pulse.timer
+    if freq = 0.0 then 0.0f, pulse
     else
-      let timer = pulse.timer
-      let freq = Registers.freqPulseHz timer
+      let period = 1.0 / freq
+      let dutyIndex = int pulse.duty &&& 0b11
 
-      if freq = 0.0 then 0.0f, pulse
-      else
-        let period = 1.0 / float freq
-        let newPhase = (pulse.phase + dt) % period
-        let phaseRatio = newPhase / period
+      let isMuted = Registers.isMutedPulse pulse
 
-        let duty = Registers.duty pulse
-        let v = if phaseRatio < dutyTable[int duty] then 1.0 else -1.0
-        let volume = float (Registers.volume pulse.envelope pulse.volumeTone) / 15.0
+      let newPhase =
+        if isMuted then pulse.phase
+        else (pulse.phase + dt) % period
 
-        let pulse' = { pulse with phase = newPhase }
-        float32 (v * volume), pulse'
+      let step = int (pulse.phase / period * 8.0) % 8
+      let bit = pulseDutyTable[dutyIndex][step]
+
+      let sample =
+        if bit = 1 then
+          float (if pulse.isConstant then pulse.volume else pulse.envelope.volume) / 15.0
+        else
+          0.0
+      float32 sample, { pulse with phase = newPhase }
 
   let triangleTable : float32[] =
     Array.append [|15.. -1 .. 0|] [|0..15|]
     |> Array.map (fun x -> float32 x / 15.0f * 2.0f - 1.0f) // 正規化
 
   /// 三角波出力
-  /// TODO: ミュートしてもゼロの出力にはしない、位相はリセットされない
   let outputTriangle dt (tri : Registers.Triangle ) =
-    let timer = Registers.timerTriangle tri
-    let freq = Registers.freqTriangleHz timer
+    let freq = Registers.freqTriangleHz tri.timer
     if freq = 0.0 then 0.0f, tri
     else
       let period = 1.0 / float freq
@@ -696,6 +728,16 @@ module Apu =
 
   let noiseFreqs = generateNoiseFreqTable ApuConstants.cpuClockNTSC
 
+
+  /// ノイズ生成
+  /// シフトレジスタをいじって疑似乱数を生む
+  let nextNoise shift isShortMode =
+    let x = if isShortMode then 6 else 1 // 比較するビットを周期モードによって変える
+    let feedback = (shift &&& 1us) ^^^ (shift >>> x &&& 1us)
+    let shifted = shift >>> 1
+    let newShift = feedback <<< 14 ||| shifted
+    newShift
+
   /// ノイズチャンネルの 1 サンプルを生成する
   /// 以下の場合に出力:
   /// * シフトレジスタの bit 0 がセットされていない
@@ -703,36 +745,25 @@ module Apu =
   let outputNoise dt (noi: Registers.Noise) =
     if noi.lengthCounter = 0uy then 0.0f, noi
     else
-      let index = noi.periodMode &&& Registers.NoiseBitMasks.periodMask |> int
+      let index = noi.periodIndex |> int
       let freq = noiseFreqs[index]
       let period = 1.0 / freq
 
       let newPhase = (noi.phase + dt) % period
       let newShift =
         if newPhase < noi.phase then
-          Registers.nextNoise noi.periodMode noi.shift
+          nextNoise noi.shift noi.isShortMode
         else
           noi.shift
 
       let bit = noi.shift &&& 1us
       let sample =
         if bit = 0us then
-          float (Registers.volume noi.envelope noi.volume) / 15.0
+          float (if noi.isConstant then noi.volume else noi.envelope.volume) / 15.0
         else
           0.0
       let noi' = { noi with shift = newShift; phase = newPhase }
       float32 sample, noi'
-
-
-  /// 1 サンプル合成出力
-  // let mix t apu =
-  //   let ch1 = outputPulse t apu.pulse1
-  //   let ch2 = outputPulse t apu.pulse2
-  //   let ch3, tri = outputTriangle t apu.triangle
-  //   let ch4, noi = outputNoise t apu.noise
-
-  //   // ボリューム平均化
-  //   (ch1 + ch2 + ch3 + ch4) * 0.25f, { apu with triangle = tri; noise = noi }
 
 /// 1 サンプル合成出力（dtベース）
   let mix (dt: float) apu =
