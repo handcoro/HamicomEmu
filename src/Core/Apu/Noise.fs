@@ -5,7 +5,7 @@ module Noise =
   open HamicomEmu.Apu.Types
 
 
-  let tickLengthCounter (noi : NoiseChannel) =
+  let tickLengthCounter (noi : NoiseState) =
     if not noi.loopAndHalt && noi.lengthCounter > 0uy then
       { noi with lengthCounter = noi.lengthCounter - 1uy }
     else
@@ -34,7 +34,7 @@ module Noise =
   /// 以下の場合に出力:
   /// * シフトレジスタの bit 0 がセットされていない
   /// * 長さカウンタが 0 でない
-  let output dt (noi: NoiseChannel) =
+  let output dt (noi: NoiseState) =
     if noi.lengthCounter = 0uy then 0.0f, noi
     else
       let index = noi.periodIndex |> int

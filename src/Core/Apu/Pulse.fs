@@ -4,7 +4,7 @@ module Pulse =
 
   open HamicomEmu.Apu.Types
 
-  let isMuted (pul : PulseChannel) =
+  let isMuted (pul : PulseState) =
     pul.lengthCounter = 0uy || pul.timer < 8us || pul.timer > 0x7FFus
 
   /// スウィープ
@@ -38,7 +38,7 @@ module Pulse =
 
     { pulse with timer = newTimer }
 
-  let tickLengthCounter (p: PulseChannel) =
+  let tickLengthCounter (p: PulseState) =
     if not p.loopAndHalt && p.lengthCounter > 0uy then
       { p with lengthCounter = p.lengthCounter - 1uy }
     else
@@ -57,7 +57,7 @@ module Pulse =
 
   /// 矩形波出力
   /// TODO: ミュートによる位相のリセットをするかどうかは後で決めたい
-  let output dt (pulse : PulseChannel) =
+  let output dt (pulse : PulseState) =
     let freq = freqPulseHz pulse.timer
     if freq = 0.0 then 0.0f, pulse
     else

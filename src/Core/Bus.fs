@@ -34,6 +34,7 @@ module Bus =
     joy2: Joypad
     cycleTotal: uint
     cyclePenalty: uint
+    oamDmaCyclesRemaining: uint option // OAM DMA 中に DMC に割り込まれたときの残りサイクル数
   }
 
   let initial rom = {
@@ -45,6 +46,7 @@ module Bus =
     joy2 = initialJoypad
     cycleTotal = 0u
     cyclePenalty = 0u
+    oamDmaCyclesRemaining = None
   }
 
 
@@ -60,39 +62,6 @@ module Bus =
 
   let inline inRange startAddr endAddr addr =
     addr >= startAddr && addr <= endAddr
-
-  let pollNmiStatus bus =
-    if bus.ppu.clearNmiInterrupt then
-      { bus with ppu.clearNmiInterrupt = false; ppu.nmiInterrupt = None }, None
-    else
-      let res = bus.ppu.nmiInterrupt
-      { bus with ppu.nmiInterrupt = None }, res
-
-  
-  let clearIrqStatus bus =
-    { bus with apu.irq = false }
-  
-  let isIrqAsserted bus = bus.apu.irq
-  
-  let tick n bus =
-    let cyc = bus.cycleTotal + uint n + bus.cyclePenalty
-    let nmiBefore = bus.ppu.nmiInterrupt.IsSome
-    let ppu' = Ppu.tick (n * 3u) bus.ppu
-    let apu' = Apu.tick n bus.apu
-    let nmiAfter = ppu'.nmiInterrupt.IsSome
-
-    // NMI の立ち上がり検出
-    let nmiEdge = not nmiBefore && nmiAfter
-    let bus' = { bus with cycleTotal = cyc; cyclePenalty = 0u; ppu = ppu'; apu = apu' }
-    
-    bus', if nmiEdge then Some ppu' else None
-
-  let runTicks n bus =
-    [1..n]
-    |> List.fold (fun bus _ ->
-      let bus', _ = tick 1u bus
-      bus'
-    ) bus
 
   let rec memRead addr bus = 
     match addr with
@@ -140,6 +109,52 @@ module Bus =
       printfn "Invalid Memory access at: %04X" addr
       0uy, bus
 
+
+  let pollNmiStatus bus =
+    if bus.ppu.clearNmiInterrupt then
+      { bus with ppu.clearNmiInterrupt = false; ppu.nmiInterrupt = None }, None
+    else
+      let res = bus.ppu.nmiInterrupt
+      { bus with ppu.nmiInterrupt = None }, res
+  
+  let clearIrqStatus (bus : BusState) =
+    { bus with apu.irq = false }
+
+  let isIrqAsserted bus = bus.apu.irq
+
+  let tick n bus =
+    let cyc = bus.cycleTotal + uint n + bus.cyclePenalty
+    let nmiBefore = bus.ppu.nmiInterrupt.IsSome
+    let ppu' = Ppu.tick (n * 3u) bus.ppu
+  
+    let result = Apu.tick n bus.apu
+    let bus' = { bus with apu = result.apu}
+
+    // DMC の読み込み要求を処理
+    let bus'' =
+      match result.dmcRead with
+      | Some req ->
+          let value, _ = memRead req.addr bus'
+          let dmc' = req.onRead value
+          let apu' = { bus'.apu with dmc = dmc' }
+          { bus' with apu = apu' }
+
+      | None -> bus'
+  
+    let nmiAfter = ppu'.nmiInterrupt.IsSome
+
+    // NMI の立ち上がり検出
+    let nmiEdge = not nmiBefore && nmiAfter
+    let busF = { bus'' with cycleTotal = cyc; cyclePenalty = 0u; ppu = ppu' }
+    
+    busF, if nmiEdge then Some ppu' else None
+
+  let rec tickNTimes n bus =
+    if n <= 0 then bus
+    else
+      let bus', _ = tick 1u bus
+      tickNTimes (n - 1) bus'
+
   let rec memWrite addr value bus =
     match addr with
     | addr when addr |> inRange Ram.Begin Ram.MirrorsEnd ->
@@ -183,13 +198,13 @@ module Bus =
 
     // DMA 転送はページを指定して 0x100 バイト分転送する
     // https://www.nesdev.org/wiki/DMA
-    | 0x4014us -> // TODO: OAM DMA ティック加算処理
+    | 0x4014us -> // TODO: OAM DMA の正確なティック加算処理
       let hi = uint16 value <<< 8
       let mutable data = Array.create 0x100 0uy
       for i in 0 .. 0xFF do
         data[i] <- memRead (hi + uint16 i) bus |> fst
       let ppu = Ppu.writeToOamDma data bus.ppu
-      let bus' = runTicks 514 bus
+      let bus' = tickNTimes 514 bus
       { bus' with ppu = ppu }
 
     | 0x4016us -> // TODO: Joypad

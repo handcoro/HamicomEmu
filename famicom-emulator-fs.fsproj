@@ -18,7 +18,7 @@
     <Compile Include="src\Core\Apu\Pulse.fs" />
     <Compile Include="src\Core\Apu\Triangle.fs" />
     <Compile Include="src\Core\Apu\Noise.fs" />
-    <!-- <Compile Include="src\Core\Apu\DeltaModulation.fs" /> -->
+    <Compile Include="src\Core\Apu\Dmc.fs" />
     <Compile Include="src\Core\Apu\Apu.fs" />
     <Compile Include="src\Core\Bus.fs" />
     <Compile Include="src\Core\Cpu.fs" />

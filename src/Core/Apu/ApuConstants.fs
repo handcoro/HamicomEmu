@@ -53,7 +53,7 @@ module NoiseBitMasks =
   let periodMask        = 0b0000_1111uy
   let lengthCounterMask = 0b1111_1000uy
 
-module DeltaModulationBitMasks =
+module DmcBitMasks =
   // $4010
   let irqEnabledFlag = 0b1000_0000uy
   let loopFlag       = 0b0100_0000uy
@@ -63,15 +63,15 @@ module DeltaModulationBitMasks =
 
 module StatusFlags =
   // $4015 write
-  let deltaModulationEnable = 0b0001_0000uy
-  let noiseEnable           = 0b0000_1000uy
-  let triangleEnable        = 0b0000_0100uy
-  let pulse2Enable          = 0b0000_0010uy
-  let pulse1Enable          = 0b0000_0001uy
+  let dmcEnable      = 0b0001_0000uy
+  let noiseEnable    = 0b0000_1000uy
+  let triangleEnable = 0b0000_0100uy
+  let pulse2Enable   = 0b0000_0010uy
+  let pulse1Enable   = 0b0000_0001uy
   // $4015 read
   let dmcInterrupt                        = 0b1000_0000uy
   let frameInterrupt                      = 0b0100_0000uy
-  let deltaModulationActive               = 0b0001_0000uy
+  let dmcActive                           = 0b0001_0000uy
   let noiseLengthCounterLargerThanZero    = 0b0000_1000uy
   let triangleLengthCounterLargerThanZero = 0b0000_0100uy
   let pulse2LengthCounterLargerThanZero   = 0b0000_0010uy

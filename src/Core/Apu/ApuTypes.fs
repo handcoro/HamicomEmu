@@ -21,7 +21,7 @@ module Types =
   type PulseChannelNumber =
   | One | Two
 
-  type PulseChannel = {
+  type PulseState = {
     channel: PulseChannelNumber
     volume: byte
     duty: byte
@@ -40,7 +40,7 @@ module Types =
     phase: float
   }
 
-  type TriangleChannel = {
+  type TriangleState = {
     linearCounterLoad: byte
     ctrlAndHalt: bool
 
@@ -54,7 +54,7 @@ module Types =
     phase: float
   }
 
-  type NoiseChannel = {
+  type NoiseState = {
     volume: byte
     loopAndHalt : bool
     isConstant : bool
@@ -69,15 +69,17 @@ module Types =
     phase: float
   }
 
-  type DeltaModulationChannel = {
+  type DmcState = {
     irqEnabled: bool
     isLoop: bool
     rateIndex: byte
 
-    sampleAddress: byte
+    deltaCounter: byte
+
+    startAddress: byte
     sampleLength: byte
 
-    sampleBuffer: byte
+    buffer: byte option
     lengthCounter: byte
     currentAddress: uint16 // $C000 - $FFFF
     bytesRemaining: byte
@@ -88,6 +90,9 @@ module Types =
     timer: int
     isSilence: bool
   }
+
+  type ApuReadRequest =
+  | DmcSampleRead of uint16
 
   type FrameCounterMode = FourStep | FiveStep
 
@@ -104,14 +109,27 @@ module Types =
     | Step5
 
   type ApuState = {
-    pulse1: PulseChannel
-    pulse2: PulseChannel
-    triangle: TriangleChannel
-    noise: NoiseChannel
+    pulse1: PulseState
+    pulse2: PulseState
+    triangle: TriangleState
+    noise: NoiseState
+    dmc: DmcState
     // TODO: DPCM
     status: byte
     frameCounter: FrameCounter
     mutable cycle: uint
     mutable step: ApuStep
     irq: bool
+  }
+
+  type DmcReadRequest = {
+    addr: uint16
+    onRead: byte -> DmcState
+  }
+
+  type TickResult = {
+    apu: ApuState
+    dmcRead: DmcReadRequest option
+    // TODO: DMC の読み込みで CPU を止める処理の実装
+    // stallCpuCycles: uint option
   }
