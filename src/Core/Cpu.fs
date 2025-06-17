@@ -676,7 +676,7 @@ module Cpu =
       | b, None -> cpu, b
 
     let cpu, bus = // IRQ
-      if Bus.isIrqAsserted bus then
+      if bus.apu.irq then
         irq cpu bus
       else
         cpu, bus

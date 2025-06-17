@@ -120,8 +120,6 @@ module Bus =
   let clearIrqStatus (bus : BusState) =
     { bus with apu.irq = false }
 
-  let isIrqAsserted bus = bus.apu.irq
-
   let tick n bus =
     let cyc = bus.cycleTotal + uint n + bus.cyclePenalty
     let nmiBefore = bus.ppu.nmiInterrupt.IsSome

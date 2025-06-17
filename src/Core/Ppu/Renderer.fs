@@ -53,103 +53,50 @@ module Renderer =
       ppu.pal[start + 2]
     |]
 
-  let renderNameTable (ppu : PpuState) (nameTable : byte[]) viewPort shiftX shiftY frame =
-    if nameTable |> Array.length < 1 then
-      frame
-    else
-      let bank = Ppu.backgroundPatternAddr ppu.ctrl |> int
-      let attrTable = nameTable[0x3C0 .. 0x3FF]
+  let drawSprites (ppu: PpuState) (frame: Frame) : Frame =
+    let mutable frameAcc = frame
+    let bank = Ppu.spritePatternAddr ppu.ctrl |> int
 
-      [0 .. 0x3BF]
-      |> List.fold (fun frameAcc i ->
-        let tileX = i % 32
-        let tileY = i / 32
-        let tileIdx = nameTable[i] |> int
+    for i = ppu.oam.Length - 4 downto 0 do
+      if i % 4 = 0 then // スプライトごとに4バイト
+        let tileIdx = ppu.oam[i + 1] |> uint16
+        let tileX = ppu.oam[i + 3] |> int
+        let tileY = ppu.oam[i] |> int
+
+        let attr = ppu.oam[i + 2]
+        let flipVerical   = attr >>> 7 &&& 1uy = 1uy
+        let flipHorizontal = attr >>> 6 &&& 1uy = 1uy
+
+        let paletteIdx = attr &&& 0b11uy
+        let sprPal = spritePalette ppu paletteIdx
+
+        let bank = Ppu.spritePatternAddr ppu.ctrl |> int
+        let tileStart = bank + (int tileIdx * 16)
         let tile =
-          if ppu.chr <> [||] then // CHR ROM と CHR RAM の暫定的な判定
-            ppu.chr[(bank + tileIdx * 16) .. (bank + tileIdx * 16 + 15)]
+          if ppu.chr <> [||] then
+            ppu.chr[tileStart .. tileStart + 15]
           else
-            ppu.chrRam[(bank + tileIdx * 16) .. (bank + tileIdx * 16 + 15)]
-        let palette = backgroundPalette ppu attrTable tileX tileY
-        [0 .. 7]
-        |> List.fold (fun fr y ->
+            ppu.chrRam[tileStart .. tileStart + 15]
+
+        for y = 0 to 7 do
           let upper = tile[y]
           let lower = tile[y + 8]
-          [0 .. 7]
-          |> List.fold (fun fr' x ->
-            let value = // CHR データの最後尾が画面上の左
-              let bit0 = (upper >>> (7 - x)) &&& 1uy
-              let bit1 = (lower >>> (7 - x)) &&& 1uy
-              (bit1 <<< 1) ||| bit0
-            let rgb =
-              nesPalette[int palette[int value]]
-            let px = tileX * 8 + x
-            let py = tileY * 8 + y
-            if px >= int viewPort.x1
-              && px < int viewPort.x2
-              && py >= int viewPort.y1
-              && py < int viewPort.y2 then
-              setPixel (uint (shiftX + px)) (uint(shiftY + py)) rgb fr'
-            else
-              fr'
-          ) fr
-        ) frameAcc
-      ) frame
 
-  let drawSprites (ppu: PpuState) (frame: Frame) : Frame =
-    let oamIndices =
-      [0 .. ppu.oam.Length - 4]
-      |> List.filter (fun i -> i % 4 = 0) // スプライトごとに4バイト
-      |> List.rev
-
-    oamIndices
-    |> List.fold (fun frameAcc i ->
-      let tileIdx = ppu.oam[i + 1] |> uint16
-      let tileX = ppu.oam[i + 3] |> int
-      let tileY = ppu.oam[i] |> int
-
-      let attr = ppu.oam[i + 2]
-      let flipVerical   = attr >>> 7 &&& 1uy = 1uy
-      let flipHorizontal = attr >>> 6 &&& 1uy = 1uy
-
-      let paletteIdx = attr &&& 0b11uy
-      let sprPal = spritePalette ppu paletteIdx
-
-      let bank = Ppu.spritePatternAddr ppu.ctrl |> int
-      let tileStart = bank + (int tileIdx * 16)
-      let tile =
-        if ppu.chr <> [||] then
-          ppu.chr[tileStart .. tileStart + 15]
-        else
-          ppu.chrRam[tileStart .. tileStart + 15]
-
-      // タイルを描画して frameAcc を更新する
-      [0 .. 7]
-      |> List.fold (fun fr y ->
-        let upper = tile[y]
-        let lower = tile[y + 8]
-
-        [0 .. 7]
-        |> List.fold (fun fr' x ->
-          let value =
+          for x = 0 to 7 do
             let bit0 = (upper >>> (7 - x)) &&& 1uy
             let bit1 = (lower >>> (7 - x)) &&& 1uy
-            (bit1 <<< 1) ||| bit0
+            let value = (bit1 <<< 1) ||| bit0
 
-          match value with
-          | 0uy -> fr'
-          | _ ->
-            let color = nesPalette[int sprPal[int value]]
-            let px, py =
-              match flipHorizontal, flipVerical with
-              | false, false -> tileX + x,     tileY + y
-              | true,  false -> tileX + 7 - x, tileY + y
-              | false, true  -> tileX + x,     tileY + 7 - y
-              | true,  true  -> tileX + 7 - x, tileY + 7 - y
-            setPixel (uint px) (uint py) color fr'
-        ) fr
-      ) frameAcc
-    ) frame
+            if value <> 0uy then
+              let color = nesPalette[int sprPal[int value]]
+              let px, py =
+                match flipHorizontal, flipVerical with
+                | false, false -> tileX + x,     tileY + y
+                | true,  false -> tileX + 7 - x, tileY + y
+                | false, true  -> tileX + x,     tileY + 7 - y
+                | true,  true  -> tileX + 7 - x, tileY + 7 - y
+              frameAcc <- setPixel (uint px) (uint py) color frameAcc
+    frameAcc
 
   let screenW = 256u
   let screenH = 240u
@@ -164,22 +111,19 @@ module Renderer =
       drawLines
       (frame: Frame) : Frame =
 
-    if nameTable.Length < 1 then
-      frame
-    else
-      let bank = Ppu.backgroundPatternAddr ppu.ctrl |> int
-      let attrTable = nameTable[0x3C0 .. 0x3FF]
+    if nameTable.Length < 1 then frame else
 
-      // スキャンラインに該当する行だけ描画
-      [0 .. 0x3BF]
-      |> List.filter (fun i ->
-        let tileY = i / 32
-        let y = tileY * 8
-        scanline >= y && scanline < y + drawLines
-      )
-      |> List.fold (fun frameAcc i ->
-        let tileX = i % 32
-        let tileY = i / 32
+    let bank = Ppu.backgroundPatternAddr ppu.ctrl |> int
+    let attrTable = nameTable[0x3C0 .. 0x3FF]
+    let mutable frameAcc = frame
+
+    // スキャンラインに該当する行だけ描画
+    for i = 0 to 0x3BF do
+      let tileX = i % 32
+      let tileY = i / 32
+      let y = tileY * 8
+      
+      if scanline >= y && scanline < y + drawLines then
         let tileIdx = nameTable[i] |> int
         let tile =
           if ppu.chr <> [||] then // CHR ROM と CHR RAM の暫定的な判定
@@ -187,143 +131,66 @@ module Renderer =
           else
             ppu.chrRam[(bank + tileIdx * 16) .. (bank + tileIdx * 16 + 15)]
         let palette = backgroundPalette ppu attrTable tileX tileY
-        [0 .. 7]
-        |> List.fold (fun fr y ->
+
+        for y = 0 to 7 do
           let upper = tile[y]
           let lower = tile[y + 8]
-          [0 .. 7]
-          |> List.fold (fun fr' x ->
-            let value = // CHR データの最後尾が画面上の左
-              let bit0 = (upper >>> (7 - x)) &&& 1uy
-              let bit1 = (lower >>> (7 - x)) &&& 1uy
-              (bit1 <<< 1) ||| bit0
+
+          for x = 0 to 7 do
+            // CHR データの最後尾が画面上の左
+            let bit0 = (upper >>> (7 - x)) &&& 1uy
+            let bit1 = (lower >>> (7 - x)) &&& 1uy
+            let value = (bit1 <<< 1) ||| bit0
             let rgb =
               nesPalette[int palette[int value]]
             let px = tileX * 8 + x
             let py = tileY * 8 + y
-            if px >= int viewPort.x1
-              && px < int viewPort.x2
-              && py >= int viewPort.y1
-              && py < int viewPort.y2 then
-              setPixel (uint (shiftX + px)) (uint(shiftY + py)) rgb fr'
-            else fr'
-          ) fr
-        ) frameAcc
-      ) frame
+            if px >= int viewPort.x1 && px < int viewPort.x2 &&
+               py >= int viewPort.y1 && py < int viewPort.y2 then
+              frameAcc <- setPixel (uint (shiftX + px)) (uint(shiftY + py)) rgb frameAcc
+    frameAcc
 
-  let drawSpriteScanline (ppu: PpuState) y (frame: Frame) : Frame =
-
-    let oamIndices =
-      [0 .. ppu.oam.Length - 4]
-      |> List.filter (fun i -> i % 4 = 0) // スプライトごとに4バイト
-
-    oamIndices
-    |> List.fold (fun frameAcc i ->
-      let tileIdx = ppu.oam[i + 1] |> uint16
-      let tileX = ppu.oam[i + 3] |> int
-      let tileY = ppu.oam[i] |> int
-
-      let attr = ppu.oam[i + 2]
-      let flipVerical   = attr >>> 7 &&& 1uy = 1uy
-      let flipHorizontal = attr >>> 6 &&& 1uy = 1uy
-
-      let paletteIdx = attr &&& 0b11uy
-      let sprPal = spritePalette ppu paletteIdx
-
-      let bank = Ppu.spritePatternAddr ppu.ctrl |> int
-      let tileStart = bank + (int tileIdx * 16)
-      let tile =
-        if ppu.chr <> [||] then
-          ppu.chr[tileStart .. tileStart + 15]
-        else
-          ppu.chrRam[tileStart .. tileStart + 15]
-
-      // スキャンラインに関係するかチェック（スプライト高さは8固定）
-      if y < tileY || y >= tileY + 8 then
-        frameAcc
-      else
-        let localY = 
-          if flipVerical then 7 - (y - tileY)
-          else y - tileY
-
-        let upper = tile[localY]
-        let lower = tile[localY + 8]
-
-        [0 .. 7]
-        |> List.fold (fun fr' x ->
-          let bit0 = (upper >>> (7 - x)) &&& 1uy
-          let bit1 = (lower >>> (7 - x)) &&& 1uy
-          let value = (bit1 <<< 1) ||| bit0
-
-          match value with
-          | 0uy -> fr'
-          | _ ->
-            let color = nesPalette[int sprPal[int value]]
-            let px =
-              if flipHorizontal then tileX + 7 - x else tileX + x
-            setPixel (uint px) (uint y) color fr'
-        ) frameAcc
-    ) frame
-
-  let render (ppu: PpuState) (frame : Frame) =
-
-    let scrlX = fst ppu.scrlReg.xy
-    let scrlY = snd ppu.scrlReg.xy
-
-    let mainNameTable, sndNameTable = Ppu.getVisibleNameTables ppu (Ppu.getNameTableAddress ppu.ctrl)
-
-    let rect1 = initialRect (uint scrlX) (uint scrlY) screenW screenH
-    let rect2 = initialRect 0u 0u (uint scrlX) screenH
-    let rect3 = initialRect (uint scrlX) 0u screenW (uint scrlY)
-    let rect4 = initialRect 0u (uint scrlY) (uint scrlX) screenH
-
-
-    frame
-    |> renderNameTable ppu mainNameTable rect1 (- int scrlX) (- int scrlY)
-    |> renderNameTable ppu sndNameTable rect2 (int screenW - int scrlX) (- int scrlY)
-    |> renderNameTable ppu mainNameTable rect3 (- int scrlX) (int screenH - int scrlY)
-    |> renderNameTable ppu sndNameTable rect4 (int screenW - int scrlX) (- int scrlY)
-    |> drawSprites ppu
-
-
+  //   let rect1 = initialRect (uint scrlX) (uint scrlY) screenW screenH
+  //   let rect2 = initialRect 0u 0u (uint scrlX) screenH
+  //   let rect3 = initialRect (uint scrlX) 0u screenW (uint scrlY)
+  //   let rect4 = initialRect 0u (uint scrlY) (uint scrlX) screenH
 
   let drawLines = 8
 
   /// 分割スクロールのためのスキャンラインごとの描画
+  /// TODO: ネームテーブルが 4 つ表示される場合に対応したい
   let renderScanlineBased (ppu: PpuState) (frame: Frame) : Frame =
-
+    let mutable frameAcc = frame
     let n = 240 / drawLines - 1 // スキャンライン一本ずつだと非効率なのである程度まとめて描いてみる
 
-    let f =
-      [0 .. n]
-      |> List.fold (fun frameAcc y ->
-        let drawStartY = y * drawLines |> uint
+    for y = 0 to n do
+      let drawStartY = y * drawLines |> uint
 
-        let scrollX, scrollY = ppu.scrollPerScanline[int drawStartY].xy
-        let scrlX, scrlY = int scrollX, int scrollY
+      let scrollX, scrollY = ppu.scrollPerScanline[int drawStartY].xy
+      let scrlX, scrlY = int scrollX, int scrollY
 
-        let correctedAddr = Ppu.getNameTableAddress ppu.ctrlPerScanline[int drawStartY]
-        let mainNameTable, subNameTable =
-          Ppu.getVisibleNameTables ppu correctedAddr
+      let correctedAddr = Ppu.getNameTableAddress ppu.ctrlPerScanline[int drawStartY]
+      let mainNameTable, subNameTable =
+        Ppu.getVisibleNameTables ppu correctedAddr
 
-        // drawLines 分の描画範囲
-        // パフォーマンスのためには狭めることも必要になるかも
-        let rect1 = initialRect (uint scrlX) (drawStartY + uint scrlY) screenW (drawStartY + uint drawLines)
-        let rect2 = initialRect 0u drawStartY (uint scrlX) (drawStartY + uint drawLines)
+      // drawLines 分の描画範囲
+      // パフォーマンスのためには狭めることも必要になるかも
+      let rect1 = initialRect (uint scrlX) (drawStartY + uint scrlY) screenW (drawStartY + uint drawLines)
+      let rect2 = initialRect 0u drawStartY (uint scrlX) (drawStartY + uint drawLines)
 
-        // 背景描画
-        let frame1 = renderNameTableScanline ppu mainNameTable rect1 (-scrlX) (-scrlY) (int drawStartY) drawLines frameAcc
+      // 背景描画
+      let frame1 =
+        renderNameTableScanline ppu mainNameTable rect1 (-scrlX) (-scrlY) (int drawStartY) drawLines frameAcc
 
-        let needSub =
-          scrlX > 0
-        // サブ背景
+      let needSub =
+        scrlX > 0
+      // サブ背景
+      frameAcc <-
         if needSub then
           renderNameTableScanline ppu subNameTable rect2 (int screenW - int scrlX) 0 (int drawStartY) drawLines frame1
         else
           frame1
-
-      ) frame
-    drawSprites ppu f
+    drawSprites ppu frameAcc
 
 
   (* あとあと機能としてあったらいいかもしれない

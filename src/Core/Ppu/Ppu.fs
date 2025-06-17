@@ -83,10 +83,10 @@ module Ppu =
 
   /// -- ここらへんは Control 関係でまとめる？
   let private VramAddressIncrement cr =
-    if hasFlag ControlFlags.VramAddIncrement cr then 32uy else 1uy
+    if hasFlag ControlFlags.vramAddIncrement cr then 32uy else 1uy
 
   let getNameTableAddress ctrl =
-    match ctrl &&& (ControlFlags.Nametable1 ||| ControlFlags.Nametable2) with
+    match ctrl &&& (ControlFlags.nameTable1 ||| ControlFlags.nameTable2) with
     | 0uy -> 0x2000us
     | 1uy -> 0x2400us
     | 2uy -> 0x2800us
@@ -94,11 +94,11 @@ module Ppu =
     | _ -> failwith "can't be"
 
   let backgroundPatternAddr ctrl =
-    if hasFlag ControlFlags.BackgroundPatternAddress ctrl then 0x1000us else 0x0000us
+    if hasFlag ControlFlags.backgroundPatternAddress ctrl then 0x1000us else 0x0000us
 
   /// 多分スプライトサイズの扱いがまだ不十分
   let spritePatternAddr ctrl = 
-    if not (hasFlag ControlFlags.SpriteSize ctrl) && hasFlag ControlFlags.SpritePatternAddress ctrl then
+    if not (hasFlag ControlFlags.spriteSize ctrl) && hasFlag ControlFlags.spritePatternAddress ctrl then
       0x1000us
     else
       0x0000us
@@ -106,10 +106,10 @@ module Ppu =
   let updateControl data ppu = { ppu with ctrl = data}
 
   let writeToControlRegister value ppu =
-    let beforeNmiStatus = hasFlag ControlFlags.GenerateNmi ppu.ctrl
+    let beforeNmiStatus = hasFlag ControlFlags.generateNmi ppu.ctrl
     let ppu' = updateControl value ppu
-    let afterNmi = hasFlag ControlFlags.GenerateNmi ppu'.ctrl
-    if not beforeNmiStatus && afterNmi && hasFlag StatusFlags.Vblank ppu'.status then
+    let afterNmi = hasFlag ControlFlags.generateNmi ppu'.ctrl
+    if not beforeNmiStatus && afterNmi && hasFlag StatusFlags.vblank ppu'.status then
       { ppu' with nmiInterrupt = Some 1uy }
     else
       ppu'
@@ -201,7 +201,7 @@ module Ppu =
       ppu'
     | _ -> failwithf "Invalid PPU address: %04X" addr
 
-  let resetVblankStatus status = clearFlag StatusFlags.Vblank status
+  let resetVblankStatus status = clearFlag StatusFlags.vblank status
 
   /// コントロールレジスタ読み込みでラッチと VBlank が初期化され、次回の NMI が抑制されるらしい
   let readFromStatusRegister ppu =
@@ -231,7 +231,7 @@ module Ppu =
   let isSpriteZeroHit cycle ppu =
     let y = ppu.oam[0] |> uint
     let x = ppu.oam[3] |> uint
-    y = uint ppu.scanline && x <= cycle && hasFlag MaskFlags.SpriteRendering ppu.mask
+    y = uint ppu.scanline && x <= cycle && hasFlag MaskFlags.spriteRendering ppu.mask
 
   let private updateScrollRegister (data: byte) ppu sr =
     // latch を目印に 2 回に分けて書き込む
@@ -255,14 +255,14 @@ module Ppu =
     if cyc < 341u then
       { ppu with oamAddr = oamAddr; cycle = cyc}
     else
-      let st = ppu.status |> updateFlag StatusFlags.SpriteZeroHit (isSpriteZeroHit cyc ppu)
+      let st = ppu.status |> updateFlag StatusFlags.spriteZeroHit (isSpriteZeroHit cyc ppu)
       let cyc' = cyc - 341u
       let nextScanline = ppu.scanline + 1us
 
       match nextScanline with
       | 241us ->
         // VBlank 開始
-        let st' = st |> setFlag StatusFlags.Vblank
+        let st' = st |> setFlag StatusFlags.vblank
         let ppu' =
           { ppu with
               scanline = nextScanline
@@ -270,14 +270,14 @@ module Ppu =
               cycle = cyc'
               status = st'
           }
-        if hasFlag ControlFlags.GenerateNmi ppu.ctrl then
+        if hasFlag ControlFlags.generateNmi ppu.ctrl then
           { ppu' with nmiInterrupt = Some 1uy }
         else
           ppu'
 
       | s when s >= 262us ->
         // フレーム終了（VBlank 終了）
-        let st' = st |> resetVblankStatus |> clearFlag StatusFlags.SpriteZeroHit
+        let st' = st |> resetVblankStatus |> clearFlag StatusFlags.spriteZeroHit
         { ppu with
             scanline = 0us
             status = st'
