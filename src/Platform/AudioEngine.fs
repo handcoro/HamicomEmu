@@ -6,33 +6,22 @@ open Microsoft.Xna.Framework.Audio
 type AudioEngine(sampleRate: int) =
 
   let instance = new DynamicSoundEffectInstance(sampleRate, AudioChannels.Mono)
-  let bufferSize = sampleRate / 60 // 1フレームあたりのサンプル数（約735）
-  let buffer = Array.zeroCreate<int16>(bufferSize)
-
   let mutable isPlaying = false
   let mutable timeOffset = 0.0
 
-  member _.PushSample(generator: float -> float32) =
-    let dt = 1.0 / float sampleRate
-    let mutable t = timeOffset
+  member _.Submit(samples: float32 list) =
+    let clipped =
+      samples
+      |> List.map (fun s -> s |> max -1.0f |> min 1.0f)
 
-    for i in 0 .. bufferSize - 1 do
-      let sample =
-        generator t
-        |> (*) 0.3f
-        // クリップ
-        |> max -1.0f
-        |> min 1.0f
-      buffer[i] <- int16 (sample * 32767.0f)
-      t <- t + dt
+    let pcmArray =
+      clipped
+      |> List.map (fun x -> int16 (x * 32767.0f))
+      |> List.toArray
 
-    timeOffset <- t
+    let byteArray = Array.zeroCreate<byte>(pcmArray.Length * 2)
+    Buffer.BlockCopy(pcmArray, 0, byteArray, 0, byteArray.Length)
 
-    let byteBuffer = Array.zeroCreate<byte>(bufferSize * 2)
-    Buffer.BlockCopy(buffer, 0, byteBuffer, 0, byteBuffer.Length)
-
-    instance.SubmitBuffer(byteBuffer)
-
-    if not isPlaying && instance.PendingBufferCount >= 2 then
+    instance.SubmitBuffer(byteArray)
+    if instance.State <> SoundState.Playing then
       instance.Play()
-      isPlaying <- true

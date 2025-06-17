@@ -109,21 +109,32 @@ type basicNesGame(loadedRom) as this =
     let joy = bus.joy1 |> handleJoypadInput (Keyboard.GetState())
     bus <- {bus with joy1 = joy }
 
-    for _ in 1 .. 10000 do // 時間がかかるので 1 フレームで一気に命令処理してしまう
-      // printfn "%s" (trace cpu bus)
-      let cpu', bus' = (cpu, bus) ||> Cpu.step
-      cpu <- cpu'
-      bus <- bus'
-    
+    let sampleRate      = 44100
+    let cpuClock        = Constants.cpuClockNTSC
+    let cyclesPerSample = cpuClock / float sampleRate   // ≒ 40.584
+    let samplesPerFrame = sampleRate / 60               // = 735
 
-    let generator t =
-      let dt = t - prevT
-      prevT <- t
-      let sample, apu' = Apu.mix dt bus.apu
+    // 1フレーム分のサンプルを作るバッファ
+    let samples = ResizeArray<float32>()
+
+    for _ in 1 .. samplesPerFrame do
+      // 1フレームに達するまで CPU を進める
+      let mutable cyclesRemain = cyclesPerSample
+      while cyclesRemain > 0.0 do
+        let cpu', bus', used = Cpu.step cpu bus   // ← step が消費サイクル数を返すように
+        cpu  <- cpu'
+        bus  <- bus'
+        cyclesRemain <- cyclesRemain - float used
+
+      // APU から 1 サンプル取り出す
+      let sample, apu' = Apu.mix (1.0 / float sampleRate) bus.apu
       bus <- { bus with apu = apu' }
-      sample
 
-    audioEngine.PushSample(generator)
+      samples.Add(sample)
+
+    // AudioEngine へ一括送信
+    audioEngine.Submit(samples |> Seq.toList)
+
 
     base.Update(gameTime)
 

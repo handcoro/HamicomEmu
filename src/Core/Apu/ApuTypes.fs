@@ -74,21 +74,25 @@ module Types =
     isLoop: bool
     rateIndex: byte
 
-    deltaCounter: byte
+    outputLevel: byte
 
     startAddress: byte
     sampleLength: byte
 
-    buffer: byte option
-    lengthCounter: byte
     currentAddress: uint16 // $C000 - $FFFF
-    bytesRemaining: byte
-    shiftResister: byte
-    bitCounter: int
+    bytesRemaining: uint16
+    buffer: byte option
 
-    outputLevel: byte
-    timer: int
+    shiftRegister: byte
+    bitsRemaining: int
+
+    timer: uint16
     isSilence: bool
+
+    irqRequested: bool
+
+    outputBuffer: byte list
+    lastOutput : byte
   }
 
   type ApuReadRequest =
@@ -99,6 +103,7 @@ module Types =
   type FrameCounter = {
     mode: FrameCounterMode
     irqInhibit: bool
+    irqRequested: bool
   }
 
   type ApuStep =

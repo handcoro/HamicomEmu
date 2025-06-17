@@ -29,17 +29,13 @@ module Triangle =
     else
       tri
 
-  let triangleTable : float32[] =
-    Array.append [|15.. -1 .. 0|] [|0..15|]
-    |> Array.map (fun x -> float32 x / 15.0f * 2.0f - 1.0f) // 正規化
-
   let freqHz timer =
     Constants.cpuClockNTSC / (32.0 * float (timer + 1us))
 
   /// 三角波出力
   let output dt (tri : TriangleState ) =
     let freq = freqHz tri.timer
-    if freq = 0.0 then 0.0f, tri
+    if freq = 0.0 then 0uy, tri
     else
       let period = 1.0 / float freq
 
@@ -50,6 +46,6 @@ module Triangle =
         else (tri.phase + dt) % period
 
       let index = int (tri.phase / period * 32.0) % 32
-      let sample = triangleTable[index]
+      let sample = Constants.triangleTable[index] |> byte
 
       sample, { tri with phase = newPhase }

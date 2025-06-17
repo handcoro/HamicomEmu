@@ -3,6 +3,20 @@ namespace HamicomEmu.Apu
 module Constants =
   let cpuClockNTSC = 1_789_773.0 // NTSC NES の CPU クロック
 
+  let dutyTable = [|
+    [| 0;1;0;0;0;0;0;0 |]; // 12.5%
+    [| 0;1;1;0;0;0;0;0 |]; // 25%
+    [| 0;1;1;1;1;0;0;0 |]; // 50%
+    [| 1;0;0;1;1;1;1;1 |]; // 25% negated
+  |]
+
+  let triangleTable =
+    Array.append [|15.. -1 .. 0|] [|0..15|]
+
+  let dmcRateTable =
+    [| 428us; 380us; 340us; 320us; 286us; 254us; 226us; 214us;
+       190us; 160us; 142us; 128us; 106us; 84us; 72us; 54us |]
+
 module GeneralMasks =
   // 矩形波とノイズ共通
   let volumeMask   = 0b0000_1111uy

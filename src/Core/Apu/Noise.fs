@@ -35,7 +35,7 @@ module Noise =
   /// * シフトレジスタの bit 0 がセットされていない
   /// * 長さカウンタが 0 でない
   let output dt (noi: NoiseState) =
-    if noi.lengthCounter = 0uy then 0.0f, noi
+    if noi.lengthCounter = 0uy then 0uy, noi
     else
       let index = noi.periodIndex |> int
       let freq = noiseFreqs[index]
@@ -51,8 +51,7 @@ module Noise =
       let bit = noi.shift &&& 1us
       let sample =
         if bit = 0us then
-          float (if noi.isConstant then noi.volume else noi.envelope.volume) / 15.0
-        else
-          0.0
+          if noi.isConstant then noi.volume else noi.envelope.volume
+        else 0uy
       let noi' = { noi with shift = newShift; phase = newPhase }
-      float32 sample, noi'
+      sample, noi'

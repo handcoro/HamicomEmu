@@ -668,7 +668,7 @@ module Cpu =
 
 
   /// CPU を 1 命令だけ実行する
-  let step cpu bus =
+  let step cpu (bus : Bus.BusState) =
 
     let cpu, bus = // NMI
       match Bus.pollNmiStatus bus with
@@ -715,17 +715,5 @@ module Cpu =
     // サイクル追加発生可能性のある命令でページ境界をまたいだ場合はサイクル追加
     let penaltyTick = if penalty && crossed then 1u else 0u
 
-    // ここで NMI の立ち上がりを検出するのは意味がない？
-    let bus3, nmiOpt = Bus.tick (cycles + penaltyTick) bus2
-    cpu', bus3
-
-  let rec run cpu bus =
-    let cpu', bus' = (cpu, bus) ||> step
-    // BRK に当たったときループを抜ける暫定処理
-    if hasFlag Flags.B cpu'.P then cpu', bus' else (cpu', bus') ||> run
-
-  let rec runWithCallback callback cpu bus =
-    callback cpu bus
-    (cpu, bus)
-      ||> step
-      ||> runWithCallback callback
+    let bus3, consumed = Bus.tick (cycles + penaltyTick) bus2
+    cpu', bus3, consumed

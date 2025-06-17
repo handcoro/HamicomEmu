@@ -87,26 +87,31 @@ module Apu =
     isLoop = false
     rateIndex = 0uy
 
-    deltaCounter = 0uy
+    outputLevel = 0uy
 
     startAddress = 0uy
     sampleLength = 0uy
 
-    buffer = None
-    lengthCounter = 0uy
     currentAddress = 0us
-    bytesRemaining = 0uy
-    shiftResister = 0uy
-    bitCounter = 0
+    bytesRemaining = 0us
+    buffer = None
 
-    outputLevel = 0uy
-    timer = 0
+    shiftRegister = 0uy
+    bitsRemaining = 0
+
+    timer = 0us
     isSilence = false
+
+    irqRequested = false
+
+    outputBuffer = []
+    lastOutput = 0uy
   }
 
   let initialFrameCounter = {
     mode = FourStep
     irqInhibit = false
+    irqRequested = false
   }
 
   let initial = {
@@ -148,17 +153,26 @@ module Apu =
   
   /// TODO: DMC 関連の操作
   let writeToStatus value apu =
-    let pulse1EnableCond = hasFlag StatusFlags.pulse1Enable value
-    let pulse2EnableCond = hasFlag StatusFlags.pulse2Enable value
-    let triEnableCond = hasFlag StatusFlags.triangleEnable value
-    let noiseEnableCond = hasFlag StatusFlags.noiseEnable value 
+    let pulse1Enabled = hasFlag StatusFlags.pulse1Enable value
+    let pulse2Enabled = hasFlag StatusFlags.pulse2Enable value
+    let triEnabled = hasFlag StatusFlags.triangleEnable value
+    let noiseEnabled = hasFlag StatusFlags.noiseEnable value
+    let dmcEnabled = hasFlag StatusFlags.dmcEnable value
 
-    let pulse1Counter = if pulse1EnableCond then apu.pulse1.lengthCounter else 0uy
-    let pulse2Counter = if pulse2EnableCond then apu.pulse2.lengthCounter else 0uy
-    let triCounter = if triEnableCond then apu.triangle.lengthCounter else 0uy
-    let noiCounter = if noiseEnableCond then apu.noise.lengthCounter else 0uy
+    let pulse1Counter = if pulse1Enabled then apu.pulse1.lengthCounter else 0uy
+    let pulse2Counter = if pulse2Enabled then apu.pulse2.lengthCounter else 0uy
+    let triCounter = if triEnabled then apu.triangle.lengthCounter else 0uy
+    let noiCounter = if noiseEnabled then apu.noise.lengthCounter else 0uy
 
-    let status' =
+    let dmc =
+      if dmcEnabled then
+        apu.dmc |> Dmc.startSample
+      else
+        apu.dmc
+        |> Dmc.stopSample
+        |> fun d -> { d with irqRequested = false }
+
+    let status =
       value
       |> clearFlag StatusFlags.dmcInterrupt
 
@@ -167,7 +181,8 @@ module Apu =
         pulse2.lengthCounter = pulse2Counter
         triangle.lengthCounter = triCounter
         noise.lengthCounter = noiCounter
-        status = status'
+        dmc = dmc
+        status = status
     }
 
   let tickEnvelopeAndLinear apu =
@@ -218,10 +233,13 @@ module Apu =
       apu |> tickEnvelopeAndLinear
           |> tickLengthAndSweep
     | Step4 when mode = FourStep ->
-      let irq = not apu.frameCounter.irqInhibit
       apu |> tickEnvelopeAndLinear
           |> tickLengthAndSweep
-          |> fun a -> { a with irq = irq }
+          |> fun a ->
+            if not a.frameCounter.irqInhibit then
+              let fc = { a.frameCounter with irqRequested = true }
+              { a with frameCounter = fc }
+            else a
     | Step5 when mode = FiveStep ->
       apu |> tickEnvelopeAndLinear
           |> tickLengthAndSweep
@@ -246,24 +264,27 @@ module Apu =
     let mode = if hasFlag FrameCounterFlags.mode apu.status then FiveStep else FourStep
 
     let dmc', req = Dmc.tick apu.dmc
-    let apu' = { apu with dmc = dmc' }
+    let apu = { apu with dmc = dmc' }
 
-    if apu'.cycle < frameStepCycles then
-      { apu = apu'; dmcRead = req }
+    // DMC から受け取った IRQ 要求のセット
+    let apu = { apu with irq = apu.dmc.irqRequested }
+
+    if apu.cycle < frameStepCycles then
+      { apu = apu; dmcRead = req }
 
     else
-      apu'.cycle <- apu'.cycle - frameStepCycles
+      apu.cycle <- apu.cycle - frameStepCycles
 
       // フレームステップ更新
-      let apu'' = runFrameStep apu'.step mode apu'
-      apu''.step <- nextStep apu''.step
+      let apu = runFrameStep apu.step mode apu
+      apu.step <- nextStep apu.step
 
       // ステップカウンタのロールオーバー
-      match apu''.step, mode with
-      | Step4, FourStep | Step5, FiveStep -> apu''.step <- Step1
+      match apu.step, mode with
+      | Step4, FourStep | Step5, FiveStep -> apu.step <- Step1
       | _ -> ()
 
-      { apu = apu''; dmcRead = req }
+      { apu = apu; dmcRead = req }
 
   let getReadRequest apu =
     if Dmc.needsSampleRead apu.dmc then
@@ -274,7 +295,7 @@ module Apu =
   let writeToFrameCounter v apu =
     let mode = if hasFlag FrameCounterFlags.mode v then FiveStep else FourStep
     let irqInhibit = hasFlag FrameCounterFlags.irqInhibit v
-    let fc = { mode = mode; irqInhibit = irqInhibit }
+    let fc = { mode = mode; irqInhibit = irqInhibit; irqRequested = apu.frameCounter.irqRequested }
 
     apu.cycle <- 0u
     apu.step <- Step1
@@ -342,7 +363,7 @@ module Apu =
 
   let parseLoopDmc v = hasFlag DmcBitMasks.loopFlag v
 
-  let parseDeltaCounter v = DmcBitMasks.directLoadMask &&& v
+  let parseDirectLoad v = DmcBitMasks.directLoadMask &&& v
 
   let write addr value apu =
 
@@ -421,7 +442,7 @@ module Apu =
           dmc.rateIndex = rateIdx
       }
     | 0x4011us -> // direct load
-      { apu with dmc.deltaCounter = parseDeltaCounter value }
+      { apu with dmc.outputLevel = parseDirectLoad value }
     | 0x4012us -> // sample address
       { apu with dmc.startAddress = value }
     | 0x4013us -> // sample length
@@ -444,21 +465,31 @@ module Apu =
   
   let read addr apu =
     match addr with
-    | 0x4015us -> // TODO: オープンバスの挙動
+    | 0x4015us -> // TODO: オープンバスの挙動があるけど優先度は低い
+      let frameIrq = apu.frameCounter.irqRequested
+      let dmcIrq = apu.dmc.irqRequested
+
+      let dmcCond = apu.dmc.bytesRemaining > 0us
       let noiCond = hasFlag StatusFlags.noiseEnable apu.status && apu.noise.lengthCounter > 0uy
       let triCond = hasFlag StatusFlags.triangleEnable apu.status && apu.triangle.lengthCounter > 0uy
       let p2Cond = hasFlag StatusFlags.pulse2Enable apu.status && apu.pulse2.lengthCounter > 0uy
       let p1Cond = hasFlag StatusFlags.pulse1Enable apu.status && apu.pulse1.lengthCounter > 0uy
       let status' =
         apu.status
-        |> clearFlag StatusFlags.frameInterrupt
-        // TODO: DMC
-        // |> updateFlag StatusFlags.deltaModulationActive (dmcBytes > 0) 
+        |> updateFlag StatusFlags.frameInterrupt frameIrq
+        |> updateFlag StatusFlags.dmcInterrupt dmcIrq
+        |> updateFlag StatusFlags.dmcActive dmcCond
         |> updateFlag StatusFlags.noiseLengthCounterLargerThanZero noiCond
         |> updateFlag StatusFlags.triangleLengthCounterLargerThanZero triCond
         |> updateFlag StatusFlags.pulse2LengthCounterLargerThanZero p2Cond
         |> updateFlag StatusFlags.pulse1LengthCounterLargerThanZero p1Cond
-      status', { apu with status = status' }
+
+      // フレーム割り込みは読み出し後にクリアされる
+      let clearedStatus =
+        status'
+        |> clearFlag StatusFlags.frameInterrupt
+
+      status', { apu with status = clearedStatus }
     | _ ->
       // printfn "This APU register is not implemented yet. %04X" addr
       0uy, apu
@@ -470,11 +501,39 @@ module Apu =
     let ch3, tri = Triangle.output dt apu.triangle
     let ch4, noi = Noise.output dt apu.noise
 
-    let sample = (ch1 + ch2 + ch3 + ch4) * 0.25f
+    let samplesToPop = int (dt * Constants.cpuClockNTSC)
+
+    let dmcSamples, dmc' = Dmc.popSamples samplesToPop apu.dmc
+    let ch5 =
+      match dmcSamples with
+      | hd::_ -> hd  // 先頭のサンプルを採用
+      | [] -> dmc'.lastOutput
+
+    let ch1 = ch1 |> int
+    let ch2 = ch2 |> int
+    let ch3 = ch3 |> int
+    let ch4 = ch4 |> int
+    let ch5 = ch5 |> int
+
+    let masterGain = 1.0f
+
+    // 実機の回路を模したミキサーらしい
+    // https://www.nesdev.org/wiki/APU_Mixer
+    let pulseMix =
+      if ch1 + ch2 = 0 then 0.0f
+      else 95.88f / (8128.0f / float32(ch1 + ch2) + 100.0f)
+
+    let tndMix =
+      let t, n, d = float32 ch3 , float32 ch4, float32 ch5
+      if t = 0.0f && n = 0.0f && d = 0.0f then 0.0f
+      else 159.79f / (1.0f / (t/8227.0f + n/12241.0f + d /22638.0f) + 100.0f)
+
+    let sample = (pulseMix + tndMix) * masterGain
+
     sample, { apu with
                 pulse1 = pu1
                 pulse2 = pu2
                 triangle = tri
                 noise = noi
+                dmc = dmc'
             }
-

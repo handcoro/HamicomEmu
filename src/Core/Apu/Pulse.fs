@@ -44,13 +44,6 @@ module Pulse =
     else
       p
 
-  let dutyTable : int[][] = [|
-    [| 0;1;0;0;0;0;0;0 |]; // 12.5%
-    [| 0;1;1;0;0;0;0;0 |]; // 25%
-    [| 0;1;1;1;1;0;0;0 |]; // 50%
-    [| 1;0;0;1;1;1;1;1 |]; // 25% negated
-  |]
-
   let freqPulseHz timer =
     if timer < 8us then 0.0
     else Constants.cpuClockNTSC / (16.0 * float (timer + 1us))
@@ -59,7 +52,7 @@ module Pulse =
   /// TODO: ミュートによる位相のリセットをするかどうかは後で決めたい
   let output dt (pulse : PulseState) =
     let freq = freqPulseHz pulse.timer
-    if freq = 0.0 then 0.0f, pulse
+    if freq = 0.0 then 0uy, pulse
     else
       let period = 1.0 / freq
       let dutyIndex = int pulse.duty &&& 0b11
@@ -71,11 +64,10 @@ module Pulse =
         else (pulse.phase + dt) % period
 
       let step = int (pulse.phase / period * 8.0) % 8
-      let bit = dutyTable[dutyIndex][step]
+      let bit = Constants.dutyTable[dutyIndex][step]
 
       let sample =
         if bit = 1 then
-          float (if pulse.isConstant then pulse.volume else pulse.envelope.volume) / 15.0
-        else
-          0.0
-      float32 sample, { pulse with phase = newPhase }
+          if pulse.isConstant then pulse.volume else pulse.envelope.volume
+        else 0uy
+      sample, { pulse with phase = newPhase }

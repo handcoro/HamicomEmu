@@ -35,6 +35,7 @@ module Bus =
     cycleTotal: uint
     cyclePenalty: uint
     oamDmaCyclesRemaining: uint option // OAM DMA 中に DMC に割り込まれたときの残りサイクル数
+    // pendingStallCpuCycles: uint option // TODO: DMC 読み込みによるストール
   }
 
   let initial rom = {
@@ -47,6 +48,7 @@ module Bus =
     cycleTotal = 0u
     cyclePenalty = 0u
     oamDmaCyclesRemaining = None
+    // pendingStallCpuCycles = None
   }
 
 
@@ -121,31 +123,33 @@ module Bus =
     { bus with apu.irq = false }
 
   let tick n bus =
-    let cyc = bus.cycleTotal + uint n + bus.cyclePenalty
-    let nmiBefore = bus.ppu.nmiInterrupt.IsSome
+    let consumed = uint n + bus.cyclePenalty
+    let cyc = bus.cycleTotal + consumed
+    // let nmiBefore = bus.ppu.nmiInterrupt.IsSome
     let ppu' = Ppu.tick (n * 3u) bus.ppu
   
     let result = Apu.tick n bus.apu
-    let bus' = { bus with apu = result.apu}
+    let bus = { bus with apu = result.apu}
 
     // DMC の読み込み要求を処理
-    let bus'' =
+    let bus =
       match result.dmcRead with
       | Some req ->
-          let value, _ = memRead req.addr bus'
-          let dmc' = req.onRead value
-          let apu' = { bus'.apu with dmc = dmc' }
-          { bus' with apu = apu' }
+          let value, _ = memRead req.addr bus
+          let dmc = req.onRead value
+          let apu = { bus.apu with dmc = dmc }
+          { bus with apu = apu }
 
-      | None -> bus'
-  
-    let nmiAfter = ppu'.nmiInterrupt.IsSome
-
-    // NMI の立ち上がり検出
-    let nmiEdge = not nmiBefore && nmiAfter
-    let busF = { bus'' with cycleTotal = cyc; cyclePenalty = 0u; ppu = ppu' }
+      | None -> bus
     
-    busF, if nmiEdge then Some ppu' else None
+
+    // let nmiAfter = ppu'.nmiInterrupt.IsSome
+
+    // NMI の立ち上がり検出してるけど今は使わないのでとりあえずオミット
+    // let nmiEdge = not nmiBefore && nmiAfter
+    let bus' = { bus with cycleTotal = cyc; cyclePenalty = 0u; ppu = ppu' }
+    
+    bus', consumed
 
   let rec tickNTimes n bus =
     if n <= 0 then bus
@@ -202,7 +206,7 @@ module Bus =
       for i in 0 .. 0xFF do
         data[i] <- memRead (hi + uint16 i) bus |> fst
       let ppu = Ppu.writeToOamDma data bus.ppu
-      let bus' = tickNTimes 514 bus
+      let bus' = tickNTimes 114 bus
       { bus' with ppu = ppu }
 
     | 0x4016us -> // TODO: Joypad
