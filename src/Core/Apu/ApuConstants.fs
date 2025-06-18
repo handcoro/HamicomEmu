@@ -3,6 +3,8 @@ namespace HamicomEmu.Apu
 module Constants =
   let cpuClockNTSC = 1_789_773.0 // NTSC NES の CPU クロック
 
+  let frameStepCycles = 7457u // 1 step のサイクル数
+
   let dutyTable = [|
     [| 0;1;0;0;0;0;0;0 |]; // 12.5%
     [| 0;1;1;0;0;0;0;0 |]; // 25%
@@ -13,9 +15,22 @@ module Constants =
   let triangleTable =
     Array.append [|15.. -1 .. 0|] [|0..15|]
 
+  /// 除数インデックス
+  let noisePeriods = 
+    [|   4;   8;  16;  32;  64;   96;  128;  160;
+       202; 254; 380; 508; 762; 1016; 2034; 4068 |]
+
   let dmcRateTable =
-    [| 428us; 380us; 340us; 320us; 286us; 254us; 226us; 214us;
-       190us; 160us; 142us; 128us; 106us; 84us; 72us; 54us |]
+    [| 428; 380; 340; 320; 286; 254; 226; 214;
+       190; 160; 142; 128; 106;  84;  72;  54 |]
+
+  let lengthTable = [|
+    10uy; 254uy; 20uy;  2uy; 40uy;  4uy; 80uy;  6uy;
+    160uy; 8uy; 60uy; 10uy; 14uy; 12uy; 26uy; 14uy;
+    12uy; 16uy; 24uy; 18uy; 48uy; 20uy; 96uy; 22uy;
+    192uy; 24uy; 72uy; 26uy; 16uy; 28uy; 32uy; 30uy
+  |]
+
 
 module GeneralMasks =
   // 矩形波とノイズ共通

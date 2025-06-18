@@ -4,6 +4,32 @@ module Dmc =
 
   open HamicomEmu.Apu.Types
 
+  let initial = {
+    irqEnabled = false
+    isLoop = false
+    rateIndex = 0uy
+
+    outputLevel = 0uy
+
+    startAddress = 0uy
+    sampleLength = 0uy
+
+    currentAddress = 0us
+    bytesRemaining = 0us
+    buffer = None
+
+    shiftRegister = 0uy
+    bitsRemaining = 0
+
+    timer = 0us
+    isSilence = false
+
+    irqRequested = false
+
+    outputBuffer = []
+    lastOutput = 0uy
+  }
+
   let startSample dmc = {
     dmc with
       currentAddress = 0xC000us + (uint16 dmc.startAddress <<< 6)
@@ -59,7 +85,7 @@ module Dmc =
     if dmc.timer > 0us then
       { dmc with timer = dmc.timer - 1us }, None
     else
-      let dmc = { dmc with timer = Constants.dmcRateTable[int dmc.rateIndex] }
+      let dmc = { dmc with timer = uint16 Constants.dmcRateTable[int dmc.rateIndex] }
 
       let dmc =
         if dmc.bitsRemaining <> 0 then dmc else

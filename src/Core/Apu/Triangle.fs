@@ -4,8 +4,22 @@ module Triangle =
 
   open HamicomEmu.Apu.Types
 
-  let hasControlFlag (tri: TriangleState) = tri.ctrlAndHalt
-  let hasLengthHaltFlag (tri : TriangleState) = tri.ctrlAndHalt  
+  let initial = {
+    linearCounterLoad = 0uy
+    ctrlAndHalt = false
+
+    timer = 0us
+
+    linearCounter = 0uy
+    linearReloadFlag = false
+
+    lengthCounter = 1uy
+
+    phase = 0.0
+  }
+
+  let private hasControlFlag (tri: TriangleState) = tri.ctrlAndHalt
+  let private hasLengthHaltFlag (tri : TriangleState) = tri.ctrlAndHalt  
 
   let tickLinearCounter tri =
     let counter =
@@ -23,13 +37,7 @@ module Triangle =
         linearCounter = counter
         linearReloadFlag = reloadFlag }
 
-  let tickLengthCounter (tri : TriangleState) =
-    if not (hasLengthHaltFlag tri) && tri.lengthCounter > 0uy then
-      { tri with lengthCounter = tri.lengthCounter - 1uy }
-    else
-      tri
-
-  let freqHz timer =
+  let private freqHz timer =
     Constants.cpuClockNTSC / (32.0 * float (timer + 1us))
 
   /// 三角波出力

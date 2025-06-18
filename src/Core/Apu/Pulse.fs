@@ -4,60 +4,37 @@ module Pulse =
 
   open HamicomEmu.Apu.Types
 
-  let isMuted (pul : PulseState) =
-    pul.lengthCounter = 0uy || pul.timer < 8us || pul.timer > 0x7FFus
+  let initial ch = {
+    channel = ch
+    volume = 0uy
+    duty = 0uy
+    loopAndHalt = false
+    isConstant = false
 
-  /// スウィープ
-  /// ミュートされてても分周器は進む
-  let tickSweep pulse =
-    let sw = pulse.sweep
-    let shouldSweep =
-      sw.enabled &&
-      sw.divider = 0uy &&
-      sw.shift <> 0uy &&
-      not (isMuted pulse)
+    sweep = SweepUnit.initial
+    timer = 0us
 
-    let newTimer =
-      if shouldSweep then
-        let delta = pulse.timer >>> int sw.shift
-        if sw.negate then
-          pulse.timer - delta - if pulse.channel = One then 1us else 0us
-        else
-          pulse.timer + delta
-      else
-        pulse.timer
+    envelope = Envelope.initial
 
-    if sw.reload || sw.divider = 0uy then
-      sw.divider <- sw.period
-      sw.reload <- false
-    else
-      sw.divider <- sw.divider - 1uy
+    lengthCounter = 1uy
 
-    // if shouldSweep then
-    //   printfn "sweep: ch=%A timer=%A → %A (delta=%A neg=%A)" pulse.channel pulse.timer newTimer (pulse.timer >>> int sw.shift) sw.negate
+    phase = 0.0
+  }
 
-    { pulse with timer = newTimer }
-
-  let tickLengthCounter (p: PulseState) =
-    if not p.loopAndHalt && p.lengthCounter > 0uy then
-      { p with lengthCounter = p.lengthCounter - 1uy }
-    else
-      p
-
-  let freqPulseHz timer =
+  let private freqHz timer =
     if timer < 8us then 0.0
     else Constants.cpuClockNTSC / (16.0 * float (timer + 1us))
 
   /// 矩形波出力
   /// TODO: ミュートによる位相のリセットをするかどうかは後で決めたい
   let output dt (pulse : PulseState) =
-    let freq = freqPulseHz pulse.timer
+    let freq = freqHz pulse.timer
     if freq = 0.0 then 0uy, pulse
     else
       let period = 1.0 / freq
       let dutyIndex = int pulse.duty &&& 0b11
 
-      let isMuted = isMuted pulse
+      let isMuted = Common.isMuted pulse
 
       let newPhase =
         if isMuted then pulse.phase

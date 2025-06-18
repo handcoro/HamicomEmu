@@ -4,26 +4,30 @@ module Noise =
 
   open HamicomEmu.Apu.Types
 
+  let initial = {
+    volume = 0uy
+    loopAndHalt = false
+    isConstant = false
 
-  let tickLengthCounter (noi : NoiseState) =
-    if not noi.loopAndHalt && noi.lengthCounter > 0uy then
-      { noi with lengthCounter = noi.lengthCounter - 1uy }
-    else
-      noi
+    periodIndex = 0uy
+    isShortMode = false
 
-  /// 除数インデックス
-  let noisePeriods = 
-    [| 4; 8; 16; 32; 64; 96; 128; 160; 202; 254; 380; 508; 762; 1016; 2034; 4068 |]
+    envelope = Envelope.initial
+
+    lengthCounter = 1uy
+    shift = 1us
+    phase = 0.0
+  }
 
   /// 周波数テーブル生成
-  let generateNoiseFreqTable (cpuClockHz: float) =
-    noisePeriods |> Array.map (fun p -> cpuClockHz / float p)
+  let private generateFreqTable (cpuClockHz: float) =
+    Constants.noisePeriods |> Array.map (fun p -> cpuClockHz / float p)
 
-  let noiseFreqs = generateNoiseFreqTable Constants.cpuClockNTSC
+  let private noiseFreqs = generateFreqTable Constants.cpuClockNTSC
 
   /// ノイズ生成
   /// シフトレジスタをいじって疑似乱数を生む
-  let nextNoise shift isShortMode =
+  let private nextNoise shift isShortMode =
     let x = if isShortMode then 6 else 1 // 比較するビットを周期モードによって変える
     let feedback = (shift &&& 1us) ^^^ (shift >>> x &&& 1us)
     let shifted = shift >>> 1

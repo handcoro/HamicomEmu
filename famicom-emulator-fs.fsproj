@@ -15,6 +15,10 @@
     <Compile Include="src\Core\Ppu\Renderer.fs" />
     <Compile Include="src\Core\Apu\ApuTypes.fs" />
     <Compile Include="src\Core\Apu\ApuConstants.fs" />
+    <Compile Include="src\Core\Apu\ApuCommon.fs" />
+    <Compile Include="src\Core\Apu\Envelope.fs" />
+    <Compile Include="src\Core\Apu\SweepUnit.fs" />
+    <Compile Include="src\Core\Apu\LengthCounter.fs" />
     <Compile Include="src\Core\Apu\Pulse.fs" />
     <Compile Include="src\Core\Apu\Triangle.fs" />
     <Compile Include="src\Core\Apu\Noise.fs" />

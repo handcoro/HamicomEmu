@@ -205,11 +205,11 @@ let tests =
       test "APU $4015 read reflects all channel statuses and IRQ flags" {
         let apu = {
           Apu.initial with
-            pulse1 = { Apu.initialPulse One with lengthCounter = 5uy }
-            pulse2 = { Apu.initialPulse Two with lengthCounter = 0uy }
-            triangle = { Apu.initialTriangle with lengthCounter = 2uy }
-            noise = { Apu.initialNoise with lengthCounter = 0uy }
-            dmc = { Apu.initialDmc with bytesRemaining = 10us; irqRequested = true }
+            pulse1 = { Pulse.initial One with lengthCounter = 5uy }
+            pulse2 = { Pulse.initial Two with lengthCounter = 0uy }
+            triangle = { Triangle.initial with lengthCounter = 2uy }
+            noise = { Noise.initial with lengthCounter = 0uy }
+            dmc = { Dmc.initial with bytesRemaining = 10us; irqRequested = true }
             frameCounter.irqRequested = true
             status =
               StatusFlags.pulse1Enable |||

@@ -106,7 +106,7 @@ module Types =
     irqRequested: bool
   }
 
-  type ApuStep =
+  type FrameStep =
     | Step1
     | Step2
     | Step3
@@ -123,7 +123,7 @@ module Types =
     status: byte
     frameCounter: FrameCounter
     mutable cycle: uint
-    mutable step: ApuStep
+    mutable step: FrameStep
     irq: bool
   }
 

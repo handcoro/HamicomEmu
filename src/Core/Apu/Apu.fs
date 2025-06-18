@@ -10,104 +10,6 @@ module Apu =
   let updateFlag flag condition b =
     if condition then setFlag flag b else clearFlag flag b
 
-  let initialEnvelope = {
-    volume = 0uy
-    divider = 0uy
-    decay = 0uy
-    reload = false
-  }
-
-  let initialSweep = {
-    enabled = false
-    negate = false
-    period = 0uy
-    shift = 0uy
-    reload = false
-    divider = 0uy
-  }
-
-  let parseSweep v = {
-    enabled = hasFlag PulseBitMasks.sweepFlag v
-    negate = hasFlag PulseBitMasks.sweepNegateFlag v
-    period = v &&& PulseBitMasks.sweepPeriodMask >>> 4
-    shift = v &&& PulseBitMasks.sweepShiftMask
-    reload = true
-    divider = 0uy
-  }
-
-  let initialPulse ch = {
-    channel = ch
-    volume = 0uy
-    duty = 0uy
-    loopAndHalt = false
-    isConstant = false
-
-    sweep = initialSweep
-    timer = 0us
-
-    envelope = initialEnvelope
-
-    lengthCounter = 1uy
-
-    phase = 0.0
-  }
-
-
-  let initialTriangle = {
-    linearCounterLoad = 0uy
-    ctrlAndHalt = false
-
-    timer = 0us
-
-    linearCounter = 0uy
-    linearReloadFlag = false
-
-    lengthCounter = 1uy
-
-    phase = 0.0
-  }
-
-  let initialNoise = {
-    volume = 0uy
-    loopAndHalt = false
-    isConstant = false
-
-    periodIndex = 0uy
-    isShortMode = false
-
-    envelope = initialEnvelope
-
-    lengthCounter = 1uy
-    shift = 1us
-    phase = 0.0
-  }
-
-  let initialDmc = {
-    irqEnabled = false
-    isLoop = false
-    rateIndex = 0uy
-
-    outputLevel = 0uy
-
-    startAddress = 0uy
-    sampleLength = 0uy
-
-    currentAddress = 0us
-    bytesRemaining = 0us
-    buffer = None
-
-    shiftRegister = 0uy
-    bitsRemaining = 0
-
-    timer = 0us
-    isSilence = false
-
-    irqRequested = false
-
-    outputBuffer = []
-    lastOutput = 0uy
-  }
-
   let initialFrameCounter = {
     mode = FourStep
     irqInhibit = false
@@ -115,11 +17,11 @@ module Apu =
   }
 
   let initial = {
-    pulse1 = initialPulse One
-    pulse2 = initialPulse Two
-    triangle = initialTriangle
-    noise = initialNoise
-    dmc = initialDmc
+    pulse1 = Pulse.initial One
+    pulse2 = Pulse.initial Two
+    triangle = Triangle.initial
+    noise = Noise.initial
+    dmc = Dmc.initial
     status = 0uy
     frameCounter = initialFrameCounter
     cycle = 0u
@@ -129,28 +31,6 @@ module Apu =
 
   let hasLoopFlag v = hasFlag GeneralMasks.envelopeLoopFlag v
 
-  /// エンベロープを進める
-  let tickEnvelope (ev : EnvelopeState) reload loop =
-    let vol =
-      if ev.reload then
-        ev.divider <- reload
-        ev.decay <- 15uy
-        ev.reload <- false
-        15uy
-      else if ev.divider = 0uy then // 分周器の励起
-        ev.divider <- reload
-        if ev.decay = 0uy then
-          if loop then 15uy else 0uy
-        else
-          ev.decay <- ev.decay - 1uy
-          ev.decay
-      else
-        ev.divider <- ev.divider - 1uy
-        ev.decay
-
-    { ev with volume = vol }
-
-  
   /// TODO: DMC 関連の操作
   let writeToStatus value apu =
     let pulse1Enabled = hasFlag StatusFlags.pulse1Enable value
@@ -185,12 +65,12 @@ module Apu =
         status = status
     }
 
-  let tickEnvelopeAndLinear apu =
+  let private tickEnvelopeAndLinear apu =
 
-    let ch1Ev = tickEnvelope apu.pulse1.envelope apu.pulse1.volume apu.pulse1.loopAndHalt
-    let ch2Ev = tickEnvelope apu.pulse2.envelope apu.pulse2.volume apu.pulse2.loopAndHalt
+    let ch1Ev = Envelope.tick apu.pulse1.envelope apu.pulse1.volume apu.pulse1.loopAndHalt
+    let ch2Ev = Envelope.tick apu.pulse2.envelope apu.pulse2.volume apu.pulse2.loopAndHalt
     let ch3 = Triangle.tickLinearCounter apu.triangle
-    let ch4Ev = tickEnvelope apu.noise.envelope apu.noise.volume apu.noise.loopAndHalt
+    let ch4Ev = Envelope.tick apu.noise.envelope apu.noise.volume apu.noise.loopAndHalt
 
     { apu with
         pulse1.envelope = ch1Ev
@@ -199,19 +79,19 @@ module Apu =
         noise.envelope = ch4Ev
     }
 
-  let tickLengthAndSweep apu =
+  let private tickLengthAndSweep apu =
     let ch1 =
       apu.pulse1
-      |> Pulse.tickLengthCounter
-      |> Pulse.tickSweep
+      |> LengthCounter.tickPulse
+      |> SweepUnit.tick
 
     let ch2 =
       apu.pulse2
-      |> Pulse.tickLengthCounter
-      |> Pulse.tickSweep
+      |> LengthCounter.tickPulse
+      |> SweepUnit.tick
 
-    let ch3 = Triangle.tickLengthCounter apu.triangle
-    let ch4 = Noise.tickLengthCounter apu.noise
+    let ch3 = LengthCounter.tickTriangle apu.triangle
+    let ch4 = LengthCounter.tickNoise apu.noise
 
     { apu with
         pulse1 = ch1
@@ -229,9 +109,11 @@ module Apu =
     match step with
     | Step1 | Step3 ->
       apu |> tickEnvelopeAndLinear
+
     | Step2 ->
       apu |> tickEnvelopeAndLinear
           |> tickLengthAndSweep
+
     | Step4 when mode = FourStep ->
       apu |> tickEnvelopeAndLinear
           |> tickLengthAndSweep
@@ -240,11 +122,12 @@ module Apu =
               let fc = { a.frameCounter with irqRequested = true }
               { a with frameCounter = fc }
             else a
+
     | Step5 when mode = FiveStep ->
       apu |> tickEnvelopeAndLinear
           |> tickLengthAndSweep
+
     | _ ->
-      printfn "Invalid APU frame step: %A" step
       apu
 
   let private nextStep = function
@@ -254,14 +137,12 @@ module Apu =
   | Step4 -> Step5
   | Step5 -> Step1
 
-  let frameStepCycles = 7457u // 1 step のサイクル数
-
   /// APU のサイクルを進める
   /// 4-step モードは 240Hz で 1 フレーム
   let tick n apu : TickResult =
     apu.cycle <- apu.cycle + n
 
-    let mode = if hasFlag FrameCounterFlags.mode apu.status then FiveStep else FourStep
+    let mode = apu.frameCounter.mode
 
     let dmc', req = Dmc.tick apu.dmc
     let apu = { apu with dmc = dmc' }
@@ -269,20 +150,19 @@ module Apu =
     // DMC から受け取った IRQ 要求のセット
     let apu = { apu with irq = apu.dmc.irqRequested }
 
-    if apu.cycle < frameStepCycles then
+    if apu.cycle < Constants.frameStepCycles then
       { apu = apu; dmcRead = req }
 
     else
-      apu.cycle <- apu.cycle - frameStepCycles
+      apu.cycle <- apu.cycle - Constants.frameStepCycles
 
       // フレームステップ更新
       let apu = runFrameStep apu.step mode apu
-      apu.step <- nextStep apu.step
 
       // ステップカウンタのロールオーバー
       match apu.step, mode with
       | Step4, FourStep | Step5, FiveStep -> apu.step <- Step1
-      | _ -> ()
+      | _ -> apu.step <- nextStep apu.step
 
       { apu = apu; dmcRead = req }
 
@@ -312,17 +192,11 @@ module Apu =
 
 
   /// 00: 12.5%, 01: 25%, 10: 50%, 11: 75%
-  let parseDuty v = v &&& PulseBitMasks.dutyCycleMask >>> 6
-  let lengthTable = [|
-    10uy; 254uy; 20uy;  2uy; 40uy;  4uy; 80uy;  6uy;
-    160uy; 8uy; 60uy; 10uy; 14uy; 12uy; 26uy; 14uy;
-    12uy; 16uy; 24uy; 18uy; 48uy; 20uy; 96uy; 22uy;
-    192uy; 24uy; 72uy; 26uy; 16uy; 28uy; 32uy; 30uy
-  |]
+  let private parseDuty v = v &&& PulseBitMasks.dutyCycleMask >>> 6
 
-  let parseLengthCounter v = lengthTable[int v >>> 3]
+  let private parseLengthCounter v = Constants.lengthTable[int v >>> 3]
 
-  let parseVolumeControlPulse (pulse : PulseState) v =
+  let private parseVolumeControlPulse (pulse : PulseState) v =
     { pulse with
         volume = PulseBitMasks.volumeMask &&& v
         duty = parseDuty v
@@ -330,40 +204,50 @@ module Apu =
         loopAndHalt = hasFlag PulseBitMasks.lengthCounterHaltFlag v
     }
 
-  let parselinearCounterTriangle v = TriangleBitMasks.linearCounterMask &&& v
+  let private parseSweep v = {
+    enabled = hasFlag PulseBitMasks.sweepFlag v
+    negate = hasFlag PulseBitMasks.sweepNegateFlag v
+    period = v &&& PulseBitMasks.sweepPeriodMask >>> 4
+    shift = v &&& PulseBitMasks.sweepShiftMask
+    reload = true
+    divider = 0uy
+  }
 
-  let parseControlAndHaltTriangle v = hasFlag TriangleBitMasks.controlFlag v
 
-  let parseVolumeControlNoise (noise : NoiseState) v =
+  let private parselinearCounterTriangle v = TriangleBitMasks.linearCounterMask &&& v
+
+  let private parseControlAndHaltTriangle v = hasFlag TriangleBitMasks.controlFlag v
+
+  let private parseVolumeControlNoise (noise : NoiseState) v =
     { noise with
         volume = NoiseBitMasks.volumeMask &&& v
         isConstant = hasFlag NoiseBitMasks.constantVolumeFlag v
         loopAndHalt = hasFlag NoiseBitMasks.lengthCounterHaltFlag v
     }
   
-  let parsePeriodIndexNoise v = NoiseBitMasks.periodMask &&& v
+  let private parsePeriodIndexNoise v = NoiseBitMasks.periodMask &&& v
 
-  let parseModeNoise v = hasFlag NoiseBitMasks.modeFlag v
+  let private parseModeNoise v = hasFlag NoiseBitMasks.modeFlag v
 
   /// タイマーの下位 8 ビットを更新
-  let updateTimerLo timer lo =
+  let private updateTimerLo timer lo =
     let hi = timer &&& (uint16 PulseBitMasks.timerHiMask <<< 8)
     let lo = uint16 lo
     hi ||| lo
 
   /// タイマーの上位 3 ビットを更新
-  let updateTimerHi timer hi =
+  let private updateTimerHi timer hi =
     let hi = hi &&& GeneralMasks.timerHiMask |> uint16 <<< 8
     let lo = timer &&& 0xFFus
     hi ||| lo
 
-  let parseRateIndexDmc v = DmcBitMasks.rateIndexMask &&& v
+  let private parseRateIndexDmc v = DmcBitMasks.rateIndexMask &&& v
 
-  let parseIrqEnabledDmc v = hasFlag DmcBitMasks.irqEnabledFlag v
+  let private parseIrqEnabledDmc v = hasFlag DmcBitMasks.irqEnabledFlag v
 
-  let parseLoopDmc v = hasFlag DmcBitMasks.loopFlag v
+  let private parseLoopDmc v = hasFlag DmcBitMasks.loopFlag v
 
-  let parseDirectLoad v = DmcBitMasks.directLoadMask &&& v
+  let private parseDirectLoad v = DmcBitMasks.directLoadMask &&& v
 
   let write addr value apu =
 
