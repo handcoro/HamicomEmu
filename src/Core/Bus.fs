@@ -126,9 +126,10 @@ module Bus =
     let consumed = uint n + bus.cyclePenalty
     let cyc = bus.cycleTotal + consumed
     // let nmiBefore = bus.ppu.nmiInterrupt.IsSome
-    let ppu' = Ppu.tick (n * 3u) bus.ppu
+    // TODO: 3 サイクルごとに tick させてるけどタイミングが厳しいゲームだと不具合が出るかも
+    let ppu' = Ppu.tickNTimes consumed 3u bus.ppu
   
-    let result = Apu.tick n bus.apu
+    let result = Apu.tick consumed bus.apu
     let bus = { bus with apu = result.apu}
 
     // DMC の読み込み要求を処理
@@ -145,7 +146,7 @@ module Bus =
 
     // let nmiAfter = ppu'.nmiInterrupt.IsSome
 
-    // NMI の立ち上がり検出してるけど今は使わないのでとりあえずオミット
+    // NOTE: NMI の立ち上がり検出してるけど今は使わないのでとりあえずオミット
     // let nmiEdge = not nmiBefore && nmiAfter
     let bus' = { bus with cycleTotal = cyc; cyclePenalty = 0u; ppu = ppu' }
     

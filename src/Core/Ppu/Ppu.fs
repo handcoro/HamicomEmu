@@ -28,6 +28,7 @@ module Ppu =
     // スクロール情報のスナップショット
     scrollPerScanline = Array.init 240 (fun _ -> { xy = (0uy, 0uy) })
     ctrlPerScanline = Array.zeroCreate 240
+    frameIsOdd = false
   }
 
   // let initialRenderCache = {
@@ -247,58 +248,80 @@ module Ppu =
     let ppu', sr = updateScrollRegister value ppu ppu.scrlReg
     { ppu' with scrlReg = sr }
 
-  let tick cycle ppu =
-    let cyc = ppu.cycle + uint cycle
+/// PPU を n サイクル進める（1スキャンラインをまたぐときは精密タイミング処理を行う）
+/// FIXME: 精密にやろうとすると動作のボトルネックになりやすいので作りを考え直したい
+  let tick n ppu =
+    let c, s = ppu.cycle, ppu.scanline
+    let newCycle = c + n
 
-    // 340 は画面のライン 1 本分
-    let oamAddr = if cyc >= 257u && cyc <= 320u then 0uy else ppu.oamAddr // OAM アドレスを 0 にする処理がこれで合ってるのかよくわからない
-    if cyc < 341u then
-      { ppu with oamAddr = oamAddr; cycle = cyc}
+    // === 高速パス（スキャンライン内に収まる） ===
+    if newCycle < 341u then
+      let oamAddr = if newCycle >= 257u && newCycle <= 320u then 0uy else ppu.oamAddr
+      { ppu with cycle = newCycle; oamAddr = oamAddr }
+
+    // === スキャンライン跨ぎ ===
     else
-      let st = ppu.status |> updateFlag StatusFlags.spriteZeroHit (isSpriteZeroHit cyc ppu)
-      let cyc' = cyc - 341u
-      let nextScanline = ppu.scanline + 1us
+      let nextCycle = newCycle - 341u
+      let nextScanline = s + 1us
 
-      match nextScanline with
-      | 241us ->
-        // VBlank 開始
-        let st' = st |> setFlag StatusFlags.vblank
-        let ppu' =
-          { ppu with
-              scanline = nextScanline
-              oamAddr = oamAddr
-              cycle = cyc'
-              status = st'
-          }
+      let mutable status = ppu.status
+      let mutable nmi = ppu.nmiInterrupt
+      let mutable newScanline = nextScanline
+      let mutable newCycle = nextCycle
+      let mutable frameIsOdd = ppu.frameIsOdd
+
+      // === フラグの初期化：プリレンダーライン開始（scanline 261, cycle 1）===
+      // BUG: サイクル数で高速パスしているため現在機能しておらず、機能させるとゲームが動かなくなるので要検証
+      if s = 261us &&  c = 1u then
+        status <- status |> clearFlag StatusFlags.vblank |> clearFlag StatusFlags.spriteZeroHit
+        nmi <- None
+
+      // === スプライトゼロヒット検出：描画ライン終端（scanline < 240） ===
+      if s < 240us then
+        status <- updateFlag StatusFlags.spriteZeroHit (isSpriteZeroHit c ppu) status
+
+      // === VBlank 開始（scanline 241 開始時）===
+      if nextScanline = 241us then
+        status <- setFlag StatusFlags.vblank status
         if hasFlag ControlFlags.generateNmi ppu.ctrl then
-          { ppu' with nmiInterrupt = Some 1uy }
-        else
-          ppu'
+          nmi <- Some 1uy
 
-      | s when s >= 262us ->
-        // フレーム終了（VBlank 終了）
-        let st' = st |> resetVblankStatus |> clearFlag StatusFlags.spriteZeroHit
+      // === フレーム終了（scanline >= 262）===
+      if nextScanline >= 262us then
+        newScanline <- 0us
+        newCycle <- nextCycle
+        status <- status |> clearFlag StatusFlags.vblank |> clearFlag StatusFlags.spriteZeroHit
+        nmi <- None
+        frameIsOdd <- not ppu.frameIsOdd
+
+      // === 奇数フレームスキップ（261,339） ===
+      // FIXME: サイクル数で高速パスしているため現在機能していない
+      if s = 261us && c = 339u &&
+        ppu.frameIsOdd &&
+        (hasFlag MaskFlags.backgroundRendering ppu.mask || hasFlag MaskFlags.spriteRendering ppu.mask)
+      then
+        newCycle <- 0u
+        newScanline <- 0us
+
+      // === スクロールとコントロールレジスタの記録（描画ラインのみ）===
+      let ppu' =
         { ppu with
-            scanline = 0us
-            status = st'
-            oamAddr = oamAddr
-            cycle = cyc'
-            nmiInterrupt = None
-        }
-      | s when s < 241us ->
-        ppu.scrollPerScanline[int ppu.scanline] <- ppu.scrlReg
-        ppu.ctrlPerScanline[int ppu.scanline] <- ppu.ctrl
-        { ppu with
-            scanline = nextScanline
-            status   = st
-            oamAddr  = oamAddr
-            cycle   = cyc'
-        }
-      | _ ->
-        // 通常のスキャンライン進行
-        { ppu with
-            scanline = nextScanline
-            status   = st
-            oamAddr  = oamAddr
-            cycle   = cyc'
-        }
+            cycle = newCycle
+            scanline = newScanline
+            oamAddr = if newCycle >= 257u && newCycle <= 320u then 0uy else ppu.oamAddr
+            status = status
+            nmiInterrupt = nmi
+            frameIsOdd = frameIsOdd }
+
+      if nextScanline < 240us then
+        let i = int s
+        ppu'.scrollPerScanline[i] <- ppu.scrlReg
+        ppu'.ctrlPerScanline[i]   <- ppu.ctrl
+
+      ppu'
+
+  let rec tickNTimes m n ppu =
+    if m <= 0u then ppu
+    else
+      let ppu' = tick n ppu
+      tickNTimes (m - 1u) n ppu'
