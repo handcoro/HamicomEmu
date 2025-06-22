@@ -4,6 +4,7 @@
     <TargetFramework>net8.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="src\Core\Common.fs" />
     <Compile Include="src\Core\Joypad.fs" />
     <Compile Include="src\Core\Instructions.fs" />
     <Compile Include="src\Core\Cartridge.fs" />
@@ -26,6 +27,7 @@
     <Compile Include="src\Core\Apu\Apu.fs" />
     <Compile Include="src\Core\Bus.fs" />
     <Compile Include="src\Core\Cpu.fs" />
+    <Compile Include="src\Core\EmulatorCore.fs" />
     <Compile Include="src\Core\Trace.fs" />
     <Compile Include="src\Platform\AudioEngine.fs" />
     <Compile Include="src\Tests.fs" />

@@ -140,14 +140,14 @@ module Apu =
 
     let mode = apu.frameCounter.mode
 
-    let dmc', req = Dmc.tick apu.dmc
+    let dmc', req, stall = Dmc.tick apu.dmc
     let apu = { apu with dmc = dmc' }
 
     // DMC から受け取った IRQ 要求のセット
     let apu = { apu with irq = apu.dmc.irqRequested }
 
     if apu.cycle < Constants.frameStepCycles then
-      { apu = apu; dmcRead = req }
+      { apu = apu; dmcRead = req; stallCpuCycles = stall }
 
     else
       apu.cycle <- apu.cycle - Constants.frameStepCycles
@@ -160,7 +160,7 @@ module Apu =
       | Step4, FourStep | Step5, FiveStep -> apu.step <- Step1
       | _ -> apu.step <- nextStep apu.step
 
-      { apu = apu; dmcRead = req }
+      { apu = apu; dmcRead = req; stallCpuCycles = stall }
 
   let getReadRequest apu =
     if Dmc.needsSampleRead apu.dmc then

@@ -25,7 +25,10 @@ module Cpu =
       Y: byte
       PC: uint16
       SP: byte
-      P: byte }
+      P: byte
+      // NOTE: ブランチ命令用のサイクル増分 本当はもっと例外なくスマートにやりたい
+      cyclePenalty: uint
+    }
 
   let initial =
     { A = 0uy
@@ -33,7 +36,9 @@ module Cpu =
       Y = 0uy
       PC = 0us
       SP = 0xFDuy
-      P = Flags.I ||| Flags.U }
+      P = Flags.I ||| Flags.U
+      cyclePenalty = 0u
+    }
 
   let isPageCrossed (a: uint16) (b: uint16) =
     (a &&& 0xFF00us) <> (b &&& 0xFF00us)
@@ -287,11 +292,9 @@ module Cpu =
     if hasFlag flag cpu.P <> expected then
       (cpu, bus) ||> advancePC 2us
     else
-      let bus =
-        bus
-        |> Bus.addCyclePenalty 1u
-        |> fun b -> if isPageCrossed target nextPc then Bus.addCyclePenalty 1u b else b
-      { cpu with PC = nextPc }, bus
+      // 条件達成で +1, ページ境界跨ぎでさらに +1
+      let pen = 1u + if isPageCrossed target nextPc then 1u else 0u
+      { cpu with PC = nextPc; cyclePenalty = pen }, bus
 
   /// BCC - Branch if Carry Clear
   let bcc mode cpu bus =
@@ -586,7 +589,7 @@ module Cpu =
     let cpu2, bus2 = push p cpu' bus'
     let p' = p |> setFlag Flags.I
 
-    let bus3 = fst (Bus.tick 2u bus2)
+    let bus3 = bus2 |> Bus.tick |> Bus.tick
     let pc, busF = Bus.memRead16 0xFFFAus bus3
     { cpu2 with P = p'; PC = pc }, busF
 
@@ -687,7 +690,7 @@ module Cpu =
         | _ -> false
       (c, b) ||> f m ||> advancePC size, crsd
 
-    let (cpu', bus2), crossed =
+    let (cpu', bus''), crossed =
       match Map.tryFind op execMap with
       | Some f -> execInstr f mode cpu bus'
       | None ->
@@ -708,7 +711,8 @@ module Cpu =
         | _ -> failwithf "Unsupported opcode: %A" op
     
     // サイクル追加発生可能性のある命令でページ境界をまたいだ場合はサイクル追加
-    let penaltyTick = if penalty && crossed then 1u else 0u
+    let pen = if penalty && crossed then 1u else 0u
 
-    let bus3, consumed = Bus.tick (cycles + penaltyTick) bus2
-    cpu', bus3, consumed
+    let consumed = cycles + pen + cpu'.cyclePenalty
+    let cpu'' = { cpu' with cyclePenalty = 0u }
+    cpu'', bus'', consumed

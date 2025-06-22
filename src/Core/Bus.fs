@@ -33,9 +33,8 @@ module Bus =
     joy1: Joypad
     joy2: Joypad
     cycleTotal: uint
-    cyclePenalty: uint
     oamDmaCyclesRemaining: uint option // OAM DMA 中に DMC に割り込まれたときの残りサイクル数
-    // pendingStallCpuCycles: uint option // TODO: DMC 読み込みによるストール
+    pendingStallCpuCycles: uint option // TODO: DMC 読み込みによるストール
   }
 
   let initial rom = {
@@ -46,16 +45,10 @@ module Bus =
     joy1 = initialJoypad
     joy2 = initialJoypad
     cycleTotal = 0u
-    cyclePenalty = 0u
     oamDmaCyclesRemaining = None
-    // pendingStallCpuCycles = None
+    pendingStallCpuCycles = None
   }
 
-
-  let resetPenalty bus =
-    { bus with cyclePenalty = 0u }
-  let addCyclePenalty n bus =
-    { bus with cyclePenalty = bus.cyclePenalty + n }
 
   let readPrgRom bus addr = // PRG ROM の読み込み
     let addr' = addr - 0x8000us // 0x8000 - 0xFFFF の範囲を 0x0000 - 0x7FFF に変換
@@ -122,15 +115,15 @@ module Bus =
   let clearIrqStatus (bus : BusState) =
     { bus with apu.irq = false }
 
-  let tick n bus =
-    let consumed = uint n + bus.cyclePenalty
-    let cyc = bus.cycleTotal + consumed
+  let tick bus =
+    let cyc = bus.cycleTotal + 1u
     // let nmiBefore = bus.ppu.nmiInterrupt.IsSome
-    // TODO: 3 サイクルごとに tick させてるけどタイミングが厳しいゲームだと不具合が出るかも
-    let ppu' = Ppu.tickNTimes consumed 3u bus.ppu
+    // TODO: 3 サイクルまとめて tick させてるけどタイミングが厳しいゲームだと不具合が出るかも
+    let ppu' = Ppu.tickNTimes 1u 3u bus.ppu
   
-    let result = Apu.tick consumed bus.apu
+    let result = Apu.tick 1u bus.apu
     let bus = { bus with apu = result.apu}
+    let p = result.stallCpuCycles
 
     // DMC の読み込み要求を処理
     let bus =
@@ -148,14 +141,14 @@ module Bus =
 
     // NOTE: NMI の立ち上がり検出してるけど今は使わないのでとりあえずオミット
     // let nmiEdge = not nmiBefore && nmiAfter
-    let bus' = { bus with cycleTotal = cyc; cyclePenalty = 0u; ppu = ppu' }
-    
-    bus', consumed
+    let bus' = { bus with cycleTotal = cyc; ppu = ppu'; pendingStallCpuCycles = p }
+
+    bus'
 
   let rec tickNTimes n bus =
     if n <= 0 then bus
     else
-      let bus', _ = tick 1u bus
+      let bus' = tick bus
       tickNTimes (n - 1) bus'
 
   let rec memWrite addr value bus =

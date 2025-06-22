@@ -91,7 +91,7 @@ module Types =
 
     irqRequested: bool
 
-    outputBuffer: byte list
+    outputBuffer: ResizeArray<byte>
     lastOutput : byte
   }
 
@@ -135,5 +135,5 @@ module Types =
     apu: ApuState
     dmcRead: DmcReadRequest option
     // TODO: DMC の読み込みで CPU を止める処理の実装
-    // stallCpuCycles: uint option
+    stallCpuCycles: uint option
   }

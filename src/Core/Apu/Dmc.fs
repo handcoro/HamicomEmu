@@ -26,7 +26,7 @@ module Dmc =
 
     irqRequested = false
 
-    outputBuffer = []
+    outputBuffer = ResizeArray()
     lastOutput = 0uy
   }
 
@@ -57,22 +57,23 @@ module Dmc =
 
     if nextRemaining = 0us && dmc.isLoop then startSample dmc' else dmc'
 
-  let clearOutputBuffer dmc = { dmc with outputBuffer = [] }
+  let clearOutputBuffer dmc = dmc.outputBuffer.Clear
 
   let popSample dmc =
-    match dmc.outputBuffer with
-    | x :: rest -> x, { dmc with outputBuffer = rest }
-    | [] -> 0uy, dmc
+    if dmc.outputBuffer.Count > 0 then
+      let value = dmc.outputBuffer[0]
+      dmc.outputBuffer.RemoveAt(0)
+      value, dmc
+    else
+      0uy, dmc
 
   let popSamples (n: int) (dmc: DmcState) =
-    let rec loop acc n buf =
-      match n, buf with
-      | 0, _ -> List.rev acc, buf
-      | _, [] -> List.rev acc, []
-      | n, x::xs -> loop (x::acc) (n - 1) xs
-
-    let taken, rest = loop [] n dmc.outputBuffer
-    taken, { dmc with outputBuffer = rest }
+    let taken = ResizeArray<byte>()
+    let count = min n dmc.outputBuffer.Count
+    for _ in 1 .. count do
+      taken.Add(dmc.outputBuffer[0])
+      dmc.outputBuffer.RemoveAt(0)
+    Seq.toList taken, dmc
 
   /// 
   /// 1 bit ずつ判定して音量を上げ下げする
@@ -83,12 +84,12 @@ module Dmc =
       dmc.irqEnabled
 
     if dmc.timer > 0us then
-      { dmc with timer = dmc.timer - 1us }, None
+      { dmc with timer = dmc.timer - 1us }, None, None
     else
       let dmc = { dmc with timer = uint16 Constants.dmcRateTable[int dmc.rateIndex] }
 
-      let dmc =
-        if dmc.bitsRemaining <> 0 then dmc else
+      let dmc, stall =
+        if dmc.bitsRemaining <> 0 then dmc, None else
         // バッファをシフトレジスタに移す
         match dmc.buffer with
         | Some byte ->
@@ -96,14 +97,14 @@ module Dmc =
               shiftRegister = byte
               bitsRemaining = 8
               buffer = None
-              isSilence = false }
+              isSilence = false }, Some 4u // バッファの読み込みで 4 サイクルストール
         | None ->
           if dmc.bytesRemaining <> 0us then
-            dmc // バッファまち
+            dmc, None // バッファまち
           else
             { dmc with
                 isSilence = true
-                irqRequested = irqRequested }
+                irqRequested = irqRequested }, None
 
       // 1 bit 処理
       let bit = dmc.shiftRegister &&& 1uy
@@ -116,12 +117,13 @@ module Dmc =
 
       let output = dmc.outputLevel
 
+      dmc.outputBuffer.Add(output)
+
       let dmc = {
         dmc with
           shiftRegister = shift'
           bitsRemaining = max 0 (dmc.bitsRemaining - 1)
           outputLevel = level
-          outputBuffer = dmc.outputBuffer @ [output]
           // バッファが切れたときの保険用
           // 色々なエミュレーションがきちんと実装できてきたらいらなくなるはず
           lastOutput = output
@@ -136,5 +138,5 @@ module Dmc =
           }
         else None
 
-      dmc, req
+      dmc, req, stall
 

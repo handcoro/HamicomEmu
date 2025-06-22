@@ -43,7 +43,7 @@ let initialDmcState = {
   timer = 0us
   isSilence = false
   irqRequested = false
-  outputBuffer = []
+  outputBuffer = ResizeArray()
   lastOutput = 0uy
 }
 
@@ -59,7 +59,7 @@ let tests =
             timer = 0us
         }
 
-        let state1, _ = Dmc.tick state
+        let state1, _, _ = Dmc.tick state
         Expect.equal state1.shiftRegister 0b0111_1000uy "Shifted 1 bit"
         Expect.equal state1.bitsRemaining 7 "bitCounter updated"
         Expect.equal state1.outputLevel 62uy "Output decreased (bit=0)"
@@ -75,46 +75,46 @@ let tests =
         }
 
         // tick 1: 0 → -2 → 62
-        let s1, _ = Dmc.tick init
+        let s1, _, _ = Dmc.tick init
         Expect.equal s1.outputLevel 62uy "Tick 1: output -2"
         Expect.equal s1.bitsRemaining 7 "Tick 1: bitsRemaining 7"
         Expect.equal s1.shiftRegister 0b0111_1000uy "Tick 1: shifted once"
 
         // tick 2: 0 → -2 → 60
-        let s2, _ = Dmc.tick { s1 with timer = 0us }
+        let s2, _, _ = Dmc.tick { s1 with timer = 0us }
         Expect.equal s2.outputLevel 60uy "Tick 2: output -2"
         Expect.equal s2.bitsRemaining 6 "Tick 2: bitsRemaining 6"
         Expect.equal s2.shiftRegister 0b0011_1100uy "Tick 2: shifted"
 
         // tick 3: 0 → -2 → 58
-        let s3, _ = Dmc.tick { s2 with timer = 0us }
+        let s3, _, _ = Dmc.tick { s2 with timer = 0us }
         Expect.equal s3.outputLevel 58uy "Tick 3: output -2"
         Expect.equal s3.bitsRemaining 5 "Tick 3: bitsRemaining 5"
 
         // tick 4: 0 → -2 → 56
-        let s4, _ = Dmc.tick { s3 with timer = 0us }
+        let s4, _, _ = Dmc.tick { s3 with timer = 0us }
         Expect.equal s4.outputLevel 56uy "Tick 4: output -2"
         Expect.equal s4.bitsRemaining 4 "Tick 4: bitsRemaining 4"
 
         // tick 5: 1 → +2 → 58
-        let s5, _ = Dmc.tick { s4 with timer = 0us }
+        let s5, _, _ = Dmc.tick { s4 with timer = 0us }
         Expect.equal s5.outputLevel 58uy "Tick 5: output +2"
         Expect.equal s5.bitsRemaining 3 "Tick 5: bitsRemaining 3"
 
         // tick 6: 1 → +2 → 60
-        let s6, _ = Dmc.tick { s5 with timer = 0us }
+        let s6, _, _ = Dmc.tick { s5 with timer = 0us }
         Expect.equal s6.outputLevel 60uy "Tick 6: output +2"
 
         // tick 7: 1 → +2 → 62
-        let s7, _ = Dmc.tick { s6 with timer = 0us }
+        let s7, _, _ = Dmc.tick { s6 with timer = 0us }
         Expect.equal s7.outputLevel 62uy "Tick 7: output +2"
 
         // tick 8: 1 → +2 → 64
-        let s8, _ = Dmc.tick { s7 with timer = 0us }
+        let s8, _, _ = Dmc.tick { s7 with timer = 0us }
         Expect.equal s8.outputLevel 64uy "Tick 8: output +2"
 
         // tick 9: buffer=None かつ bitsRemaining=0 → silence=true になるはず
-        let s9, _ = Dmc.tick { s8 with timer = 0us }
+        let s9, _, _ = Dmc.tick { s8 with timer = 0us }
         Expect.isTrue s9.isSilence "Tick 9: silence flag should be set"
         Expect.equal s9.outputLevel 64uy "Tick 9: output stays same"
       }
@@ -184,7 +184,7 @@ let tests =
             timer = 0us           // tick で処理が入る
         }
 
-        let dmc', _= Dmc.tick dmc
+        let dmc', _, _ = Dmc.tick dmc
 
         Expect.isTrue dmc'.irqRequested "IRQ should be requested at end of sample"
       }
