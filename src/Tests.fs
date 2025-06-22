@@ -3,6 +3,7 @@ module Tests
 open System.IO
 
 open Expecto
+open HamicomEmu.Common.BitUtils
 open HamicomEmu.Cpu
 open HamicomEmu.Bus
 open HamicomEmu.Ppu
@@ -227,7 +228,7 @@ let tests =
 
         // bit 6 = Frame IRQ → 1 (and should be cleared in apu')
         Expect.isTrue (result &&& 0b0100_0000uy <> 0uy) "Frame IRQ should be set"
-        Expect.isFalse (Apu.hasFlag StatusFlags.frameInterrupt apu'.status) "Frame IRQ should be cleared after read"
+        Expect.isFalse (hasFlag StatusFlags.frameInterrupt apu'.status) "Frame IRQ should be cleared after read"
 
         // bit 4 = DMC active (bytesRemaining > 0) → 1
         Expect.isTrue (result &&& 0b0001_0000uy <> 0uy) "DMC should be active"

@@ -3,12 +3,8 @@ namespace HamicomEmu.Apu
 module Apu =
 
   open HamicomEmu.Apu.Types
-
-  let hasFlag flag b = b &&& flag <> 0uy
-  let setFlag flag b = b ||| flag
-  let clearFlag flag b = b &&& (~~~flag)
-  let updateFlag flag condition b =
-    if condition then setFlag flag b else clearFlag flag b
+  open HamicomEmu.Common
+  open HamicomEmu.Common.BitUtils
 
   let initialFrameCounter = {
     mode = FourStep

@@ -4,6 +4,7 @@ module Cpu =
 
   open HamicomEmu.Cpu.Instructions
   open HamicomEmu.Bus
+  open HamicomEmu.Common.BitUtils
 
   module Flags =
     let C = 0b0000_0001uy // Carry
@@ -88,12 +89,6 @@ module Cpu =
       pc
     // | NoneAddressing ->
     //   failwithf "Unsupported mode: %A" mode
-
-  let inline hasFlag flag p = p &&& flag <> 0uy
-  let inline setFlag flag p = p ||| flag
-  let inline clearFlag flag p = p &&& ~~~flag
-  let updateFlag flag condition p =
-    if condition then setFlag flag p else clearFlag flag p
 
   /// 値によってZNフラグをセットする
   let setZeroNegativeFlags value p = 

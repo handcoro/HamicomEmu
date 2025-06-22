@@ -2,6 +2,7 @@ namespace HamicomEmu.Apu
 
 module Pulse =
 
+  open HamicomEmu.Common
   open HamicomEmu.Apu.Types
 
   let initial ch = {

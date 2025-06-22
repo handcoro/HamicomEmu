@@ -2,6 +2,7 @@ namespace HamicomEmu.Apu
 
 module Noise =
 
+  open HamicomEmu.Common
   open HamicomEmu.Apu.Types
 
   let initial = {

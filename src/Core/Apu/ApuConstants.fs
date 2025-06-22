@@ -1,7 +1,6 @@
 namespace HamicomEmu.Apu
 
 module Constants =
-  let cpuClockNTSC = 1_789_773.0 // NTSC NES の CPU クロック
 
   let frameStepCycles = 7457u // 1 step のサイクル数
 

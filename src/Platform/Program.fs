@@ -1,5 +1,6 @@
-﻿open HamicomEmu.Cpu
-open HamicomEmu.Bus
+﻿
+open HamicomEmu.EmulatorCore
+open HamicomEmu.Common
 open HamicomEmu.Cartridge
 open Tests
 open HamicomEmu.Ppu.Screen
@@ -56,7 +57,6 @@ type basicNesGame(loadedRom) as this =
   inherit Game()
   let scale = 4
   let sampleRate = 44100
-  let mutable prevT = 0.0 // 音声の時間差分計算用
   let graphics = new GraphicsDeviceManager(this)
   let mutable spriteBatch = Unchecked.defaultof<SpriteBatch>
   let mutable texture = Unchecked.defaultof<Texture2D>
@@ -64,18 +64,15 @@ type basicNesGame(loadedRom) as this =
 
   let raw = loadedRom
   let parsed = raw |> Result.bind parseRom
-  let mutable cpu = Cpu.initial
-  let mutable bus = Unchecked.defaultof<Bus.BusState>
-  
+  let mutable emu = Unchecked.defaultof<EmulatorCore.EmulatorState>
   let mutable frame = initialFrame
 
   do
     match parsed with
     | Ok rom ->
-      bus <- Bus.initial rom
-      let cpu', bus' = Cpu.reset cpu bus
-      cpu <- cpu'
-      bus <- bus'
+      emu <- EmulatorCore.initial rom
+      let emu' = EmulatorCore.reset emu
+      emu <- emu'
     | Error e -> failwith $"Failed to parse ROM: {e}"
 
     graphics.PreferredBackBufferWidth <- Frame.Width * scale
@@ -95,7 +92,7 @@ type basicNesGame(loadedRom) as this =
   override _.Draw(gameTime) =
     this.GraphicsDevice.Clear(Color.Black)
     spriteBatch.Begin(samplerState = SamplerState.PointClamp)
-    frame <- renderScanlineBased bus.ppu frame
+    frame <- renderScanlineBased emu.bus.ppu frame
     let colorData =
       frame.data |> Array.map (fun (r, g, b) -> Color(int r, int g, int b))
     texture.SetData(colorData)
@@ -106,8 +103,8 @@ type basicNesGame(loadedRom) as this =
 
   override _.Update(gameTime) =
     if Keyboard.GetState().IsKeyDown(Keys.Escape) then this.Exit()
-    let joy = bus.joy1 |> handleJoypadInput (Keyboard.GetState())
-    bus <- {bus with joy1 = joy }
+    let joy = emu.bus.joy1 |> handleJoypadInput (Keyboard.GetState())
+    emu <- { emu with bus.joy1 = joy }
 
     let sampleRate      = 44100
     let cpuClock        = Constants.cpuClockNTSC
@@ -121,14 +118,13 @@ type basicNesGame(loadedRom) as this =
       // 1フレームに達するまで CPU を進める
       let mutable cyclesRemain = cyclesPerSample
       while cyclesRemain > 0.0 do
-        let cpu', bus', used = Cpu.step cpu bus   // ← step が消費サイクル数を返すように
-        cpu  <- cpu'
-        bus  <- bus'
+        let emu', used = EmulatorCore.tick emu   // ← step が消費サイクル数を返すように
+        emu <- emu'
         cyclesRemain <- cyclesRemain - float used
 
       // APU から 1 サンプル取り出す
-      let sample, apu' = Apu.mix (1.0 / float sampleRate) bus.apu
-      bus <- { bus with apu = apu' }
+      let sample, apu' = Apu.mix (1.0 / float sampleRate) emu.bus.apu
+      emu <- { emu with bus.apu = apu' }
 
       samples.Add(sample)
 

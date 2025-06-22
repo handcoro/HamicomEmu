@@ -119,7 +119,6 @@ module Types =
     triangle: TriangleState
     noise: NoiseState
     dmc: DmcState
-    // TODO: DPCM
     status: byte
     frameCounter: FrameCounter
     mutable cycle: uint

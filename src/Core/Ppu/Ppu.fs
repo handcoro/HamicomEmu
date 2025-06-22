@@ -271,7 +271,7 @@ module Ppu =
       let mutable frameIsOdd = ppu.frameIsOdd
 
       // === フラグの初期化：プリレンダーライン開始（scanline 261, cycle 1）===
-      // BUG: サイクル数で高速パスしているため現在機能しておらず、機能させるとゲームが動かなくなるので要検証
+      // FIXME: サイクル数で高速パスしているため現在機能していない
       if s = 261us &&  c = 1u then
         status <- status |> clearFlag StatusFlags.vblank |> clearFlag StatusFlags.spriteZeroHit
         nmi <- None
@@ -281,6 +281,7 @@ module Ppu =
         status <- updateFlag StatusFlags.spriteZeroHit (isSpriteZeroHit c ppu) status
 
       // === VBlank 開始（scanline 241 開始時）===
+      // BUG: サイクル数 1 のときにフラグを立てる必要があるけど機能させるとゲームが動かなくなるので要検証
       if nextScanline = 241us then
         status <- setFlag StatusFlags.vblank status
         if hasFlag ControlFlags.generateNmi ppu.ctrl then

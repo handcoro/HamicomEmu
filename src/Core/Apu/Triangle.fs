@@ -2,6 +2,7 @@ namespace HamicomEmu.Apu
 
 module Triangle =
 
+  open HamicomEmu.Common
   open HamicomEmu.Apu.Types
 
   let initial = {
@@ -18,8 +19,6 @@ module Triangle =
     phase = 0.0
   }
 
-  let private hasControlFlag (tri: TriangleState) = tri.ctrlAndHalt
-  let private hasLengthHaltFlag (tri : TriangleState) = tri.ctrlAndHalt  
 
   let tickLinearCounter tri =
     let counter =
@@ -30,7 +29,7 @@ module Triangle =
       else 0uy
 
     let reloadFlag =
-      if hasControlFlag tri then tri.linearReloadFlag
+      if tri.ctrlAndHalt then tri.linearReloadFlag
       else false
 
     { tri with
