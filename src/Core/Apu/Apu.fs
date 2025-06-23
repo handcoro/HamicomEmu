@@ -136,15 +136,16 @@ module Apu =
   /// APU のサイクルを進める
   /// 4-step モードは 240Hz で 1 フレーム
   let tick n apu : TickResult =
+    let mutable apu = apu
     apu.cycle <- apu.cycle + n
 
     let mode = apu.frameCounter.mode
 
     let dmc', req, stall = Dmc.tick apu.dmc
-    let apu = { apu with dmc = dmc' }
+    apu.dmc <- dmc'
 
     // DMC から受け取った IRQ 要求のセット
-    let apu = { apu with irq = apu.dmc.irqRequested }
+    apu.irq <- apu.dmc.irqRequested
 
     if apu.cycle < Constants.frameStepCycles then
       { apu = apu; dmcRead = req; stallCpuCycles = stall }
@@ -153,7 +154,7 @@ module Apu =
       apu.cycle <- apu.cycle - Constants.frameStepCycles
 
       // フレームステップ更新
-      let apu = runFrameStep apu.step mode apu
+      apu <- runFrameStep apu.step mode apu
 
       // ステップカウンタのロールオーバー
       match apu.step, mode with

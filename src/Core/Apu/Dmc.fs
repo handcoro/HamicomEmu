@@ -78,33 +78,38 @@ module Dmc =
   /// 
   /// 1 bit ずつ判定して音量を上げ下げする
   let tick (dmc : DmcState) =
+    let mutable dmc = dmc
+
     let irqRequested =
       not dmc.isLoop &&
       dmc.bytesRemaining = 0us &&
       dmc.irqEnabled
 
     if dmc.timer > 0us then
-      { dmc with timer = dmc.timer - 1us }, None, None
-    else
-      let dmc = { dmc with timer = uint16 Constants.dmcRateTable[int dmc.rateIndex] }
+      dmc.timer <- dmc.timer - 1us
 
-      let dmc, stall =
-        if dmc.bitsRemaining <> 0 then dmc, None else
+      dmc, None, None
+    else
+      dmc.timer <- uint16 Constants.dmcRateTable[int dmc.rateIndex]
+
+      let stall =
+        if dmc.bitsRemaining <> 0 then None else
         // バッファをシフトレジスタに移す
         match dmc.buffer with
         | Some byte ->
-          { dmc with
-              shiftRegister = byte
-              bitsRemaining = 8
-              buffer = None
-              isSilence = false }, Some 4u // バッファの読み込みで 4 サイクルストール
+          dmc.shiftRegister <- byte
+          dmc.bitsRemaining <- 8
+          dmc.buffer <- None
+          dmc.isSilence <- false
+          Some 4u // バッファの読み込みで 4 サイクルストール
+
         | None ->
           if dmc.bytesRemaining <> 0us then
-            dmc, None // バッファまち
+            None // バッファまち
           else
-            { dmc with
-                isSilence = true
-                irqRequested = irqRequested }, None
+            dmc.isSilence <- true
+            dmc.irqRequested <- irqRequested
+            None
 
       // 1 bit 処理
       let bit = dmc.shiftRegister &&& 1uy
@@ -119,15 +124,12 @@ module Dmc =
 
       dmc.outputBuffer.Add(output)
 
-      let dmc = {
-        dmc with
-          shiftRegister = shift'
-          bitsRemaining = max 0 (dmc.bitsRemaining - 1)
-          outputLevel = level
-          // バッファが切れたときの保険用
-          // 色々なエミュレーションがきちんと実装できてきたらいらなくなるはず
-          lastOutput = output
-      }
+      dmc.shiftRegister <- shift'
+      dmc.bitsRemaining <- max 0 (dmc.bitsRemaining - 1)
+      dmc.outputLevel <- level
+      // バッファが切れたときの保険用
+      // 色々なエミュレーションがきちんと実装できてきたらいらなくなるはず
+      dmc.lastOutput <- output
 
       // 必要なら Bus.tick でメモリ読み込みの要求をしてバッファに格納
       let req =

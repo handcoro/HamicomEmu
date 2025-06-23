@@ -74,25 +74,25 @@ module Types =
     isLoop: bool
     rateIndex: byte
 
-    outputLevel: byte
+    mutable outputLevel: byte
 
     startAddress: byte
     sampleLength: byte
 
     currentAddress: uint16 // $C000 - $FFFF
     bytesRemaining: uint16
-    buffer: byte option
+    mutable buffer: byte option
 
-    shiftRegister: byte
-    bitsRemaining: int
+    mutable shiftRegister: byte
+    mutable bitsRemaining: int
 
-    timer: uint16
-    isSilence: bool
+    mutable timer: uint16
+    mutable isSilence: bool
 
-    irqRequested: bool
+    mutable irqRequested: bool
 
     outputBuffer: ResizeArray<byte>
-    lastOutput : byte
+    mutable lastOutput : byte
   }
 
   type ApuReadRequest =
@@ -118,12 +118,12 @@ module Types =
     pulse2: PulseState
     triangle: TriangleState
     noise: NoiseState
-    dmc: DmcState
+    mutable dmc: DmcState
     status: byte
     frameCounter: FrameCounter
     mutable cycle: uint
     mutable step: FrameStep
-    irq: bool
+    mutable irq: bool
   }
 
   type DmcReadRequest = {
