@@ -2,6 +2,7 @@ namespace HamicomEmu.Ppu
 
 module Ppu =
 
+  open HamicomEmu.Common.BitUtils
   open HamicomEmu.Cartridge
   open HamicomEmu.Ppu.Registers
   open HamicomEmu.Ppu.Types
@@ -34,12 +35,6 @@ module Ppu =
   // let initialRenderCache = {
   //   scrollPerScanline = Array.init 240 (fun _ -> { xy = (0uy, 0uy) })
   // }
-
-  let hasFlag flag r = r &&& flag <> 0uy
-  let setFlag flag r = r ||| flag
-  let clearFlag flag r = r &&& (~~~flag)
-  let updateFlag flag condition b =
-    if condition then setFlag flag b else clearFlag flag b
 
   let private setAddrRegValue (data: uint16) =
     (byte (data >>> 8), byte data)
@@ -251,13 +246,17 @@ module Ppu =
 /// PPU を n サイクル進める（1スキャンラインをまたぐときは精密タイミング処理を行う）
 /// FIXME: 精密にやろうとすると動作のボトルネックになりやすいので作りを考え直したい
   let tick n ppu =
+
     let c, s = ppu.cycle, ppu.scanline
     let newCycle = c + n
 
     // === 高速パス（スキャンライン内に収まる） ===
     if newCycle < 341u then
       let oamAddr = if newCycle >= 257u && newCycle <= 320u then 0uy else ppu.oamAddr
-      { ppu with cycle = newCycle; oamAddr = oamAddr }
+      ppu.cycle <- newCycle
+      ppu.oamAddr <- oamAddr
+
+      ppu
 
     // === スキャンライン跨ぎ ===
     else
@@ -305,21 +304,19 @@ module Ppu =
         newScanline <- 0us
 
       // === スクロールとコントロールレジスタの記録（描画ラインのみ）===
-      let ppu' =
-        { ppu with
-            cycle = newCycle
-            scanline = newScanline
-            oamAddr = if newCycle >= 257u && newCycle <= 320u then 0uy else ppu.oamAddr
-            status = status
-            nmiInterrupt = nmi
-            frameIsOdd = frameIsOdd }
+      ppu.cycle <- newCycle
+      ppu.scanline <- newScanline
+      ppu.oamAddr <- if newCycle >= 257u && newCycle <= 320u then 0uy else ppu.oamAddr
+      ppu.status <- status
+      ppu.nmiInterrupt <- nmi
+      ppu.frameIsOdd <- frameIsOdd
 
       if nextScanline < 240us then
         let i = int s
-        ppu'.scrollPerScanline[i] <- ppu.scrlReg
-        ppu'.ctrlPerScanline[i]   <- ppu.ctrl
+        ppu.scrollPerScanline[i] <- ppu.scrlReg
+        ppu.ctrlPerScanline[i]   <- ppu.ctrl
 
-      ppu'
+      ppu
 
   let rec tickNTimes m n ppu =
     if m <= 0u then ppu

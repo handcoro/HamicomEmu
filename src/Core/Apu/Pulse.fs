@@ -48,4 +48,7 @@ module Pulse =
         if bit = 1 then
           if pulse.isConstant then pulse.volume else pulse.envelope.volume
         else 0uy
-      sample, { pulse with phase = newPhase }
+
+      pulse.phase <- newPhase
+
+      sample, pulse

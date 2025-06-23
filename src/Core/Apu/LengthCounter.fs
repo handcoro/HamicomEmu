@@ -15,22 +15,16 @@ module LengthCounter =
       state
 
   let tickPulse (p: PulseState) : PulseState =
-    tick
-      (fun x -> x.loopAndHalt)
-      (fun x -> x.lengthCounter)
-      (fun s v -> { s with lengthCounter = v })
-      p
+    if not p.loopAndHalt && p.lengthCounter > 0uy then
+      p.lengthCounter <- p.lengthCounter - 1uy
+    p
 
   let tickTriangle (tri: TriangleState) : TriangleState =
-    tick
-      (fun x -> x.ctrlAndHalt)
-      (fun x -> x.lengthCounter)
-      (fun s v -> { s with lengthCounter = v })
-      tri
+    if not tri.ctrlAndHalt && tri.lengthCounter > 0uy then
+      tri.lengthCounter <- tri.lengthCounter - 1uy
+    tri
 
   let tickNoise (noi : NoiseState) : NoiseState =
-    tick
-      (fun x -> x.loopAndHalt)
-      (fun x -> x.lengthCounter)
-      (fun s v -> { s with lengthCounter = v })
-      noi
+    if not noi.loopAndHalt && noi.lengthCounter > 0uy then
+      noi.lengthCounter <- noi.lengthCounter - 1uy
+    noi

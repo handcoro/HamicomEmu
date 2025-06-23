@@ -3,7 +3,7 @@ namespace HamicomEmu.Apu
 module Types =
 
   type EnvelopeState = {
-    volume: byte
+    mutable volume: byte
     mutable divider: byte
     mutable decay: byte
     mutable reload: bool
@@ -30,14 +30,14 @@ module Types =
 
     sweep: SweepState
     // timer は値が低いほど周波数が高くなる
-    timer: uint16
+    mutable timer: uint16
 
-    envelope: EnvelopeState
+    mutable envelope: EnvelopeState
 
     // 長さカウンタ内部状態
-    lengthCounter: byte
+    mutable lengthCounter: byte
 
-    phase: float
+    mutable phase: float
   }
 
   type TriangleState = {
@@ -46,12 +46,12 @@ module Types =
 
     timer: uint16
 
-    linearCounter: byte
-    linearReloadFlag: bool
+    mutable linearCounter: byte
+    mutable linearReloadFlag: bool
 
-    lengthCounter: byte
+    mutable lengthCounter: byte
 
-    phase: float
+    mutable phase: float
   }
 
   type NoiseState = {
@@ -62,11 +62,11 @@ module Types =
     periodIndex: byte
     isShortMode: bool
 
-    envelope: EnvelopeState
+    mutable envelope: EnvelopeState
 
-    lengthCounter: byte
-    shift: uint16
-    phase: float
+    mutable lengthCounter: byte
+    mutable shift: uint16
+    mutable phase: float
   }
 
   type DmcState = {
@@ -114,10 +114,10 @@ module Types =
     | Step5
 
   type ApuState = {
-    pulse1: PulseState
-    pulse2: PulseState
-    triangle: TriangleState
-    noise: NoiseState
+    mutable pulse1: PulseState
+    mutable pulse2: PulseState
+    mutable triangle: TriangleState
+    mutable noise: NoiseState
     mutable dmc: DmcState
     status: byte
     frameCounter: FrameCounter
@@ -134,6 +134,5 @@ module Types =
   type TickResult = {
     apu: ApuState
     dmcRead: DmcReadRequest option
-    // TODO: DMC の読み込みで CPU を止める処理の実装
     stallCpuCycles: uint option
   }

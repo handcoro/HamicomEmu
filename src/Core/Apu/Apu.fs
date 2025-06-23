@@ -62,20 +62,22 @@ module Apu =
     }
 
   let private tickEnvelopeAndLinear apu =
+    let mutable apu = apu
 
     let ch1Ev = Envelope.tick apu.pulse1.envelope apu.pulse1.volume apu.pulse1.loopAndHalt
     let ch2Ev = Envelope.tick apu.pulse2.envelope apu.pulse2.volume apu.pulse2.loopAndHalt
     let ch3 = Triangle.tickLinearCounter apu.triangle
     let ch4Ev = Envelope.tick apu.noise.envelope apu.noise.volume apu.noise.loopAndHalt
 
-    { apu with
-        pulse1.envelope = ch1Ev
-        pulse2.envelope = ch2Ev
-        triangle = ch3
-        noise.envelope = ch4Ev
-    }
+    apu.pulse1.envelope <- ch1Ev
+    apu.pulse2.envelope <- ch2Ev
+    apu.triangle <- ch3
+    apu.noise.envelope <- ch4Ev
+
+    apu
 
   let private tickLengthAndSweep apu =
+    let mutable apu = apu
     let ch1 =
       apu.pulse1
       |> LengthCounter.tickPulse
@@ -89,12 +91,12 @@ module Apu =
     let ch3 = LengthCounter.tickTriangle apu.triangle
     let ch4 = LengthCounter.tickNoise apu.noise
 
-    { apu with
-        pulse1 = ch1
-        pulse2 = ch2
-        triangle = ch3
-        noise = ch4
-    }
+    apu.pulse1 <- ch1
+    apu.pulse2 <- ch2
+    apu.triangle <- ch3
+    apu.noise <- ch4
+
+    apu
 
   // mode 0:    mode 1:       function
   // ---------  -----------  -----------------------------

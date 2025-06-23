@@ -58,5 +58,8 @@ module Noise =
         if bit = 0us then
           if noi.isConstant then noi.volume else noi.envelope.volume
         else 0uy
-      let noi' = { noi with shift = newShift; phase = newPhase }
-      sample, noi'
+      
+      noi.shift <- newShift
+      noi.phase <- newPhase
+
+      sample, noi

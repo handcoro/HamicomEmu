@@ -30,4 +30,5 @@ module Envelope =
         ev.divider <- ev.divider - 1uy
         ev.decay
 
-    { ev with volume = vol }
+    ev.volume <- vol
+    ev

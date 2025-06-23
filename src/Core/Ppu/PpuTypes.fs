@@ -9,21 +9,20 @@ type PpuState = {
   pal: byte array
   vram: byte array
   oam: byte array
-  oamAddr: byte
+  mutable oamAddr: byte
   mirror: Mirroring
   addrReg: AddressRegister
   scrlReg: ScrollRegister
   ctrl: byte
   mask: byte
-  status: byte
+  mutable status: byte
   buffer: byte
-  scanline: uint16
-  cycle: uint
-  nmiInterrupt: option<byte>
+  mutable scanline: uint16
+  mutable cycle: uint
+  mutable nmiInterrupt: option<byte>
   clearNmiInterrupt: bool
   latch: bool // PPUSCROLL と PPUADDR のラッチは共有らしい
   mutable scrollPerScanline: ScrollRegister array
   mutable ctrlPerScanline: byte array
-  frameIsOdd: bool
+  mutable frameIsOdd: bool
 }
-

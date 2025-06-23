@@ -42,4 +42,6 @@ module SweepUnit =
     // if shouldSweep then
     //   printfn "sweep: ch=%A timer=%A → %A (delta=%A neg=%A)" pulse.channel pulse.timer newTimer (pulse.timer >>> int sw.shift) sw.negate
 
-    { pulse with timer = newTimer }
+    pulse.timer <- newTimer
+
+    pulse

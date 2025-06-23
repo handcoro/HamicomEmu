@@ -21,6 +21,7 @@ module Triangle =
 
 
   let tickLinearCounter tri =
+
     let counter =
       if tri.linearReloadFlag then
         tri.linearCounterLoad
@@ -32,15 +33,16 @@ module Triangle =
       if tri.ctrlAndHalt then tri.linearReloadFlag
       else false
 
-    { tri with
-        linearCounter = counter
-        linearReloadFlag = reloadFlag }
-
+    tri.linearCounter <- counter
+    tri.linearReloadFlag <- reloadFlag
+    tri
+    
   let private freqHz timer =
     Constants.cpuClockNTSC / (32.0 * float (timer + 1us))
 
   /// 三角波出力
   let output dt (tri : TriangleState ) =
+    let mutable tri = tri
     let freq = freqHz tri.timer
     if freq = 0.0 then 0uy, tri
     else
@@ -55,4 +57,6 @@ module Triangle =
       let index = int (tri.phase / period * 32.0) % 32
       let sample = Constants.triangleTable[index] |> byte
 
-      sample, { tri with phase = newPhase }
+      tri.phase <- newPhase
+
+      sample, tri
