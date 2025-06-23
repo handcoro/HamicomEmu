@@ -32,9 +32,9 @@ module Bus =
     apu: ApuState
     joy1: Joypad
     joy2: Joypad
-    cycleTotal: uint
+    mutable cycleTotal: uint
     oamDmaCyclesRemaining: uint option // OAM DMA 中に DMC に割り込まれたときの残りサイクル数
-    pendingStallCpuCycles: uint option // TODO: DMC 読み込みによるストール
+    mutable pendingStallCpuCycles: uint option // TODO: DMC 読み込みによるストール
   }
 
   let initial rom = {
@@ -116,34 +116,30 @@ module Bus =
     { bus with apu.irq = false }
 
   let tick bus =
+    let mutable apu = bus.apu
+    let mutable ppu = bus.ppu
     let cyc = bus.cycleTotal + 1u
-    // let nmiBefore = bus.ppu.nmiInterrupt.IsSome
     // TODO: 3 サイクルまとめて tick させてるけどタイミングが厳しいゲームだと不具合が出るかも
-    let ppu' = Ppu.tickNTimes 1u 3u bus.ppu
+    ppu <- Ppu.tickNTimes 1u 3u ppu
   
-    let result = Apu.tick 1u bus.apu
-    let bus = { bus with apu = result.apu}
+    let result = Apu.tick 1u apu
     let p = result.stallCpuCycles
 
+    apu <- result.apu
+
     // DMC の読み込み要求を処理
-    let bus =
-      match result.dmcRead with
-      | Some req ->
-          let value, _ = memRead req.addr bus
-          let dmc = req.onRead value
-          let apu = { bus.apu with dmc = dmc }
-          { bus with apu = apu }
+    match result.dmcRead with
+    | Some req ->
+        let value, _ = memRead req.addr bus
+        let dmc = req.onRead value
+        apu.dmc <- dmc
 
-      | None -> bus
-    
+    | None -> ()
 
-    // let nmiAfter = ppu'.nmiInterrupt.IsSome
-
-    // NOTE: NMI の立ち上がり検出してるけど今は使わないのでとりあえずオミット
-    // let nmiEdge = not nmiBefore && nmiAfter
-    let bus' = { bus with cycleTotal = cyc; ppu = ppu'; pendingStallCpuCycles = p }
-
-    bus'
+    bus.cycleTotal <- cyc
+    bus.pendingStallCpuCycles <- p
+    // FIXME: APU 内部の mutable 化でスウィープがかかりすぎる副作用が起きているのでここでレコードを再作成している
+    { bus with apu = apu }
 
   let rec tickNTimes n bus =
     if n <= 0 then bus
