@@ -104,6 +104,9 @@ module Bus =
       printfn "Invalid Memory access at: %04X" addr
       0uy, bus
 
+  let updatePendingStallCpuCycles newStall bus =
+      bus.pendingStallCpuCycles <- if newStall = 0u then None else Some newStall
+      bus
 
   let pollNmiStatus bus =
     if bus.ppu.clearNmiInterrupt then

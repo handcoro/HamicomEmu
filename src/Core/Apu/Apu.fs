@@ -62,7 +62,6 @@ module Apu =
     }
 
   let private tickEnvelopeAndLinear apu =
-    let mutable apu = apu
 
     let ch1Ev = Envelope.tick apu.pulse1.envelope apu.pulse1.volume apu.pulse1.loopAndHalt
     let ch2Ev = Envelope.tick apu.pulse2.envelope apu.pulse2.volume apu.pulse2.loopAndHalt
@@ -77,7 +76,6 @@ module Apu =
     apu
 
   let private tickLengthAndSweep apu =
-    let mutable apu = apu
     let ch1 =
       apu.pulse1
       |> LengthCounter.tickPulse
@@ -415,10 +413,10 @@ module Apu =
 
     let sample = (pulseMix + tndMix) * masterGain
 
-    sample, { apu with
-                pulse1 = pu1
-                pulse2 = pu2
-                triangle = tri
-                noise = noi
-                dmc = dmc'
-            }
+    apu.pulse1 <- pu1
+    apu.pulse2 <- pu2
+    apu.triangle <- tri
+    apu.noise <- noi
+    apu.dmc <- dmc'
+
+    sample, apu

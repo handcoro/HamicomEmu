@@ -30,13 +30,13 @@ module EmulatorCore =
         // ストール中は CPU 実行を止めて Bus/APU/PPU だけ進める
         let bus' = Bus.tick emu.bus
         let newStall = stall - 1u
-        let bus'' = { bus' with pendingStallCpuCycles = if newStall = 0u then None else Some newStall }
+        let bus'' = Bus.updatePendingStallCpuCycles newStall bus'
         loop (n-1) { emu with bus = bus'' } (consumedTotal + 1u)
       | _ ->
         // 通常進行
         let cpu', bus, consumed = Cpu.step emu.cpu emu.bus
         let bus' = Bus.tickNTimes (int consumed) bus
-        let emu' = { emu with cpu = cpu'; bus = bus' }
+        let emu' = { cpu = cpu'; bus = bus' }
         loop (n-1) emu' (consumedTotal + consumed)
     loop n emu 0u
 
