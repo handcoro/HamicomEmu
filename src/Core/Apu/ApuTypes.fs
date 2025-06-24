@@ -103,7 +103,7 @@ module Types =
   type FrameCounter = {
     mode: FrameCounterMode
     irqInhibit: bool
-    irqRequested: bool
+    mutable irqRequested: bool
   }
 
   type FrameStep =

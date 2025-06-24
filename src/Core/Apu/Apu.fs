@@ -115,10 +115,12 @@ module Apu =
     | Step4 when mode = FourStep ->
       apu |> tickEnvelopeAndLinear
           |> tickLengthAndSweep
+          // NOTE: ここでレコードを再生成すると状態の一貫性が保たれなくなる
+          //       このように代入するか、Bus.tick でレコードを再生成して整合性を取ることで対処
           |> fun a ->
             if not a.frameCounter.irqInhibit then
-              let fc = { a.frameCounter with irqRequested = true }
-              { a with frameCounter = fc }
+              a.frameCounter.irqRequested <- true
+              a
             else a
 
     | Step5 when mode = FiveStep ->

@@ -138,8 +138,9 @@ module Bus =
 
     bus.cycleTotal <- cyc
     bus.pendingStallCpuCycles <- p
-    // FIXME: APU 内部の mutable 化でスウィープがかかりすぎる副作用が起きているのでここでレコードを再作成している
-    { bus with apu = apu }
+    // NOTE: 副作用でおかしくなったときは tick 内で留めるようにレコードの再生成
+    // { bus with apu = apu; ppu = ppu }
+    bus
 
   let rec tickNTimes n bus =
     if n <= 0 then bus
