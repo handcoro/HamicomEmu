@@ -10,7 +10,7 @@ module JoyButton =
   let B      = 0b0000_0010uy
   let A      = 0b0000_0001uy
 
-type Joypad = {
+type JoypadState = {
   strobe: bool // パラレル入力とシリアル出力のラッチ、読み取り位置のリセット
   buttonIdx: int
   buttonStatus: byte
@@ -49,3 +49,6 @@ let setButtonPressed button isPressed joy =
     else
       joy.buttonStatus &&& (~~~button)
   { joy with buttonStatus = newStatus }
+
+let mergeJoypadStates a b =
+  {a with buttonStatus = a.buttonStatus ||| b.buttonStatus }

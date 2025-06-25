@@ -20,23 +20,54 @@ open Microsoft.Xna.Framework
 open Microsoft.Xna.Framework.Graphics
 open Microsoft.Xna.Framework.Input
 
-let handleJoypadInput (ks: KeyboardState) joy =
-  let keyMap = [
-    Keys.Right, JoyButton.Right
-    Keys.Left,  JoyButton.Left
-    Keys.Down,  JoyButton.Down
-    Keys.Up,    JoyButton.Up
-    Keys.Enter, JoyButton.Start
-    Keys.Space, JoyButton.Select
-    Keys.S,     JoyButton.B
-    Keys.A,     JoyButton.A
-  ]
-  
-  keyMap
-  |> List.fold (fun accJoy (key, button) ->
-    let isDown = ks.IsKeyDown key
-    accJoy |> setButtonPressed button isDown
-    ) joy
+type InputSource =
+  | Keyboard of KeyboardState
+  | Gamepad of GamePadState
+
+let keyMap = [
+  Keys.Right, JoyButton.Right
+  Keys.Left,  JoyButton.Left
+  Keys.Down,  JoyButton.Down
+  Keys.Up,    JoyButton.Up
+  Keys.Enter, JoyButton.Start
+  Keys.Space, JoyButton.Select
+  Keys.S,     JoyButton.B
+  Keys.A,     JoyButton.A
+]
+
+/// XBox Gamepad 前提の設定
+let padMap = [
+  Buttons.DPadRight, JoyButton.Right
+  Buttons.DPadLeft,  JoyButton.Left
+  Buttons.DPadDown,  JoyButton.Down
+  Buttons.DPadUp,    JoyButton.Up
+  Buttons.Start,     JoyButton.Start
+  Buttons.Back,      JoyButton.Select
+  Buttons.A,         JoyButton.B
+  Buttons.B,         JoyButton.A
+]
+
+let isKeyPressed (ks: KeyboardState) key =
+  ks.IsKeyDown key
+
+let isPadPressed (gs: GamePadState) button =
+  gs.IsButtonDown button
+
+let handleJoypadInput (input: InputSource) (joy: JoypadState) =
+  let joy =
+    match input with
+    | Keyboard ks ->
+        keyMap
+        |> List.fold (fun accJoy (key, button) ->
+            accJoy |> setButtonPressed button (isKeyPressed ks key)
+        ) joy
+    | Gamepad gs when gs.IsConnected ->
+        padMap
+        |> List.fold (fun accJoy (padButton, button) ->
+            accJoy |> setButtonPressed button (isPadPressed gs padButton)
+        ) joy
+    | _ -> joy
+  joy
 
 let loadRom path =
   try
@@ -102,8 +133,13 @@ type basicNesGame(loadedRom) as this =
     base.Draw(gameTime)
 
   override _.Update(gameTime) =
-    if Keyboard.GetState().IsKeyDown(Keys.Escape) then this.Exit()
-    let joy = emu.bus.joy1 |> handleJoypadInput (Keyboard.GetState())
+    let ks = Keyboard.GetState()
+    let gs = GamePad.GetState(PlayerIndex.One)
+    if ks.IsKeyDown(Keys.Escape) then this.Exit()
+
+    let keyJoy = emu.bus.joy1 |> handleJoypadInput (Keyboard ks)
+    let padJoy = emu.bus.joy1 |> handleJoypadInput (Gamepad gs)
+    let joy = mergeJoypadStates keyJoy padJoy
     emu <- { emu with bus.joy1 = joy }
 
     let sampleRate      = 44100

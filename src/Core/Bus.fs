@@ -30,8 +30,8 @@ module Bus =
     rom: Rom
     ppu: PpuState
     apu: ApuState
-    joy1: Joypad
-    joy2: Joypad
+    joy1: JoypadState
+    joy2: JoypadState
     mutable cycleTotal: uint
     oamDmaCyclesRemaining: uint option // OAM DMA 中に DMC に割り込まれたときの残りサイクル数
     mutable pendingStallCpuCycles: uint option // TODO: DMC 読み込みによるストール
