@@ -123,7 +123,7 @@ module Bus =
     let mutable ppu = bus.ppu
     let cyc = bus.cycleTotal + 1u
     // TODO: 3 サイクルまとめて tick させてるけどタイミングが厳しいゲームだと不具合が出るかも
-    ppu <- Ppu.tickNTimes 1u 3u ppu
+    ppu <- Ppu.tickN 3u 1u ppu
   
     let result = Apu.tick 1u apu
     let p = result.stallCpuCycles
@@ -175,6 +175,7 @@ module Bus =
       { bus with ppu = ppu }
 
     | 0x2005us -> // TODO: Scroll
+      // printfn "WRITE Scroll Data: %02X" value
       let ppu = Ppu.writeToScrollRegister value bus.ppu
       { bus with ppu = ppu }
 

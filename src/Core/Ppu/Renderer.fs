@@ -155,6 +155,15 @@ module Renderer =
   //   let rect3 = initialRect (uint scrlX) 0u screenW (uint scrlY)
   //   let rect4 = initialRect 0u (uint scrlY) (uint scrlX) screenH
 
+  let getScrollXY (scroll: ScrollRegisters) : int * int =
+    let coarseX = int (scroll.v &&& 0b1_1111us)
+    let coarseY = int ((scroll.v >>> 5) &&& 0b1_1111us)
+    let fineY   = int ((scroll.v >>> 12) &&& 0b111us)
+    let x = coarseX * 8 + int scroll.x
+    let y = coarseY * 8 + fineY
+    x, y
+
+
   let drawLines = 8
 
   /// 分割スクロールのためのスキャンラインごとの描画
@@ -166,7 +175,7 @@ module Renderer =
     for y = 0 to n do
       let drawStartY = y * drawLines |> uint
 
-      let scrollX, scrollY = ppu.scrollPerScanline[int drawStartY].xy
+      let scrollX, scrollY = ppu.scrollPerScanline[int drawStartY] |> getScrollXY
       let scrlX, scrlY = int scrollX, int scrollY
 
       let correctedAddr = Ppu.getNameTableAddress ppu.ctrlPerScanline[int drawStartY]

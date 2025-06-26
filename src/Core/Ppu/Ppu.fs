@@ -7,6 +7,8 @@ module Ppu =
   open HamicomEmu.Ppu.Registers
   open HamicomEmu.Ppu.Types
 
+  let initialScroll = { v = 0us; t = 0us; x = 0uy; w = false }
+
   let initial (rom: Rom) = {
     chr = rom.chrRom
     chrRam = rom.chrRam
@@ -15,8 +17,7 @@ module Ppu =
     oam = Array.create 256 0uy // OAM データは256バイト
     oamAddr = 0uy
     mirror = rom.screenMirroring
-    addrReg = initialAddressRegister
-    scrlReg = initialScrollRegister
+    scroll = initialScroll
     ctrl = 0uy // 初期状態では制御レジスタは0
     mask = 0b0001_0000uy
     status = 0uy
@@ -25,61 +26,26 @@ module Ppu =
     cycle = 0u
     nmiInterrupt = None
     clearNmiInterrupt = false
-    latch = true
     // スクロール情報のスナップショット
-    scrollPerScanline = Array.init 240 (fun _ -> { xy = (0uy, 0uy) })
+    scrollPerScanline = Array.init 240 (fun _ -> initialScroll)
     ctrlPerScanline = Array.zeroCreate 240
     frameIsOdd = false
   }
 
-  // let initialRenderCache = {
-  //   scrollPerScanline = Array.init 240 (fun _ -> { xy = (0uy, 0uy) })
-  // }
-
-  let private setAddrRegValue (data: uint16) =
-    (byte (data >>> 8), byte data)
-
-  let getAddrRegValue ar =
-    ar.value |> fun (hi, lo) -> (uint16 hi <<< 8 ||| uint16 lo)
-
   let private ppuAdressMask = 0x3FFFus
 
-  let private updateAddressRegister (data: byte) ppu ar =
-    // latch を目印に 2 回に分けて書き込む
-    let ar' = if ppu.latch then
-                { ar with value = (data, snd ar.value) }
-              else
-                { ar with value = (fst ar.value, data) }
+  let writeToAddressRegister (value : byte) ppu =
+    // 2 回に分けて hi/lo を t に書き込む w = false のとき hi
+    let w = ppu.scroll.w
+    let t =
+      if not w then (uint16 value &&& 0x3Fus <<< 8) ||| (ppu.scroll.t &&& 0x00FFus)
+      else (ppu.scroll.t &&& 0xFF00us) ||| uint16 value
+    let w' = not w
+    // 2 回目の書き込みで v <- t
+    let v' = if w' = false then t else ppu.scroll.v
+    let ppu = { ppu with scroll.t = t; scroll.w = w'; scroll.v = v' }
+    ppu
 
-    let v = getAddrRegValue ar'
-    let vt' = if v > ppuAdressMask then
-                setAddrRegValue (v &&& 0b11_1111_1111_1111us)
-              else
-                ar'.value
-
-    let toggled = not ppu.latch
-    { ppu with latch = toggled }, { ar' with value = vt' }
-
-  let private incrementAddressRegister inc ar =
-    let lo = snd ar.value
-    let hi = fst ar.value
-
-    let lo' = lo + inc
-    let hi' = hi + if lo' < lo then 1uy else 0uy // 桁上り
-    let ar' = { ar with value = (hi', lo') }
-    let v = getAddrRegValue ar'
-    let vt = if v > ppuAdressMask then setAddrRegValue (v &&& 0b11_1111_1111_1111us) else ar'.value
-    { ar' with value = vt }
-
-  let private resetInternalLatch ppu = { ppu with latch = true }
-
-  let writeToAddressRegister value ppu =
-    let ppu', ar = updateAddressRegister value ppu ppu.addrReg
-    { ppu' with addrReg = ar }
-
-  /// -- ここらへんは Control 関係でまとめる？
-  let private VramAddressIncrement cr =
-    if hasFlag ControlFlags.vramAddIncrement cr then 32uy else 1uy
 
   let getNameTableAddress ctrl =
     match ctrl &&& (ControlFlags.nameTable1 ||| ControlFlags.nameTable2) with
@@ -110,9 +76,13 @@ module Ppu =
     else
       ppu'
 
+  let private vramAddressIncrement cr =
+    if hasFlag ControlFlags.vramAddIncrement cr then 32uy else 1uy
+
   let incrementVramAddress ppu =
-    let inc = VramAddressIncrement ppu.ctrl
-    { ppu with addrReg = ppu.addrReg |> incrementAddressRegister inc }
+    let inc = vramAddressIncrement ppu.ctrl |> uint16
+    let v' = (ppu.scroll.v + inc) &&& 0x3FFFus // 15bit wrap
+    { ppu with scroll.v = v' }
 
   // Horizontal:
   //   [ A ] [ a ]
@@ -157,7 +127,7 @@ module Ppu =
       | _ -> index
 
   let readFromDataRegister ppu =
-    let addr = getAddrRegValue ppu.addrReg
+    let addr = ppu.scroll.v &&& 0x3FFFus
     // アドレスをインクリメント
     let ppu' = incrementVramAddress ppu
 
@@ -177,7 +147,7 @@ module Ppu =
     | _ -> failwithf "Invalid PPU address: %04X" addr
 
   let writeToDataRegister value ppu =
-    let addr = getAddrRegValue ppu.addrReg
+    let addr = ppu.scroll.v &&& 0x3FFFus
     let ppu' = incrementVramAddress ppu
 
     match addr with
@@ -201,10 +171,9 @@ module Ppu =
 
   /// コントロールレジスタ読み込みでラッチと VBlank が初期化され、次回の NMI が抑制されるらしい
   let readFromStatusRegister ppu =
-    let ppu' = resetInternalLatch ppu
-    let afterSt = resetVblankStatus ppu'.status
+    let afterSt = resetVblankStatus ppu.status
     let clearNmi = true
-    ppu, { ppu' with status = afterSt; clearNmiInterrupt = clearNmi }
+    ppu, { ppu with scroll.w = false; status = afterSt; clearNmiInterrupt = clearNmi }
 
   let writeToMaskRegister value ppu =
     { ppu with mask = value }
@@ -229,26 +198,65 @@ module Ppu =
     let x = ppu.oam[3] |> uint
     y = uint ppu.scanline && x <= cycle && hasFlag MaskFlags.spriteRendering ppu.mask
 
-  let private updateScrollRegister (data: byte) ppu sr =
-    // latch を目印に 2 回に分けて書き込む
-    let sr' = if ppu.latch then
-                { sr with xy = (data, snd sr.xy) }
-              else
-                { sr with xy = (fst sr.xy, data) }
-
-    let toggled = not ppu.latch
-    { ppu with latch = toggled }, sr'
-
   let writeToScrollRegister value ppu =
-    let ppu', sr = updateScrollRegister value ppu ppu.scrlReg
-    { ppu' with scrlReg = sr }
+    // w = false: x (fine X), t[0:4] (coarse X)
+    // w = true:  t[5:9] (coarse Y) t[12:14] (fine Y)
+    let w = ppu.scroll.w
+    let t = ppu.scroll.t
+    let x, t' =
+      if not w then
+        value &&& 0b111uy, (t &&& 0b1111_1111_1110_0000us) ||| uint16 (value >>> 3)
+      else
+        let fineY = uint16 (value &&& 0b111uy) <<< 12
+        let coarseY = uint16 (value >>> 3) <<< 5
+        ppu.scroll.x, (t &&& 0b0000_0000_0001_1111us) ||| coarseY ||| fineY
+    let w' = not w
+    { ppu with scroll.x = x; scroll.t = t'; scroll.w = w' }
 
-/// PPU を n サイクル進める（1スキャンラインをまたぐときは精密タイミング処理を行う）
-/// FIXME: 精密にやろうとすると動作のボトルネックになりやすいので作りを考え直したい
+  let inline private renderingEnabled ppu =
+    hasFlag MaskFlags.backgroundRendering ppu.mask ||
+    hasFlag MaskFlags.spriteRendering ppu.mask
+
+  /// PPU を n サイクル進める（1スキャンラインをまたぐときは精密タイミング処理を行う）
+  /// FIXME: 精密にやろうとすると動作のボトルネックになりやすいので作りを考え直したい
   let tick n ppu =
-
     let c, s = ppu.cycle, ppu.scanline
     let newCycle = c + n
+
+    if renderingEnabled ppu then
+      // v ← t: 水平スクロール位置コピー
+      if s < 240us && c = 257u then
+        let v = ppu.scroll.v
+        let t = ppu.scroll.t
+        // v[0:4] ← t[0:4] (coarse X)
+        // v[10]  ← t[10]  (nametable X)
+        // v[0:4] ← t[0:4], v[10] ← t[10]
+        // ....A.. ...BCDEF
+        let mask = 0b0000_0100_0001_1111us
+        ppu.scroll.v <- (ppu.scroll.v &&& ~~~mask) ||| (ppu.scroll.t &&& mask)
+
+      // v ← t: 垂直スクロール位置コピー
+      if s = 261us && c = 304u then
+        // GHIA.BC DEF.....
+        let mask = 0b0111_1011_1110_0000us
+        ppu.scroll.v <- (ppu.scroll.v &&& ~~~mask) ||| (ppu.scroll.t &&& mask)
+
+      // === 奇数フレームスキップ（261,339） ===
+      if s = 261us && c = 339u && ppu.frameIsOdd
+      then
+        ppu.cycle <- 0u
+        ppu.scanline <- 0us
+
+    // === VBlank 開始（scanline 241 開始時）===
+    if s = 241us && c = 1u then
+      ppu.status <- setFlag StatusFlags.vblank ppu.status
+      if hasFlag ControlFlags.generateNmi ppu.ctrl then
+        ppu.nmiInterrupt <- Some 1uy
+
+    // === フラグの初期化：プリレンダーライン開始（scanline 261, cycle 1）===
+    if s = 261us && c = 1u then
+      ppu.status <- ppu.status |> clearFlag StatusFlags.vblank |> clearFlag StatusFlags.spriteZeroHit
+      ppu.nmiInterrupt <- None
 
     // === 高速パス（スキャンライン内に収まる） ===
     if newCycle < 341u then
@@ -269,22 +277,9 @@ module Ppu =
       let mutable newCycle = nextCycle
       let mutable frameIsOdd = ppu.frameIsOdd
 
-      // === フラグの初期化：プリレンダーライン開始（scanline 261, cycle 1）===
-      // FIXME: サイクル数で高速パスしているため現在機能していない
-      if s = 261us &&  c = 1u then
-        status <- status |> clearFlag StatusFlags.vblank |> clearFlag StatusFlags.spriteZeroHit
-        nmi <- None
-
       // === スプライトゼロヒット検出：描画ライン終端（scanline < 240） ===
       if s < 240us then
         status <- updateFlag StatusFlags.spriteZeroHit (isSpriteZeroHit c ppu) status
-
-      // === VBlank 開始（scanline 241 開始時）===
-      // BUG: サイクル数 1 のときにフラグを立てる必要があるけど機能させるとゲームが動かなくなるので要検証
-      if nextScanline = 241us then
-        status <- setFlag StatusFlags.vblank status
-        if hasFlag ControlFlags.generateNmi ppu.ctrl then
-          nmi <- Some 1uy
 
       // === フレーム終了（scanline >= 262）===
       if nextScanline >= 262us then
@@ -293,15 +288,6 @@ module Ppu =
         status <- status |> clearFlag StatusFlags.vblank |> clearFlag StatusFlags.spriteZeroHit
         nmi <- None
         frameIsOdd <- not ppu.frameIsOdd
-
-      // === 奇数フレームスキップ（261,339） ===
-      // FIXME: サイクル数で高速パスしているため現在機能していない
-      if s = 261us && c = 339u &&
-        ppu.frameIsOdd &&
-        (hasFlag MaskFlags.backgroundRendering ppu.mask || hasFlag MaskFlags.spriteRendering ppu.mask)
-      then
-        newCycle <- 0u
-        newScanline <- 0us
 
       // === スクロールとコントロールレジスタの記録（描画ラインのみ）===
       ppu.cycle <- newCycle
@@ -313,13 +299,13 @@ module Ppu =
 
       if nextScanline < 240us then
         let i = int s
-        ppu.scrollPerScanline[i] <- ppu.scrlReg
+        ppu.scrollPerScanline[i] <- ppu.scroll
         ppu.ctrlPerScanline[i]   <- ppu.ctrl
 
       ppu
 
-  let rec tickNTimes m n ppu =
+  let rec tickN m n ppu =
     if m <= 0u then ppu
     else
       let ppu' = tick n ppu
-      tickNTimes (m - 1u) n ppu'
+      tickN (m - 1u) n ppu'

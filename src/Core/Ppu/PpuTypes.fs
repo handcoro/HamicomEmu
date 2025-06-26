@@ -3,6 +3,30 @@ namespace HamicomEmu.Ppu.Types
 open HamicomEmu.Ppu.Registers
 open HamicomEmu.Cartridge
 
+type AddressRegister = {
+  value: byte * byte
+}
+
+
+
+
+/// https://www.nesdev.org/wiki/PPU_scrolling
+/// v:
+/// yyy NN YYYYY XXXXX
+/// ||| || ||||| +++++-- coarse X scroll (5 bits)
+/// ||| || +++++-------- coarse Y scroll (5 bits)
+/// ||| ++-------------- nametable select (2 bits)
+/// +++----------------- fine Y scroll (3 bits)
+/// t: 一時データ
+/// x: fine X
+/// w: 書き込みラッチ
+type ScrollRegisters = {
+  mutable v: uint16
+  t: uint16
+  x: byte
+  w: bool
+}
+
 type PpuState = {
   chr: byte array
   chrRam: byte array
@@ -11,8 +35,7 @@ type PpuState = {
   oam: byte array
   mutable oamAddr: byte
   mirror: Mirroring
-  addrReg: AddressRegister
-  scrlReg: ScrollRegister
+  scroll: ScrollRegisters
   ctrl: byte
   mask: byte
   mutable status: byte
@@ -21,8 +44,7 @@ type PpuState = {
   mutable cycle: uint
   mutable nmiInterrupt: option<byte>
   clearNmiInterrupt: bool
-  latch: bool // PPUSCROLL と PPUADDR のラッチは共有らしい
-  mutable scrollPerScanline: ScrollRegister array
+  mutable scrollPerScanline: ScrollRegisters array
   mutable ctrlPerScanline: byte array
   mutable frameIsOdd: bool
 }
