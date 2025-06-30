@@ -8,7 +8,7 @@
     <Compile Include="src\Core\Joypad.fs" />
     <Compile Include="src\Core\Instructions.fs" />
     <Compile Include="src\Core\Cartridge.fs" />
-    <Compile Include="src\Core\Ppu\Registers.fs" />
+    <Compile Include="src\Core\Ppu\PpuConstants.fs" />
     <Compile Include="src\Core\Ppu\PpuTypes.fs" />
     <Compile Include="src\Core\Ppu\Palette.fs" />
     <Compile Include="src\Core\Ppu\Screen.fs" />
