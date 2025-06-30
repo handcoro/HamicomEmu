@@ -4,7 +4,6 @@ module Ppu =
 
   open HamicomEmu.Common.BitUtils
   open HamicomEmu.Cartridge
-  open HamicomEmu.Ppu.Registers
   open HamicomEmu.Ppu.Types
 
   let initialScroll = { v = 0us; t = 0us; x = 0uy; w = false }

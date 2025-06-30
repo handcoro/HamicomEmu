@@ -6,7 +6,6 @@ module Renderer =
   open HamicomEmu.Ppu.Palette
   open HamicomEmu.Ppu.Types
   open HamicomEmu.Ppu
-  open HamicomEmu.Ppu.Registers
 
   /// 画面に見える範囲
   type Rect = {

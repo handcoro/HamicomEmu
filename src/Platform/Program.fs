@@ -137,10 +137,10 @@ type basicNesGame(loadedRom) as this =
     let gs = GamePad.GetState(PlayerIndex.One)
     if ks.IsKeyDown(Keys.Escape) then this.Exit()
 
-    let keyJoy = emu.bus.joy1 |> handleJoypadInput (Keyboard ks)
-    let padJoy = emu.bus.joy1 |> handleJoypadInput (Gamepad gs)
+    let keyJoy = initialJoypad |> handleJoypadInput (Keyboard ks)
+    let padJoy = initialJoypad |> handleJoypadInput (Gamepad gs)
     let joy = mergeJoypadStates keyJoy padJoy
-    emu <- { emu with bus.joy1 = joy }
+    emu <- { emu with bus.joy1.buttonStatus = joy.buttonStatus }
 
     let sampleRate      = 44100
     let cpuClock        = Constants.cpuClockNTSC

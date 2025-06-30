@@ -1,6 +1,5 @@
 namespace HamicomEmu.Ppu.Types
 
-open HamicomEmu.Ppu.Registers
 open HamicomEmu.Cartridge
 
 type AddressRegister = {
