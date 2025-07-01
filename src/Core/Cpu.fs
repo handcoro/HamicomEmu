@@ -563,24 +563,27 @@ module Cpu =
   let sre mode cpu bus =
     (cpu, bus) ||> lsrInstr mode ||> logicalInstr EOR mode
 
+  let interruptDisabled cpu = hasFlag Flags.I cpu.P
+
   /// 主に APU からの割り込み要求
+  /// 消費サイクル数も返す
+  /// NOTE: 7 サイクル消費らしい
   let irq cpu bus =
-    if hasFlag Flags.I cpu.P then
-      cpu, bus
-    else
-      let cpu, bus =
-        (cpu, bus)
-        ||> push16 (cpu.PC + 1us)
-        ||> push cpu.P
+    let cpu, bus =
+      (cpu, bus)
+      ||> push16 (cpu.PC + 1us)
+      ||> push cpu.P
 
-      let pc, bus' = Bus.memRead16 0xFFFEus bus // IRQ は 0xFFFE に飛ぶ
-      let p = cpu.P |> clearFlag Flags.B
+    let pc, bus' = Bus.memRead16 0xFFFEus bus // IRQ は 0xFFFE に飛ぶ
+    let p = cpu.P |> clearFlag Flags.B
 
-      let busF = Bus.clearIrqStatus bus' // 割り込み要求を消す
+    let busF = Bus.clearIrqStatus bus' // 割り込み要求を消す
 
-      { cpu with P = p; PC = pc }, busF
+    { cpu with P = p; PC = pc }, busF, 7u
 
   /// NMI 発生処理
+  /// 消費サイクル数も返す
+  /// NOTE: 7 サイクル消費らしい
   let interruptNmi cpu bus =
     let cpu', bus' = push16 cpu.PC cpu bus
     let p =
@@ -589,10 +592,8 @@ module Cpu =
 
     let cpu2, bus2 = push p cpu' bus'
     let p' = p |> setFlag Flags.I
-
-    let bus3 = bus2 |> Bus.tick |> Bus.tick
-    let pc, busF = Bus.memRead16 0xFFFAus bus3
-    { cpu2 with P = p'; PC = pc }, busF
+    let pc, busF = Bus.memRead16 0xFFFAus bus2
+    { cpu2 with P = p'; PC = pc }, busF, 7u
 
 
   let reset cpu bus =
@@ -665,20 +666,8 @@ module Cpu =
       SRE_, sre
     ]
 
-
   /// CPU を 1 命令だけ実行する
   let step cpu (bus : Bus.BusState) =
-
-    let cpu, bus = // NMI
-      match Bus.pollNmiStatus bus with
-      | b, Some _ -> interruptNmi cpu b
-      | b, None -> cpu, b
-
-    let cpu, bus = // IRQ
-      if bus.apu.irq then
-        irq cpu bus
-      else
-        cpu, bus
 
     let opcode, bus' = Bus.memRead cpu.PC bus
     let op, mode, size, cycles, penalty = decodeOpcode opcode

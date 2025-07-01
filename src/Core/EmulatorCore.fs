@@ -33,11 +33,23 @@ module EmulatorCore =
         let bus'' = Bus.updatePendingStallCpuCycles newStall bus'
         loop (n-1) { emu with bus = bus'' } (consumedTotal + 1u)
       | _ ->
-        // 通常進行
-        let cpu', bus, consumed = Cpu.step emu.cpu emu.bus
-        let bus' = Bus.tickNTimes (int consumed) bus
-        let emu' = { cpu = cpu'; bus = bus' }
-        trace emu'
+        // NOTE: ここで割り込み判定をしているけど正確にはもっと複雑らしい？ https://www.nesdev.org/wiki/CPU_interrupts
+        let irq = emu.bus.apu.irq
+        let interruptDisabled = Cpu.interruptDisabled emu.cpu
+        let cpu, bus, consumed =
+          match Bus.pollNmiStatus emu.bus, irq && not interruptDisabled with
+          | (b, Some _), _ -> // NMI
+            Cpu.interruptNmi emu.cpu b
+          | (b, None), true -> // IRQ
+            Cpu.irq emu.cpu b
+          | (b, None), false -> // 通常進行
+            let c, b, con = Cpu.step emu.cpu b
+            // 通常進行の場合はトレース実行
+            trace { cpu = c; bus = b }
+            c, b, con
+        let bus = Bus.tickNTimes (int consumed) bus
+        let emu' = { cpu = cpu; bus = bus }
+
         loop (n-1) emu' (consumedTotal + consumed)
     loop n emu 0u
 

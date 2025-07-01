@@ -128,7 +128,7 @@ let trace emu =
 
     let pc = sprintf "%04X" emu.cpu.PC
     let st = formatCpuStatus emu.cpu
-    let ppu = sprintf "PPU:%3d,%3d" bus'.ppu.scanline (bus'.ppu.cycle * 3u)
+    let ppu = sprintf "PPU:%3d,%3d" bus'.ppu.scanline bus'.ppu.cycle
     let cyc = sprintf "CYC:%d" emu.bus.cycleTotal
     sprintf "%-6s%-9s%-33s%-26s%-12s %s" pc bin asm st ppu cyc
 
