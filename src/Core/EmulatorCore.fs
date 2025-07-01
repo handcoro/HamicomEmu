@@ -21,7 +21,7 @@ module EmulatorCore =
 
   /// ステップの実行回数指定をできるようにしてあるけど使わないかも
   /// TODO: Bus.tick を 1 ずつ回すようにした影響で再現度は上がったけど実行速度が犠牲に！適宜各種状態の mutable 化を検討中
-  let rec tickN n emu =
+  let rec tickN n emu (trace : EmulatorState -> unit) =
     let rec loop n emu consumedTotal =
       if n <= 0 then emu, consumedTotal
       else
@@ -37,9 +37,10 @@ module EmulatorCore =
         let cpu', bus, consumed = Cpu.step emu.cpu emu.bus
         let bus' = Bus.tickNTimes (int consumed) bus
         let emu' = { cpu = cpu'; bus = bus' }
+        trace emu'
         loop (n-1) emu' (consumedTotal + consumed)
     loop n emu 0u
 
-  let tick emu =
-    let emu', cycles = tickN 1 emu
+  let tick emu trace =
+    let emu', cycles = tickN 1 emu trace
     emu', cycles

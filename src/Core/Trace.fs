@@ -3,6 +3,7 @@ module HamicomEmu.Trace
 open HamicomEmu.Cpu.Instructions
 open HamicomEmu.Cpu.Cpu
 open HamicomEmu.Bus.Bus
+open HamicomEmu.EmulatorCore.EmulatorCore
 
 open Microsoft.FSharp.Reflection
 
@@ -112,21 +113,23 @@ let readArgs bus start count =
   let result, finalBus = List.fold folder ([], bus) [1 .. count]
   (List.rev result |> List.toArray), finalBus
 
-let trace cpu bus =
-  let opcode, _ = memRead cpu.PC bus
+let trace emu =
+  let opcode, _ = memRead emu.cpu.PC emu.bus
   let op, mode, size, _, _ = decodeOpcode opcode
   match op with
   | BRK -> "" // BRK の場合とりあえずトレースは飛ばしておく
   | _ ->
-    let args, bus' = readArgs bus cpu.PC (int size - 1)
+    let args, bus' = readArgs emu.bus emu.cpu.PC (int size - 1)
     let bin = formatInstructionBytes opcode args
     let mn = getMnemonicName op
-    let addr = formatAddress cpu.PC mode args
-    let mem = formatMemoryAccess cpu bus op mode args
+    let addr = formatAddress emu.cpu.PC mode args
+    let mem = formatMemoryAccess emu.cpu emu.bus op mode args
     let asm = [|mn; addr; mem|] |> String.concat " "
 
-    let pc = sprintf "%04X" cpu.PC
-    let st = formatCpuStatus cpu
+    let pc = sprintf "%04X" emu.cpu.PC
+    let st = formatCpuStatus emu.cpu
     let ppu = sprintf "PPU:%3d,%3d" bus'.ppu.scanline (bus'.ppu.cycle * 3u)
-    let cyc = sprintf "CYC:%d" bus.cycleTotal
+    let cyc = sprintf "CYC:%d" emu.bus.cycleTotal
     sprintf "%-6s%-9s%-33s%-26s%-12s %s" pc bin asm st ppu cyc
+
+let traceAndPrint emu = printfn "%s" (trace emu)

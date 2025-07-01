@@ -83,7 +83,7 @@ let frameToTexture (graphics: GraphicsDevice) (frame: Frame) : Texture2D =
   tex.SetData(colorData)
   tex
 
-type basicNesGame(loadedRom) as this =
+type basicNesGame(loadedRom, traceFn) as this =
 
   inherit Game()
   let scale = 4
@@ -97,6 +97,7 @@ type basicNesGame(loadedRom) as this =
   let parsed = raw |> Result.bind parseRom
   let mutable emu = Unchecked.defaultof<EmulatorCore.EmulatorState>
   let mutable frame = initialFrame
+  let traceFn = traceFn
 
   do
     match parsed with
@@ -154,7 +155,7 @@ type basicNesGame(loadedRom) as this =
       // 1フレームに達するまで CPU を進める
       let mutable cyclesRemain = cyclesPerSample
       while cyclesRemain > 0.0 do
-        let emu', used = EmulatorCore.tick emu   // ← step が消費サイクル数を返すように
+        let emu', used = EmulatorCore.tick emu traceFn    // ← step が消費サイクル数を返すように
         emu <- emu'
         cyclesRemain <- cyclesRemain - float used
 
@@ -180,18 +181,19 @@ let main argv =
     let filteredArgs = argv |> Array.filter (fun a -> a <> "--test")
     runTestsWithArgs defaultConfig filteredArgs Tests.tests
   else
-    match argv |> Array.tryHead with
-    | Some romPath ->
-      match loadRom romPath with
-      | Ok rom ->
-        use game = new basicNesGame(loadRom romPath)
-        game.Run()
-        0
-      | Error msg ->
-        use game = new basicNesGame (loadRom defaultRom)
-        game.Run()
-        0
-    | None ->
-    use game = new basicNesGame (loadRom defaultRom)
-    game.Run()
-    0
+  let traceFn = if argv |> Array.exists ((=) "--trace") then traceAndPrint else fun _ -> ()
+  match argv |> Array.tryHead with
+  | Some romPath ->
+    match loadRom romPath with
+    | Ok rom ->
+      use game = new basicNesGame(loadRom romPath, traceFn)
+      game.Run()
+      0
+    | Error msg ->
+      use game = new basicNesGame (loadRom defaultRom, traceFn)
+      game.Run()
+      0
+  | None ->
+  use game = new basicNesGame (loadRom defaultRom, traceFn)
+  game.Run()
+  0

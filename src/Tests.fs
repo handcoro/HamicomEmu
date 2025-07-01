@@ -19,10 +19,6 @@ open HamicomEmu.Trace
 //   |> setup
 //   |> run
 
-let makeTraceCallback (log: ResizeArray<string>) =
-  fun cpu bus ->
-  let line = trace cpu bus
-  if line <> "" then log.Add(line)
 
 let initialDmcState = {
   irqEnabled = false
@@ -444,7 +440,7 @@ let tests =
         // v: $2006 への書き込み完了で w ラッチが false になることで 0x80 が t からコピーされる
         Expect.equal ppu4.scroll.x 0x07uy "x scroll should be set to 0x07"
         Expect.equal ppu4.scroll.v 0x80us "v should be set to $80"
-        Expect.isTrue ppu4.scroll.w "w should be true"
+        Expect.isFalse ppu4.scroll.w "w should be false"
       }
     ]
   ]

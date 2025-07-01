@@ -88,7 +88,8 @@ module Cpu =
       addr
     | Relative ->
       let offset, _ = Bus.memRead pc bus
-      let addr = int pc + (offset |> int8 |> int)
+      let baseAddr = pc + 1us
+      let addr = int baseAddr + (offset |> int8 |> int)
       uint16 addr
     | Implied ->
       pc
@@ -286,15 +287,15 @@ module Cpu =
 
   /// 分岐はこの関数内で PC の進みを管理する
   let branch mode flag expected cpu bus =
+    let PcAfterInstruction = cpu.PC + 2us 
     let target = mode |> getOperandAddress cpu bus (cpu.PC + 1us)
-    let nextPc = target + 1us // 命令の分進める
 
     if hasFlag flag cpu.P <> expected then
       (cpu, bus) ||> advancePC 2us
     else
       // 条件達成で +1, ページ境界跨ぎでさらに +1
-      let pen = 1u + if isPageCrossed target nextPc then 1u else 0u
-      { cpu with PC = nextPc; cyclePenalty = pen }, bus
+      let pen = 1u + if isPageCrossed PcAfterInstruction target then 1u else 0u
+      { cpu with PC = target; cyclePenalty = pen }, bus
 
   /// BCC - Branch if Carry Clear
   let bcc mode cpu bus =
