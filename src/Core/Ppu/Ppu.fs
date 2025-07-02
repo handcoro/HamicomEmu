@@ -56,10 +56,12 @@ module Ppu =
     else
       0x0000us
 
-  // TODO: t レジスタにネームテーブルをコピーする
-  //       let t = ppu.scroll.t &&& 0b1110011_1111_1111us ...
-  //       https://www.nesdev.org/wiki/PPU_scrolling#$2000_(PPUCTRL)_write
-  let updateControl data ppu = { ppu with ctrl = data}
+  /// ネームテーブル情報は t レジスタに移動させる
+  let updateControl data ppu =
+    let nt = data &&& ControlMasks.nameTable |> uint16
+    let t = ppu.scroll.t &&& ~~~ScrollMasks.nameTable ||| (nt <<< 10)
+    let ctrl = data &&& ~~~0b11uy
+    { ppu with scroll.t = t; ctrl = ctrl }
 
   let writeToControlRegister value ppu =
     let beforeNmiStatus = hasFlag ControlFlags.generateNmi ppu.ctrl
@@ -116,12 +118,13 @@ module Ppu =
     let belowRight = (baseIndex + 3us) % 4us |> getTable
     main, right, below, belowRight
 
-  let getNameTableAddress ctrl =
-    match ctrl &&& (ControlFlags.nameTable1 ||| ControlFlags.nameTable2) with
-    | 0uy -> 0x2000us
-    | 1uy -> 0x2400us
-    | 2uy -> 0x2800us
-    | 3uy -> 0x2C00us
+  let getNameTableAddress scroll =
+    let nt = scroll.v &&& ScrollMasks.nameTable >>> 10
+    match nt with
+    | 0us -> 0x2000us
+    | 1us -> 0x2400us
+    | 2us -> 0x2800us
+    | 3us -> 0x2C00us
     | _ -> failwith "can't be"
 
 

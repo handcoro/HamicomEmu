@@ -9,6 +9,9 @@ module ControlFlags =
   let masterSlaveSelect        = 0b0100_0000uy
   let generateNmi              = 0b1000_0000uy
 
+module ControlMasks =
+  let nameTable                = 0b0000_0011uy
+
 module StatusFlags =
   let ppuOpenBus     = 0b0001_1111uy
   let spriteOverflow = 0b0010_0000uy
@@ -25,3 +28,5 @@ module MaskFlags =
   let emphasizeGreen           = 0b0100_0000uy
   let emphasizeBlue            = 0b1000_0000uy
 
+module ScrollMasks =
+  let nameTable = 0b000_1100_0000_0000us

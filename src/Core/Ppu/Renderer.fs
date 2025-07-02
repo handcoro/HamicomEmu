@@ -176,7 +176,7 @@ module Renderer =
 
       let scrlX, scrlY = ppu.scrollPerScanline[int drawStartY] |> getScrollXY
 
-      let correctedAddr = Ppu.getNameTableAddress snapshot.ctrlPerScanline[int drawStartY]
+      let correctedAddr = Ppu.getNameTableAddress snapshot.scrollPerScanline[int drawStartY]
       let mainNT, subNTH, subNTV, subNTVH =
         Ppu.getVisibleNameTables ppu correctedAddr
 
