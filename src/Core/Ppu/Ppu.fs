@@ -29,6 +29,7 @@ module Ppu =
     scrollPerScanline = Array.init 240 (fun _ -> initialScroll)
     ctrlPerScanline = Array.zeroCreate 240
     frameIsOdd = false
+    frameJustCompleted = false
   }
 
   let private ppuAdressMask = 0x3FFFus
@@ -45,15 +46,6 @@ module Ppu =
     let ppu = { ppu with scroll.t = t; scroll.w = w'; scroll.v = v' }
     ppu
 
-
-  let getNameTableAddress ctrl =
-    match ctrl &&& (ControlFlags.nameTable1 ||| ControlFlags.nameTable2) with
-    | 0uy -> 0x2000us
-    | 1uy -> 0x2400us
-    | 2uy -> 0x2800us
-    | 3uy -> 0x2C00us
-    | _ -> failwith "can't be"
-
   let backgroundPatternAddr ctrl =
     if hasFlag ControlFlags.backgroundPatternAddress ctrl then 0x1000us else 0x0000us
 
@@ -64,6 +56,9 @@ module Ppu =
     else
       0x0000us
 
+  // TODO: t レジスタにネームテーブルをコピーする
+  //       let t = ppu.scroll.t &&& 0b1110011_1111_1111us ...
+  //       https://www.nesdev.org/wiki/PPU_scrolling#$2000_(PPUCTRL)_write
   let updateControl data ppu = { ppu with ctrl = data}
 
   let writeToControlRegister value ppu =
@@ -116,8 +111,19 @@ module Ppu =
       ppu.vram[index .. index + 0x3FF]
 
     let main = baseIndex |> getTable
-    let snd = (baseIndex + 1us) % 4us |> getTable
-    main, snd
+    let right = (baseIndex + 1us) % 4us |> getTable
+    let below = (baseIndex + 2us) % 4us |> getTable
+    let belowRight = (baseIndex + 3us) % 4us |> getTable
+    main, right, below, belowRight
+
+  let getNameTableAddress ctrl =
+    match ctrl &&& (ControlFlags.nameTable1 ||| ControlFlags.nameTable2) with
+    | 0uy -> 0x2000us
+    | 1uy -> 0x2400us
+    | 2uy -> 0x2800us
+    | 3uy -> 0x2C00us
+    | _ -> failwith "can't be"
+
 
   let mirrorPaletteAddr addr =
     let index = addr &&& 0x1Fus
@@ -141,8 +147,10 @@ module Ppu =
       result, { ppu' with buffer = ppu'.vram[addr |> mirrorVramAddr ppu'.mirror |> int] }
 
     | addr when addr <= 0x3FFFus ->
-      let result = ppu'.buffer
-      result, { ppu' with buffer = ppu'.pal[addr |> mirrorPaletteAddr |> int] }
+      // NOTE: 新しい PPU はバッファを介さないらしい？ そしてバッファにはネームテーブルのミラーが入る
+      // TODO: 上位 2 bit にオープンバス情報を含める
+      let result = ppu'.pal[addr |> mirrorPaletteAddr |> int]
+      result, { ppu' with buffer = ppu'.vram[addr |> mirrorVramAddr ppu'.mirror |> int] }
     | _ -> failwithf "Invalid PPU address: %04X" addr
 
   let writeToDataRegister value ppu =
@@ -169,6 +177,7 @@ module Ppu =
   let resetVblankStatus status = clearFlag StatusFlags.vblank status
 
   /// コントロールレジスタ読み込みでラッチと VBlank が初期化され、次回の NMI が抑制されるらしい
+  /// FIXME: 正しくは 2 PPU サイクルの間抑制される？
   let readFromStatusRegister ppu =
     let afterSt = resetVblankStatus ppu.status
     let clearNmi = true
@@ -218,13 +227,14 @@ module Ppu =
 
   /// PPU を n サイクル進める（1スキャンラインをまたぐときは精密タイミング処理を行う）
   /// FIXME: 精密にやろうとすると動作のボトルネックになりやすいので作りを考え直したい
-  let tick n ppu =
+  /// TODO: Coarse X や Y のインクリメント
+  let tick ppu =
     let c, s = ppu.cycle, ppu.scanline
-    let newCycle = c + n
+    let newCycle = c + 1u
 
     if renderingEnabled ppu then
       // v ← t: 水平スクロール位置コピー
-      if s < 240us && c = 257u then
+      if s < 240us && newCycle = 257u then
         let v = ppu.scroll.v
         let t = ppu.scroll.t
         // v[0:4] ← t[0:4] (coarse X)
@@ -235,25 +245,26 @@ module Ppu =
         ppu.scroll.v <- (ppu.scroll.v &&& ~~~mask) ||| (ppu.scroll.t &&& mask)
 
       // v ← t: 垂直スクロール位置コピー
-      if s = 261us && c = 304u then
+      if s = 261us && newCycle = 304u then
         // GHIA.BC DEF.....
         let mask = 0b0111_1011_1110_0000us
         ppu.scroll.v <- (ppu.scroll.v &&& ~~~mask) ||| (ppu.scroll.t &&& mask)
 
       // === 奇数フレームスキップ（261,339） ===
-      if s = 261us && c = 339u && ppu.frameIsOdd
-      then
+      if s = 261us && newCycle = 339u && ppu.frameIsOdd then
         ppu.cycle <- 0u
         ppu.scanline <- 0us
+        ppu.frameIsOdd <- not ppu.frameIsOdd
+        ppu.frameJustCompleted <- true
 
     // === VBlank 開始（scanline 241 開始時）===
-    if s = 241us && c = 1u then
+    if s = 241us && newCycle = 1u then
       ppu.status <- setFlag StatusFlags.vblank ppu.status
       if hasFlag ControlFlags.generateNmi ppu.ctrl then
         ppu.nmiInterrupt <- Some 1uy
 
     // === フラグの初期化：プリレンダーライン開始（scanline 261, cycle 1）===
-    if s = 261us && c = 1u then
+    if s = 261us && newCycle = 1u then
       ppu.status <- ppu.status |> clearFlag StatusFlags.vblank |> clearFlag StatusFlags.spriteZeroHit
       ppu.nmiInterrupt <- None
 
@@ -275,6 +286,7 @@ module Ppu =
       let mutable newScanline = nextScanline
       let mutable newCycle = nextCycle
       let mutable frameIsOdd = ppu.frameIsOdd
+      let mutable frameJustCompleted = ppu.frameJustCompleted
 
       // === スプライトゼロヒット検出：描画ライン終端（scanline < 240） ===
       if s < 240us then
@@ -284,9 +296,8 @@ module Ppu =
       if nextScanline >= 262us then
         newScanline <- 0us
         newCycle <- nextCycle
-        status <- status |> clearFlag StatusFlags.vblank |> clearFlag StatusFlags.spriteZeroHit
-        nmi <- None
         frameIsOdd <- not ppu.frameIsOdd
+        frameJustCompleted <- true
 
       // === スクロールとコントロールレジスタの記録（描画ラインのみ）===
       ppu.cycle <- newCycle
@@ -295,6 +306,7 @@ module Ppu =
       ppu.status <- status
       ppu.nmiInterrupt <- nmi
       ppu.frameIsOdd <- frameIsOdd
+      ppu.frameJustCompleted <- frameJustCompleted
 
       if nextScanline < 240us then
         let i = int s
@@ -303,8 +315,21 @@ module Ppu =
 
       ppu
 
-  let rec tickN m n ppu =
-    if m <= 0u then ppu
+  let rec tickN n ppu =
+    if n <= 0u then ppu
     else
-      let ppu' = tick n ppu
-      tickN (m - 1u) n ppu'
+      let ppu' = tick ppu
+      tickN (n - 1u) ppu'
+
+module PpuPublicState =
+
+  open HamicomEmu.Ppu.Types
+
+  let initial = {
+      scrollPerScanline = Array.init 240 (fun _ -> Ppu.initialScroll)
+      ctrlPerScanline = Array.zeroCreate 240
+    }
+  let fromPpu (ppu: PpuState) : PpuPublicState = {
+      scrollPerScanline = Array.copy ppu.scrollPerScanline
+      ctrlPerScanline   = Array.copy ppu.ctrlPerScanline
+    }

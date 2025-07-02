@@ -2,13 +2,6 @@ namespace HamicomEmu.Ppu.Types
 
 open HamicomEmu.Cartridge
 
-type AddressRegister = {
-  value: byte * byte
-}
-
-
-
-
 /// https://www.nesdev.org/wiki/PPU_scrolling
 /// v:
 /// yyy NN YYYYY XXXXX
@@ -46,4 +39,10 @@ type PpuState = {
   mutable scrollPerScanline: ScrollRegisters array
   mutable ctrlPerScanline: byte array
   mutable frameIsOdd: bool
+  mutable frameJustCompleted: bool
+}
+
+type PpuPublicState = {
+  scrollPerScanline: ScrollRegisters array
+  ctrlPerScanline: byte array
 }

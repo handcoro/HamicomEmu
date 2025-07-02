@@ -286,6 +286,7 @@ module Cpu =
       r ||| (if carryBefore then 0b1000_0000uy else 0uy))
 
   /// 分岐はこの関数内で PC の進みを管理する
+  /// TODO: 精密な再現ではオペランドフェッチ前とページ跨ぎ前のサイクルで割り込みを受け付ける https://www.nesdev.org/wiki/CPU_interrupts#Branch_instructions_and_interrupts
   let branch mode flag expected cpu bus =
     let PcAfterInstruction = cpu.PC + 2us 
     let target = mode |> getOperandAddress cpu bus (cpu.PC + 1us)

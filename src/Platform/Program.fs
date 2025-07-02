@@ -124,7 +124,7 @@ type basicNesGame(loadedRom, traceFn) as this =
   override _.Draw(gameTime) =
     this.GraphicsDevice.Clear(Color.Black)
     spriteBatch.Begin(samplerState = SamplerState.PointClamp)
-    frame <- renderScanlineBased emu.bus.ppu frame
+    frame <- renderScanlineBased emu.bus.ppu emu.ppuSnapshot frame
     let colorData =
       frame.data |> Array.map (fun (r, g, b) -> Color(int r, int g, int b))
     texture.SetData(colorData)

@@ -69,7 +69,6 @@ module Renderer =
         let paletteIdx = attr &&& 0b11uy
         let sprPal = spritePalette ppu paletteIdx
 
-        let bank = Ppu.spritePatternAddr ppu.ctrl |> int
         let tileStart = bank + (int tileIdx * 16)
         let tile =
           if ppu.chr <> [||] then
@@ -102,6 +101,7 @@ module Renderer =
 
   let renderNameTableScanline
       (ppu: PpuState)
+      (snapshot: PpuPublicState)
       (nameTable: byte[])
       (viewPort: Rect)
       (shiftX: int)
@@ -112,7 +112,6 @@ module Renderer =
 
     if nameTable.Length < 1 then frame else
 
-    let bank = Ppu.backgroundPatternAddr ppu.ctrl |> int
     let attrTable = nameTable[0x3C0 .. 0x3FF]
     let mutable frameAcc = frame
 
@@ -123,6 +122,7 @@ module Renderer =
       let y = tileY * 8
       
       if scanline >= y && scanline < y + drawLines then
+        let bank = Ppu.backgroundPatternAddr snapshot.ctrlPerScanline[scanline] |> int
         let tileIdx = nameTable[i] |> int
         let tile =
           if ppu.chr <> [||] then // CHR ROM と CHR RAM の暫定的な判定
@@ -167,37 +167,45 @@ module Renderer =
 
   /// 分割スクロールのためのスキャンラインごとの描画
   /// TODO: ネームテーブルが 4 つ表示される場合に対応したい
-  let renderScanlineBased (ppu: PpuState) (frame: Frame) : Frame =
+  let renderScanlineBased (ppu: PpuState) (snapshot: PpuPublicState) (frame: Frame) : Frame =
     let mutable frameAcc = frame
     let n = 240 / drawLines - 1 // スキャンライン一本ずつだと非効率なのである程度まとめて描いてみる
 
     for y = 0 to n do
       let drawStartY = y * drawLines |> uint
 
-      let scrollX, scrollY = ppu.scrollPerScanline[int drawStartY] |> getScrollXY
-      let scrlX, scrlY = int scrollX, int scrollY
+      let scrlX, scrlY = ppu.scrollPerScanline[int drawStartY] |> getScrollXY
 
-      let correctedAddr = Ppu.getNameTableAddress ppu.ctrlPerScanline[int drawStartY]
-      let mainNameTable, subNameTable =
+      let correctedAddr = Ppu.getNameTableAddress snapshot.ctrlPerScanline[int drawStartY]
+      let mainNT, subNTH, subNTV, subNTVH =
         Ppu.getVisibleNameTables ppu correctedAddr
 
-      // drawLines 分の描画範囲
+      let needSubH = scrlX > 0
+      let needSubV = scrlY + drawLines > 0
+
+      // 4 画面分の描画範囲
+      // rect1 が現在のメイン背景担当
       // パフォーマンスのためには狭めることも必要になるかも
-      let rect1 = initialRect (uint scrlX) (drawStartY + uint scrlY) screenW (drawStartY + uint drawLines)
-      let rect2 = initialRect 0u drawStartY (uint scrlX) (drawStartY + uint drawLines)
+      // +-------+-------+
+      // | rect1 | rect2 |
+      // +-------+-------+
+      // | rect3 | rect4 |
+      // +-------+-------+
+      let rect1 = initialRect (uint scrlX) (uint scrlY) screenW screenH
+      let rect2 = initialRect 0u 0u (uint scrlX) screenH
+      let rect3 = initialRect (uint scrlX) 0u screenW (uint scrlY)
+      let rect4 = initialRect 0u (uint scrlY) (uint scrlX) screenH
 
-      // 背景描画
-      let frame1 =
-        renderNameTableScanline ppu mainNameTable rect1 (-scrlX) (-scrlY) (int drawStartY) drawLines frameAcc
-
-      let needSub =
-        scrlX > 0
+      // メイン背景描画
+      frameAcc <- renderNameTableScanline ppu snapshot mainNT rect1 (-scrlX) (-scrlY) (int drawStartY) drawLines frameAcc
       // サブ背景
-      frameAcc <-
-        if needSub then
-          renderNameTableScanline ppu subNameTable rect2 (int screenW - int scrlX) 0 (int drawStartY) drawLines frame1
-        else
-          frame1
+      if needSubH then
+        frameAcc <- renderNameTableScanline ppu snapshot subNTH rect2 (int screenW - scrlX) (-scrlY) (int drawStartY) drawLines frameAcc
+      if needSubV then
+        frameAcc <- renderNameTableScanline ppu snapshot subNTV rect3 (-scrlX) (int screenH - scrlY) (int drawStartY) drawLines frameAcc
+      if needSubH && needSubV then
+        frameAcc <- renderNameTableScanline ppu snapshot subNTVH rect4 (int screenW - scrlX) (int screenH - scrlY) (int drawStartY) drawLines frameAcc
+
     drawSprites ppu frameAcc
 
 

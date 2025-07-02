@@ -122,8 +122,8 @@ module Bus =
     let mutable apu = bus.apu
     let mutable ppu = bus.ppu
     let cyc = bus.cycleTotal + 1u
-    // TODO: 3 サイクルまとめて tick させてるけどタイミングが厳しいゲームだと不具合が出るかも
-    ppu <- Ppu.tickN 3u 1u ppu
+
+    ppu <- Ppu.tickN 3u ppu
   
     let result = Apu.tick 1u apu
     let p = result.stallCpuCycles
