@@ -82,7 +82,7 @@ let parseCyclesAndPenalty (text: string) : int * bool =
   let baseText = text.Trim()
   let parts = baseText.Split(' ')
   let baseCycles =
-    match System.Int32.TryParse(parts.[0]) with
+    match System.Int32.TryParse(parts[0]) with
     | true, n -> n
     | _ -> 0
   let hasPenalty = parts.Length > 1
@@ -107,9 +107,9 @@ let parseOfficialHtml (path: string) : OpcodeInfo list =
     |> Seq.choose (fun row ->
       let cols = row.SelectNodes("td")
       if cols.Count < 4 then None else
-      let rawMode = normalize cols.[0].InnerText
-      let codeHex = cols.[1].InnerText.Trim().TrimStart('$')
-      let cycles, penalty = parseCyclesAndPenalty cols.[3].InnerText
+      let rawMode = normalize cols[0].InnerText
+      let codeHex = cols[1].InnerText.Trim().TrimStart('$')
+      let cycles, penalty = parseCyclesAndPenalty cols[3].InnerText
       if not (Regex.IsMatch(codeHex, @"^[0-9A-Fa-f]{2}$")) then None else
       let modeCase = toDuCase rawMode
       let bytes = addressingModeBytes.TryFind modeCase |> Option.defaultValue 1
@@ -156,10 +156,16 @@ let parseUnofficialText (path: string) : OpcodeInfo list =
     |> List.pairwise
     |> List.map (fun (startIdx, nextStartIdx) ->
       // 命令名は区切り行の1つ前
-      let op = lines.[startIdx - 1]
-      let m = Regex.Match(op, @"\((.+)\)")
+      let op = lines[startIdx - 1]
+      let m = Regex.Match(op, @"^(.+?)\s")
       if m.Success then
-        let name = m.Groups.[1].Value
+        let name =
+          match m.Groups[1].Value with
+          | "AAC" -> "ANC"
+          | "AAX" -> "SAX"
+          | "ASR" -> "ALR"
+          | v -> v
+
         // この区間の行を取り出す（区切り行の次から次の区切り行まで）
         let blockLines = lines |> List.skip (startIdx + 1) |> List.take (nextStartIdx - startIdx - 1)
 
@@ -181,10 +187,10 @@ let parseUnofficialText (path: string) : OpcodeInfo list =
   let lastBlockOpt =
     match List.tryLast sectionIndices with
     | Some lastIdx when lastIdx + 1 < lines.Length ->
-      let op = lines.[lastIdx - 1]
-      let m = Regex.Match(op, @"\((.+)\)")
+      let op = lines[lastIdx - 1]
+      let m = Regex.Match(op, @"^(.+?)\s")
       if m.Success then
-        let name = m.Groups.[1].Value
+        let name = m.Groups[1].Value
         let blockLines = lines |> List.skip (lastIdx + 1)
         match blockLines |> List.tryFindIndex (fun v -> v.StartsWith("------------")) with
         | Some sepIndex ->
@@ -213,11 +219,11 @@ let parseUnofficialText (path: string) : OpcodeInfo list =
     |> List.choose (fun line ->
       let parts = line.Split('|') |> Array.map (fun s -> s.Trim())
       if parts.Length >= 5 then
-        match keyMap.TryGetValue(parts.[0]) with
+        match keyMap.TryGetValue(parts[0]) with
         | true, mode ->
-          let code = parts.[2].Replace("$", "").ToUpper()
-          let bytes = int parts.[3]
-          let cyclePart = parts.[4].Replace(" ", "")
+          let code = parts[2].Replace("$", "").ToUpper()
+          let bytes = int parts[3]
+          let cyclePart = parts[4].Replace(" ", "")
           let hasPageCrossPenalty = cyclePart.Contains("*")
           let cyclesStr = cyclePart.Replace("*", "").Replace("-", "0")
           let cycles = int cyclesStr
@@ -240,7 +246,7 @@ let generateInstructionsFs (opcodes: OpcodeInfo list) =
     mnemonics
     |> List.distinct
     |> List.sort
-    |> List.groupBy (fun name -> name.[0])
+    |> List.groupBy (fun name -> name[0])
     |> List.sortBy fst
     |> List.map (fun (_, group) ->
         group

@@ -44,11 +44,11 @@ let formatMemoryAccess cpu bus op mode (args: byte[]) =
     let value, _ = memRead addr bus
     sprintf "= %02X" value
   | ZeroPage_X ->
-    let addr = args[0] + cpu.X |> uint16
+    let addr = args[0] + cpu.x |> uint16
     let value, _ = memRead addr bus
     sprintf "@ %02X = %02X" addr value
   | ZeroPage_Y ->
-    let addr = args[0] + cpu.Y |> uint16
+    let addr = args[0] + cpu.y |> uint16
     let value, _ = memRead addr bus
     sprintf "@ %02X = %02X" addr value
   | Absolute ->
@@ -63,25 +63,25 @@ let formatMemoryAccess cpu bus op mode (args: byte[]) =
   | Absolute_X ->
     let hi = args[1] |> uint16
     let lo = args[0] |> uint16
-    let addr = (hi <<< 8 ||| lo) + uint16 cpu.X
+    let addr = (hi <<< 8 ||| lo) + uint16 cpu.x
     let value, _ = memRead addr bus
     sprintf "@ %04X = %02X" addr value
   | Absolute_Y ->
     let hi = args[1] |> uint16
     let lo = args[0] |> uint16
-    let addr = (hi <<< 8 ||| lo) + uint16 cpu.Y
+    let addr = (hi <<< 8 ||| lo) + uint16 cpu.y
     let value, _ = memRead addr bus
     sprintf "@ %04X = %02X" addr value
   | Indirect_X ->
     let bpos = args[0]
-    let ptr = bpos + cpu.X
+    let ptr = bpos + cpu.x
     let addr, _ = memRead16ZeroPage ptr bus
     let value, _ = memRead addr bus
     sprintf "@ %02X = %04X = %02X" ptr addr value
   | Indirect_Y ->
     let bpos = args[0]
     let deRefBase, _ = memRead16ZeroPage bpos bus
-    let deRef = deRefBase + (cpu.Y |> uint16)
+    let deRef = deRefBase + (cpu.y |> uint16)
     let value, _ = memRead deRef bus
     sprintf "= %04X @ %04X = %02X" deRefBase deRef value
   | Indirect ->
@@ -98,7 +98,7 @@ let formatInstructionBytes opcode (args: byte[]) =
   |> String.concat " "
 
 let formatCpuStatus cpu =
-  sprintf "A:%02X X:%02X Y:%02X P:%02X SP:%02X" cpu.A cpu.X cpu.Y cpu.P cpu.SP
+  sprintf "A:%02X X:%02X Y:%02X P:%02X SP:%02X" cpu.a cpu.x cpu.y cpu.p cpu.sp
 
 let getMnemonicName (x: 'T) =
   match FSharpValue.GetUnionFields(x, typeof<'T>) with
@@ -114,19 +114,19 @@ let readArgs bus start count =
   (List.rev result |> List.toArray), finalBus
 
 let trace emu =
-  let opcode, _ = memRead emu.cpu.PC emu.bus
+  let opcode, _ = memRead emu.cpu.pc emu.bus
   let op, mode, size, _, _ = decodeOpcode opcode
   match op with
   | BRK -> "" // BRK の場合とりあえずトレースは飛ばしておく
   | _ ->
-    let args, bus' = readArgs emu.bus emu.cpu.PC (int size - 1)
+    let args, bus' = readArgs emu.bus emu.cpu.pc (int size - 1)
     let bin = formatInstructionBytes opcode args
     let mn = getMnemonicName op
-    let addr = formatAddress emu.cpu.PC mode args
+    let addr = formatAddress emu.cpu.pc mode args
     let mem = formatMemoryAccess emu.cpu emu.bus op mode args
     let asm = [|mn; addr; mem|] |> String.concat " "
 
-    let pc = sprintf "%04X" emu.cpu.PC
+    let pc = sprintf "%04X" emu.cpu.pc
     let st = formatCpuStatus emu.cpu
     let ppu = sprintf "PPU:%3d,%3d" bus'.ppu.scanline bus'.ppu.cycle
     let cyc = sprintf "CYC:%d" emu.bus.cycleTotal
