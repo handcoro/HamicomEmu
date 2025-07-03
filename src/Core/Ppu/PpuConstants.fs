@@ -30,3 +30,9 @@ module MaskFlags =
 
 module ScrollMasks =
   let nameTable = 0b000_1100_0000_0000us
+
+module SpriteAttributes =
+  let paletteIndex attr   = attr &&& 0b11uy
+  let priority attr       = attr >>> 5 &&& 1uy
+  let flipHorizontal attr = attr >>> 6 &&& 1uy = 1uy
+  let flipVertical attr   = attr >>> 7 &&& 1uy = 1uy

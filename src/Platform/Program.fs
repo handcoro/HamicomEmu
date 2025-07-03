@@ -76,7 +76,7 @@ let loadRom path =
   | e -> Error $"Failed to load ROM: {e.Message}"
 
 let frameToTexture (graphics: GraphicsDevice) (frame: Frame) : Texture2D =
-  let tex = new Texture2D(graphics, Frame.Width, Frame.Height)
+  let tex = new Texture2D(graphics, Frame.width, Frame.height)
   let colorData =
     frame.data
     |> Array.map (fun (r, g, b) -> Color(int r, int g, int b))
@@ -107,8 +107,8 @@ type basicNesGame(loadedRom, traceFn) as this =
       emu <- emu'
     | Error e -> failwith $"Failed to parse ROM: {e}"
 
-    graphics.PreferredBackBufferWidth <- Frame.Width * scale
-    graphics.PreferredBackBufferHeight <- Frame.Height * scale
+    graphics.PreferredBackBufferWidth <- Frame.width * scale
+    graphics.PreferredBackBufferHeight <- Frame.height * scale
     graphics.ApplyChanges()
 
   override _.Initialize() =
@@ -118,7 +118,7 @@ type basicNesGame(loadedRom, traceFn) as this =
 
   override _.LoadContent() =
     spriteBatch <- new SpriteBatch(this.GraphicsDevice)
-    texture <- new Texture2D(this.GraphicsDevice, Frame.Width, Frame.Height)
+    texture <- new Texture2D(this.GraphicsDevice, Frame.width, Frame.height)
     base.LoadContent()
 
   override _.Draw(gameTime) =
@@ -128,7 +128,7 @@ type basicNesGame(loadedRom, traceFn) as this =
     let colorData =
       frame.data |> Array.map (fun (r, g, b) -> Color(int r, int g, int b))
     texture.SetData(colorData)
-    let destRect = Rectangle(0, 0, Frame.Width * scale, Frame.Height * scale)
+    let destRect = Rectangle(0, 0, Frame.width * scale, Frame.height * scale)
     spriteBatch.Draw(texture, destRect, Color.White)
     spriteBatch.End()
     base.Draw(gameTime)

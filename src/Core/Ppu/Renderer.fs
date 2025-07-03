@@ -52,6 +52,12 @@ module Renderer =
       ppu.pal[start + 2]
     |]
 
+  let spriteOverBackground priority backgroundPaletteIndex =
+    match priority, backgroundPaletteIndex with
+    | 0uy, _   -> true  // スプライトが前面
+    | 1uy, 0uy -> true  // 背景がパレット 0（透明）ならスプライト
+    | _ -> false // それ以外は背景
+
   let drawSprites (ppu: PpuState) (frame: Frame) : Frame =
     let mutable frameAcc = frame
     let bank = Ppu.spritePatternAddr ppu.ctrl |> int
@@ -63,10 +69,11 @@ module Renderer =
         let tileY = ppu.oam[i] |> int
 
         let attr = ppu.oam[i + 2]
-        let flipVerical   = attr >>> 7 &&& 1uy = 1uy
-        let flipHorizontal = attr >>> 6 &&& 1uy = 1uy
+        let flipVertical   = SpriteAttributes.flipVertical attr
+        let flipHorizontal = SpriteAttributes.flipHorizontal attr
 
-        let paletteIdx = attr &&& 0b11uy
+        let priority = SpriteAttributes.priority attr
+        let paletteIdx = SpriteAttributes.paletteIndex attr
         let sprPal = spritePalette ppu paletteIdx
 
         let tileStart = bank + (int tileIdx * 16)
@@ -88,16 +95,17 @@ module Renderer =
             if value <> 0uy then
               let color = nesPalette[int sprPal[int value]]
               let px, py =
-                match flipHorizontal, flipVerical with
+                match flipHorizontal, flipVertical with
                 | false, false -> tileX + x,     tileY + y
                 | true,  false -> tileX + 7 - x, tileY + y
                 | false, true  -> tileX + x,     tileY + 7 - y
                 | true,  true  -> tileX + 7 - x, tileY + 7 - y
-              frameAcc <- setPixel (uint px) (uint py) color frameAcc
+              let pos = py * Frame.width + px
+              if isValidPixel (uint px) (uint py) then
+                let bgIdx = frameAcc.bgPaletteIdx[pos]
+                if spriteOverBackground priority bgIdx then
+                  frameAcc <- setSpritePixel (uint px) (uint py) color frameAcc
     frameAcc
-
-  let screenW = 256u
-  let screenH = 240u
 
   let renderNameTableScanline
       (ppu: PpuState)
@@ -146,7 +154,7 @@ module Renderer =
             let py = tileY * 8 + y
             if px >= int viewPort.x1 && px < int viewPort.x2 &&
                py >= int viewPort.y1 && py < int viewPort.y2 then
-              frameAcc <- setPixel (uint (shiftX + px)) (uint(shiftY + py)) rgb frameAcc
+              frameAcc <- setBackgroundPixel (uint (shiftX + px)) (uint(shiftY + py)) rgb value frameAcc
     frameAcc
 
   //   let rect1 = initialRect (uint scrlX) (uint scrlY) screenW screenH
@@ -162,6 +170,8 @@ module Renderer =
     let y = coarseY * 8 + fineY
     x, y
 
+  let screenW = Frame.width |> uint
+  let screenH = Frame.height |> uint
 
   let drawLines = 8
 
