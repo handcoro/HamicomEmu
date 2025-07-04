@@ -157,10 +157,6 @@ module Renderer =
               frameAcc <- setBackgroundPixel (uint (shiftX + px)) (uint(shiftY + py)) rgb value frameAcc
     frameAcc
 
-  //   let rect1 = initialRect (uint scrlX) (uint scrlY) screenW screenH
-  //   let rect2 = initialRect 0u 0u (uint scrlX) screenH
-  //   let rect3 = initialRect (uint scrlX) 0u screenW (uint scrlY)
-  //   let rect4 = initialRect 0u (uint scrlY) (uint scrlX) screenH
 
   let getScrollXY (scroll: ScrollRegisters) : int * int =
     let coarseX = int (scroll.v &&& 0b1_1111us)
@@ -184,7 +180,7 @@ module Renderer =
     for y = 0 to n do
       let drawStartY = y * drawLines |> uint
 
-      let scrlX, scrlY = ppu.scrollPerScanline[int drawStartY] |> getScrollXY
+      let scrlX, scrlY = snapshot.scrollPerScanline[int drawStartY] |> getScrollXY
 
       let correctedAddr = Ppu.getNameTableAddress snapshot.scrollPerScanline[int drawStartY]
       let mainNT, subNTH, subNTV, subNTVH =
