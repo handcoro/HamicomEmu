@@ -66,7 +66,7 @@ module Renderer =
       if i % 4 = 0 then // スプライトごとに4バイト
         let tileIdx = ppu.oam[i + 1] |> uint16
         let tileX = ppu.oam[i + 3] |> int
-        let tileY = ppu.oam[i] |> int
+        let tileY = ppu.oam[i] + 1uy |> int // スプライトは 1 スキャンライン分遅れて表示される
 
         let attr = ppu.oam[i + 2]
         let flipVertical   = SpriteAttributes.flipVertical attr
