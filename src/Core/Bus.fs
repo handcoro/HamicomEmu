@@ -3,6 +3,7 @@ namespace HamicomEmu.Bus
 module Bus =
 
   open HamicomEmu.Cartridge
+  open HamicomEmu.Mapper
   open HamicomEmu.Ppu.Types
   open HamicomEmu.Ppu
   open HamicomEmu.Apu.Types
@@ -27,20 +28,20 @@ module Bus =
 
   type BusState = {
     cpuVram: byte array // 0x0000 - 0x1FFF
-    rom: Rom
+    cartridge: Cartridge
     ppu: PpuState
     apu: ApuState
     joy1: JoypadState
     joy2: JoypadState
     mutable cycleTotal: uint
     oamDmaCyclesRemaining: uint option // OAM DMA 中に DMC に割り込まれたときの残りサイクル数
-    mutable pendingStallCpuCycles: uint option // TODO: DMC 読み込みによるストール
+    mutable pendingStallCpuCycles: uint option
   }
 
-  let initial rom = {
+  let initial cart = {
     cpuVram = Array.create 0x2000 0uy
-    rom = rom
-    ppu = Ppu.initial rom
+    cartridge = cart
+    ppu = Ppu.initial cart
     apu = Apu.initial
     joy1 = initialJoypad
     joy2 = initialJoypad
@@ -48,12 +49,6 @@ module Bus =
     oamDmaCyclesRemaining = None
     pendingStallCpuCycles = None
   }
-
-
-  let readPrgRom bus addr = // PRG ROM の読み込み
-    let addr' = addr - 0x8000us // 0x8000 - 0xFFFF の範囲を 0x0000 - 0x7FFF に変換
-    let addr2 = if bus.rom.prgRom.Length = 0x4000 && addr' >= 0x4000us then addr' % 0x4000us else addr' // 16KB ROM の場合はミラーリング
-    bus.rom.prgRom[int addr2]
 
   let inline inRange startAddr endAddr addr =
     addr >= startAddr && addr <= endAddr
@@ -98,7 +93,8 @@ module Bus =
       data, { bus with apu = apu }
 
     | addr when addr |> inRange PrgRom.Begin PrgRom.End ->
-      readPrgRom bus addr, bus
+      let data = Mapper.cpuRead addr bus.cartridge
+      data, bus
 
     | _ ->
       printfn "Invalid Memory access at: %04X" addr
@@ -115,8 +111,7 @@ module Bus =
       let res = bus.ppu.nmiInterrupt
       { bus with ppu.nmiInterrupt = None }, res
   
-  let clearIrqStatus (bus : BusState) =
-    { bus with apu.irq = false }
+  let pollIrqStatus bus = bus.apu.dmc.irqRequested || bus.apu.frameCounter.irqRequested
 
   let tick bus =
     let mutable apu = bus.apu
@@ -174,7 +169,7 @@ module Bus =
       let ppu = Ppu.writeToOamData value bus.ppu
       { bus with ppu = ppu }
 
-    | 0x2005us -> // TODO: Scroll
+    | 0x2005us ->
       // printfn "WRITE Scroll Data: %02X" value
       let ppu = Ppu.writeToScrollRegister value bus.ppu
       { bus with ppu = ppu }
@@ -213,8 +208,8 @@ module Bus =
       { bus with apu = apu }
 
     | addr when addr |> inRange PrgRom.Begin PrgRom.End -> // PRG ROM は書き込み禁止
-      printfn "Attempt to write to Cartridge Rom space. addr: %04X\n" addr
-      bus
+      let mapper, _ = Mapper.cpuWrite addr value bus.cartridge
+      { bus with cartridge.mapper = mapper }
 
     | _ -> printfn "Invalid Memory write-access at: %04X" addr; bus
 

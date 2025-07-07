@@ -6,6 +6,7 @@ module Apu =
   open HamicomEmu.Common
   open HamicomEmu.Common.BitUtils
 
+  let initialLowPassFilter = { lastOutput = 0.0f }
   let initialFrameCounter = {
     mode = FourStep
     irqInhibit = false
@@ -18,11 +19,11 @@ module Apu =
     triangle = Triangle.initial
     noise = Noise.initial
     dmc = Dmc.initial
+    filterState = initialLowPassFilter
     status = 0uy
     frameCounter = initialFrameCounter
     cycle = 0u
     step = Step1
-    irq = false
   }
 
   let hasLoopFlag v = hasFlag GeneralMasks.envelopeLoopFlag v
@@ -51,6 +52,8 @@ module Apu =
     let status =
       value
       |> clearFlag StatusFlags.dmcInterrupt
+    
+    printfn "write to APU status: %02X" value
 
     { apu with
         pulse1.lengthCounter = pulse1Counter
@@ -146,9 +149,6 @@ module Apu =
     let dmc', req, stall = Dmc.tick apu.dmc
     apu.dmc <- dmc'
 
-    // DMC から受け取った IRQ 要求のセット
-    apu.irq <- apu.dmc.irqRequested
-
     if apu.cycle < Constants.frameStepCycles then
       { apu = apu; dmcRead = req; stallCpuCycles = stall }
 
@@ -163,6 +163,7 @@ module Apu =
       | Step4, FourStep | Step5, FiveStep -> apu.step <- Step1
       | _ -> apu.step <- nextStep apu.step
 
+
       { apu = apu; dmcRead = req; stallCpuCycles = stall }
 
   let getReadRequest apu =
@@ -174,7 +175,8 @@ module Apu =
   let writeToFrameCounter v apu =
     let mode = if hasFlag FrameCounterFlags.mode v then FiveStep else FourStep
     let irqInhibit = hasFlag FrameCounterFlags.irqInhibit v
-    let fc = { mode = mode; irqInhibit = irqInhibit; irqRequested = apu.frameCounter.irqRequested }
+    let irqReq = if irqInhibit then false else apu.frameCounter.irqRequested
+    let fc = { mode = mode; irqInhibit = irqInhibit; irqRequested = irqReq }
 
     apu.cycle <- 0u
     apu.step <- Step1
@@ -314,13 +316,13 @@ module Apu =
           noise.envelope.reload = true
           noise.lengthCounter = c
       }
-    // TODO: DMC (DPCM) 関連の処理
     | 0x4010us -> // flags and rate
       let irq = parseIrqEnabledDmc value
       let loop = parseLoopDmc value
       let rateIdx = parseRateIndexDmc value
       { apu with
           dmc.irqEnabled = irq
+          dmc.irqRequested = if not irq then false else apu.dmc.irqRequested
           dmc.isLoop = loop
           dmc.rateIndex = rateIdx
       }
@@ -368,6 +370,7 @@ module Apu =
         |> updateFlag StatusFlags.pulse1LengthCounterLargerThanZero p1Cond
 
       // フレーム割り込みは読み出し後にクリアされる
+      apu.frameCounter.irqRequested <- false
       let clearedStatus =
         status'
         |> clearFlag StatusFlags.frameInterrupt
@@ -377,7 +380,12 @@ module Apu =
       // printfn "This APU register is not implemented yet. %04X" addr
       0uy, apu
 
-/// 1 サンプル合成出力（dtベース）
+  /// 一次 IIR ローパスフィルタ
+  let nextLowPass alpha input (state: LowPassFilterState) =
+    let y = alpha * input + (1.0f - alpha) * state.lastOutput
+    y, { state with lastOutput = y }
+
+  /// 1 サンプル合成出力（dtベース）
   let mix (dt: float) apu =
     let ch1, pu1 = Pulse.output dt apu.pulse1
     let ch2, pu2 = Pulse.output dt apu.pulse2
@@ -412,6 +420,10 @@ module Apu =
       else 159.79f / (1.0f / (t/8227.0f + n/12241.0f + d /22638.0f) + 100.0f)
 
     let sample = (pulseMix + tndMix) * masterGain
+
+    // NOTE: ローパスフィルタ実装は検討中
+    // let sample, filterState = nextLowPass 0.18f sample apu.filterState
+    // apu.filterState <- filterState
 
     apu.pulse1 <- pu1
     apu.pulse2 <- pu2

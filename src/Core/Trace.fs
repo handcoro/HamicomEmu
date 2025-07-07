@@ -7,7 +7,7 @@ open HamicomEmu.EmulatorCore.EmulatorCore
 
 open Microsoft.FSharp.Reflection
 
-let formatAddress pc mode (args: byte[]) =
+let inline formatAddress pc mode (args: byte[]) =
   match mode with
   | Accumulator ->
     "A"
@@ -37,7 +37,7 @@ let formatAddress pc mode (args: byte[]) =
   | Implied ->
     ""
 
-let formatMemoryAccess cpu bus op mode (args: byte[]) =
+let inline formatMemoryAccess cpu bus op mode (args: byte[]) =
   match mode with
   | ZeroPage ->
     let addr = args[0] |> uint16
@@ -92,44 +92,42 @@ let formatMemoryAccess cpu bus op mode (args: byte[]) =
     sprintf "= %04X" addr
   | _ -> ""
 
-let formatInstructionBytes opcode (args: byte[]) =
+let inline formatInstructionBytes opcode (args: byte[]) =
   Array.concat [ [| opcode |]; args ]
   |> Array.map (fun b -> b.ToString("X2"))
   |> String.concat " "
 
-let formatCpuStatus cpu =
+let inline formatCpuStatus cpu =
   sprintf "A:%02X X:%02X Y:%02X P:%02X SP:%02X" cpu.a cpu.x cpu.y cpu.p cpu.sp
 
-let getMnemonicName (x: 'T) =
+let inline getMnemonicName (x: 'T) =
   match FSharpValue.GetUnionFields(x, typeof<'T>) with
     | case, _ ->
       let name = case.Name
       if name.EndsWith "_" then "*" + name.TrimEnd '_' else " " + name
 
-let readArgs bus start count =
+let inline readArgs bus start count =
   let folder (acc, b) i =
     let data, b' = memRead (start + uint16 i) b
     (data :: acc, b')
   let result, finalBus = List.fold folder ([], bus) [1 .. count]
   (List.rev result |> List.toArray), finalBus
 
+/// FIXME: トレース処理が重いので改善したい
 let trace emu =
   let opcode, _ = memRead emu.cpu.pc emu.bus
   let op, mode, size, _, _ = decodeOpcode opcode
-  match op with
-  | BRK -> "" // BRK の場合とりあえずトレースは飛ばしておく
-  | _ ->
-    let args, bus' = readArgs emu.bus emu.cpu.pc (int size - 1)
-    let bin = formatInstructionBytes opcode args
-    let mn = getMnemonicName op
-    let addr = formatAddress emu.cpu.pc mode args
-    let mem = formatMemoryAccess emu.cpu emu.bus op mode args
-    let asm = [|mn; addr; mem|] |> String.concat " "
+  let args, bus' = readArgs emu.bus emu.cpu.pc (int size - 1)
+  let bin = formatInstructionBytes opcode args
+  let mn = getMnemonicName op
+  let addr = formatAddress emu.cpu.pc mode args
+  let mem = formatMemoryAccess emu.cpu emu.bus op mode args
+  let asm = [|mn; addr; mem|] |> String.concat " "
 
-    let pc = sprintf "%04X" emu.cpu.pc
-    let st = formatCpuStatus emu.cpu
-    let ppu = sprintf "PPU:%3d,%3d" bus'.ppu.scanline bus'.ppu.cycle
-    let cyc = sprintf "CYC:%d" emu.bus.cycleTotal
-    sprintf "%-6s%-9s%-33s%-26s%-12s %s" pc bin asm st ppu cyc
+  let pc = sprintf "%04X" emu.cpu.pc
+  let st = formatCpuStatus emu.cpu
+  let ppu = sprintf "PPU:%3d,%3d" bus'.ppu.scanline bus'.ppu.cycle
+  let cyc = sprintf "CYC:%d" emu.bus.cycleTotal
+  sprintf "%-6s%-9s%-33s%-26s%-12s %s" pc bin asm st ppu cyc
 
 let traceAndPrint emu = printfn "%s" (trace emu)

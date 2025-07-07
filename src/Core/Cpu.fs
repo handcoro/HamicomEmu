@@ -600,18 +600,20 @@ module Cpu =
   /// 主に APU からの割り込み要求
   /// 消費サイクル数も返す
   /// NOTE: 7 サイクル消費らしい
+  /// NOTE: 割り込み禁止フラグの判定は呼び出し前にやる
   let irq cpu bus =
+
     let cpu, bus =
       (cpu, bus)
-      ||> push16 (cpu.pc + 1us)
-      ||> push cpu.p
+      ||> push16 cpu.pc
+      ||> push (cpu.p |> clearFlag Flags.B |> setFlag Flags.U)
 
     let pc, bus' = Bus.memRead16 0xFFFEus bus // IRQ は 0xFFFE に飛ぶ
-    let p = cpu.p |> clearFlag Flags.B
+    let p =
+      cpu.p
+        |> setFlag Flags.I
 
-    let busF = Bus.clearIrqStatus bus' // 割り込み要求を消す
-
-    { cpu with p = p; pc = pc }, busF, 7u
+    { cpu with p = p; pc = pc }, bus', 7u
 
   /// NMI 発生処理
   /// 消費サイクル数も返す

@@ -7,7 +7,9 @@
     <Compile Include="src\Core\Common.fs" />
     <Compile Include="src\Core\Joypad.fs" />
     <Compile Include="src\Core\Instructions.fs" />
+    <Compile Include="src\Core\Mapper\MapperTypes.fs" />
     <Compile Include="src\Core\Cartridge.fs" />
+    <Compile Include="src\Core\Mapper\Mapper.fs" />
     <Compile Include="src\Core\Ppu\PpuConstants.fs" />
     <Compile Include="src\Core\Ppu\PpuTypes.fs" />
     <Compile Include="src\Core\Ppu\Palette.fs" />

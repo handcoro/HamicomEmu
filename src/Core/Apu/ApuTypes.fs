@@ -113,17 +113,19 @@ module Types =
     | Step4
     | Step5
 
+  type LowPassFilterState = { lastOutput: float32 }
+
   type ApuState = {
     mutable pulse1: PulseState
     mutable pulse2: PulseState
     mutable triangle: TriangleState
     mutable noise: NoiseState
     mutable dmc: DmcState
+    mutable filterState: LowPassFilterState
     status: byte
     frameCounter: FrameCounter
     mutable cycle: uint
     mutable step: FrameStep
-    mutable irq: bool
   }
 
   type DmcReadRequest = {

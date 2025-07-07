@@ -47,12 +47,17 @@ module Dmc =
 
     let nextRemaining = dmc.bytesRemaining - 1us
 
+    let irqRequested =
+      not dmc.isLoop &&
+      nextRemaining = 0us &&
+      dmc.irqEnabled
+
     let dmc' = {
       dmc with
         buffer = Some value
         currentAddress = nextAddr
         bytesRemaining = nextRemaining
-        irqRequested = false
+        irqRequested = irqRequested
     }
 
     if nextRemaining = 0us && dmc.isLoop then startSample dmc' else dmc'
@@ -80,11 +85,6 @@ module Dmc =
   let tick (dmc : DmcState) =
     let mutable dmc = dmc
 
-    let irqRequested =
-      not dmc.isLoop &&
-      dmc.bytesRemaining = 0us &&
-      dmc.irqEnabled
-
     if dmc.timer > 0us then
       dmc.timer <- dmc.timer - 1us
 
@@ -108,7 +108,6 @@ module Dmc =
             None // バッファまち
           else
             dmc.isSilence <- true
-            dmc.irqRequested <- irqRequested
             None
 
       // 1 bit 処理

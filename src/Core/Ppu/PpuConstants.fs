@@ -29,7 +29,13 @@ module MaskFlags =
   let emphasizeBlue            = 0b1000_0000uy
 
 module ScrollMasks =
-  let nameTable = 0b000_1100_0000_0000us
+  let coarseX    = 0b000_0000_0001_1111us
+  let coarseY    = 0b000_0011_1110_0000us
+  let nameTableX = 0b000_0100_0000_0000us
+  let nameTableY = 0b000_1000_0000_0000us
+  let nameTable  = 0b000_1100_0000_0000us
+  let addressing = 0b000_1111_1111_1111us
+  let fineY      = 0b111_0000_0000_0000us
 
 module SpriteAttributes =
   let paletteIndex attr   = attr &&& 0b11uy

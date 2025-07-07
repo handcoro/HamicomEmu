@@ -8,14 +8,16 @@ module Ppu =
 
   let initialScroll = { v = 0us; t = 0us; x = 0uy; w = false }
 
-  let initial (rom: Rom) = {
-    chr = rom.chrRom
-    chrRam = rom.chrRam
+  let initial (cart: Cartridge) = {
+    // TODO: マッパー対応のため chr, chrRam, mirror を独立して持つのではなく cartridge を参照するようにする
+    // cartridge = cart
+    chr = cart.chrRom
+    chrRam = cart.chrRam
     pal = Array.create 32 0uy // パレットテーブルは32バイト
     vram = Array.create 0x2000 0uy // PPU VRAM は8KB
     oam = Array.create 256 0uy // OAM データは256バイト
     oamAddr = 0uy
-    mirror = rom.screenMirroring
+    mirror = cart.screenMirroring
     scroll = initialScroll
     ctrl = 0uy // 初期状態では制御レジスタは0
     mask = 0b0001_0000uy
@@ -32,7 +34,7 @@ module Ppu =
     frameJustCompleted = false
   }
 
-  let private ppuAdressMask = 0x3FFFus
+  let private ppuAddressMask = 0x3FFFus
 
   let writeToAddressRegister (value : byte) ppu =
     // 2 回に分けて hi/lo を t に書き込む w = false のとき hi
@@ -86,16 +88,17 @@ module Ppu =
   // Vertical:
   //   [ A ] [ B ]
   //   [ a ] [ b ]
+
   let mirrorVramAddr mirror addr =
     let mirroredVram = addr &&& 0b10_1111_1111_1111us // 0x3000 - 0x3EFF を 0x2000 - 0x2EFF にミラーリング
     let vramIndex = mirroredVram - 0x2000us // VRAM ベクター
-    let nameTable = vramIndex / 0x400us // ネームテーブルのインデックス（0, 1, 2, 3）
+    let nameTable = vramIndex / 0x400us 
     match mirror, nameTable with
-    | Vertical, 2us | Vertical, 3us -> vramIndex - 0x800us // a b -> A B
-    | Horizontal, 2us -> vramIndex - 0x400us // B -> B
-    | Horizontal, 1us -> vramIndex - 0x400us // a -> A
-    | Horizontal, 3us -> vramIndex - 0x800us // b -> B
-    | _ -> vramIndex // それ以外はそのまま
+    | Vertical, 2us | Vertical, 3us -> vramIndex - 0x800us |> int // a b -> A B
+    | Horizontal, 2us -> vramIndex - 0x400us |> int // B -> B
+    | Horizontal, 1us -> vramIndex - 0x400us |> int // a -> A
+    | Horizontal, 3us -> vramIndex - 0x800us |> int // b -> B
+    | _ -> int vramIndex // それ以外はそのまま
 
   /// baseAddr は $2000, $2400, $2800, $2C00 のいずれか
   let getVisibleNameTables ppu baseAddr =
@@ -131,8 +134,8 @@ module Ppu =
   let mirrorPaletteAddr addr =
     let index = addr &&& 0x1Fus
     match index with
-      | 0x10us | 0x14us | 0x18us | 0x1Cus -> index - 0x10us
-      | _ -> index
+      | 0x10us | 0x14us | 0x18us | 0x1Cus -> index - 0x10us |> int
+      | _ -> int index
 
   let readFromDataRegister ppu =
     let addr = ppu.scroll.v &&& 0x3FFFus
@@ -147,13 +150,13 @@ module Ppu =
 
     | addr when addr <= 0x3EFFus ->
       let result = ppu'.buffer
-      result, { ppu' with buffer = ppu'.vram[addr |> mirrorVramAddr ppu'.mirror |> int] }
+      result, { ppu' with buffer = ppu'.vram[addr |> mirrorVramAddr ppu'.mirror] }
 
     | addr when addr <= 0x3FFFus ->
       // NOTE: 新しい PPU はバッファを介さないらしい？ そしてバッファにはネームテーブルのミラーが入る
       // TODO: 上位 2 bit にオープンバス情報を含める
-      let result = ppu'.pal[addr |> mirrorPaletteAddr |> int]
-      result, { ppu' with buffer = ppu'.vram[addr |> mirrorVramAddr ppu'.mirror |> int] }
+      let result = ppu'.pal[addr |> mirrorPaletteAddr]
+      result, { ppu' with buffer = ppu'.vram[addr |> mirrorVramAddr ppu'.mirror] }
     | _ -> failwithf "Invalid PPU address: %04X" addr
 
   let writeToDataRegister value ppu =
@@ -169,11 +172,11 @@ module Ppu =
         ppu'
 
     | addr when addr <= 0x3EFFus ->
-      ppu'.vram[addr |> mirrorVramAddr ppu'.mirror |> int] <- value
+      ppu'.vram[addr |> mirrorVramAddr ppu'.mirror] <- value
       ppu'
 
     | addr when addr <= 0x3FFFus ->
-      ppu'.pal[addr |> mirrorPaletteAddr |> int] <- value
+      ppu'.pal[addr |> mirrorPaletteAddr] <- value
       ppu'
     | _ -> failwithf "Invalid PPU address: %04X" addr
 
@@ -238,8 +241,6 @@ module Ppu =
     if renderingEnabled ppu then
       // v ← t: 水平スクロール位置コピー
       if s < 240us && newCycle = 257u then
-        let v = ppu.scroll.v
-        let t = ppu.scroll.t
         // v[0:4] ← t[0:4] (coarse X)
         // v[10]  ← t[10]  (nametable X)
         // v[0:4] ← t[0:4], v[10] ← t[10]

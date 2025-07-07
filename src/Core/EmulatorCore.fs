@@ -41,7 +41,7 @@ module EmulatorCore =
         loop (n-1) { emu with bus = bus'' } (consumedTotal + 1u)
       | _ ->
         // NOTE: ここで割り込み判定をしているけど正確にはもっと複雑らしい？ https://www.nesdev.org/wiki/CPU_interrupts
-        let irq = emu.bus.apu.irq
+        let irq = Bus.pollIrqStatus emu.bus
         let interruptDisabled = Cpu.interruptDisabled emu.cpu
         let cpu, bus, consumed =
           match Bus.pollNmiStatus emu.bus, irq && not interruptDisabled with
@@ -50,9 +50,9 @@ module EmulatorCore =
           | (b, None), true -> // IRQ
             Cpu.irq emu.cpu b
           | (b, None), false -> // 通常進行
-            let c, b, con = Cpu.step emu.cpu b
             // 通常進行の場合はトレース実行
-            trace { emu with cpu = c; bus = b }
+            trace emu
+            let c, b, con = Cpu.step emu.cpu b
             c, b, con
         let bus = Bus.tickNTimes (int consumed) bus
         let ppu = bus.ppu
