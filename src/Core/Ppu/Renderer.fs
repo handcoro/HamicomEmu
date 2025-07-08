@@ -198,9 +198,9 @@ module Renderer =
       // | rect3 | rect4 |
       // +-------+-------+
       let rect1 = initialRect (uint scrlX) (uint scrlY) screenW screenH
-      let rect2 = initialRect 0u 0u (uint scrlX) screenH
+      let rect2 = initialRect 0u (uint scrlY) (uint scrlX) screenH
       let rect3 = initialRect (uint scrlX) 0u screenW (uint scrlY)
-      let rect4 = initialRect 0u (uint scrlY) (uint scrlX) screenH
+      let rect4 = initialRect 0u 0u (uint scrlX) (uint scrlY)
 
       // メイン背景描画
       frameAcc <- renderNameTableScanline ppu snapshot mainNT rect1 (-scrlX) (-scrlY) (int drawStartY) drawLines frameAcc

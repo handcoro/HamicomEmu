@@ -52,8 +52,6 @@ module Apu =
     let status =
       value
       |> clearFlag StatusFlags.dmcInterrupt
-    
-    printfn "write to APU status: %02X" value
 
     { apu with
         pulse1.lengthCounter = pulse1Counter
@@ -175,6 +173,7 @@ module Apu =
   let writeToFrameCounter v apu =
     let mode = if hasFlag FrameCounterFlags.mode v then FiveStep else FourStep
     let irqInhibit = hasFlag FrameCounterFlags.irqInhibit v
+    // フラグがセットなら IRQ 要求をクリア、クリアならなにもしない
     let irqReq = if irqInhibit then false else apu.frameCounter.irqRequested
     let fc = { mode = mode; irqInhibit = irqInhibit; irqRequested = irqReq }
 
@@ -322,6 +321,7 @@ module Apu =
       let rateIdx = parseRateIndexDmc value
       { apu with
           dmc.irqEnabled = irq
+          // フラグがクリアなら IRQ 要求もクリアして、セットなら何もしない
           dmc.irqRequested = if not irq then false else apu.dmc.irqRequested
           dmc.isLoop = loop
           dmc.rateIndex = rateIdx

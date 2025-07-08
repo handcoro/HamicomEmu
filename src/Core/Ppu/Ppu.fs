@@ -219,11 +219,11 @@ module Ppu =
     let t = ppu.scroll.t
     let x, t' =
       if not w then
-        value &&& 0b111uy, (t &&& 0b1111_1111_1110_0000us) ||| uint16 (value >>> 3)
+        value &&& 0b111uy, (t &&& 0b111_1111_1110_0000us) ||| uint16 (value >>> 3)
       else
         let fineY = uint16 (value &&& 0b111uy) <<< 12
         let coarseY = uint16 (value >>> 3) <<< 5
-        ppu.scroll.x, (t &&& 0b0000_0000_0001_1111us) ||| coarseY ||| fineY
+        ppu.scroll.x, (t &&& 0b000_1100_0001_1111us) ||| coarseY ||| fineY
     let w' = not w
     { ppu with scroll.x = x; scroll.t = t'; scroll.w = w' }
 
