@@ -2,6 +2,7 @@ namespace HamicomEmu.Ppu
 
 module Renderer =
 
+  open HamicomEmu.Common.BitUtils
   open HamicomEmu.Ppu.Screen
   open HamicomEmu.Ppu.Palette
   open HamicomEmu.Ppu.Types
@@ -52,59 +53,87 @@ module Renderer =
       ppu.pal[start + 2]
     |]
 
+  type SpriteSize = Mode8x8 | Mode8x16
+
   let spriteOverBackground priority backgroundPaletteIndex =
     match priority, backgroundPaletteIndex with
     | 0uy, _   -> true  // スプライトが前面
     | 1uy, 0uy -> true  // 背景がパレット 0（透明）ならスプライト
     | _ -> false // それ以外は背景
 
+  /// タイル指定のスプライト描画
+  let drawSpriteTile ppu tileStart tileX tileY attr frame =
+    let mutable frameAcc = frame
+  
+    let flipVertical   = SpriteAttributes.flipVertical attr
+    let flipHorizontal = SpriteAttributes.flipHorizontal attr
+
+    let priority = SpriteAttributes.priority attr
+    let paletteIdx = SpriteAttributes.paletteIndex attr
+    let sprPal = spritePalette ppu paletteIdx
+
+    let tile =
+      if ppu.chr <> [||] then
+        ppu.chr[tileStart .. tileStart + 15]
+      else
+        ppu.chrRam[tileStart .. tileStart + 15]
+
+    for y = 0 to 7 do
+      let upper = tile[y]
+      let lower = tile[y + 8]
+
+      for x = 0 to 7 do
+        let bit0 = (upper >>> (7 - x)) &&& 1uy
+        let bit1 = (lower >>> (7 - x)) &&& 1uy
+        let value = (bit1 <<< 1) ||| bit0
+
+        if value <> 0uy then
+          let color = nesPalette[int sprPal[int value]]
+          let px, py =
+            match flipHorizontal, flipVertical with
+            | false, false -> tileX + x,     tileY + y
+            | true,  false -> tileX + 7 - x, tileY + y
+            | false, true  -> tileX + x,     tileY + 7 - y
+            | true,  true  -> tileX + 7 - x, tileY + 7 - y
+          let pos = py * Frame.width + px
+          if isValidPixel (uint px) (uint py) then
+            let bgIdx = frame.bgPaletteIdx[pos]
+            if spriteOverBackground priority bgIdx then
+              frameAcc <- setSpritePixel (uint px) (uint py) color frameAcc
+    frameAcc
+
+  /// 全スプライト描画
   let drawSprites (ppu: PpuState) (frame: Frame) : Frame =
     let mutable frameAcc = frame
-    let bank = Ppu.spritePatternAddr ppu.ctrl |> int
+    let mode = if hasFlag ControlFlags.spriteSize ppu.ctrl then Mode8x16 else Mode8x8
 
     for i = ppu.oam.Length - 4 downto 0 do
       if i % 4 = 0 then // スプライトごとに4バイト
-        let tileIdx = ppu.oam[i + 1] |> uint16
+        let tileIdx = ppu.oam[i + 1] |> int
         let tileX = ppu.oam[i + 3] |> int
         let tileY = ppu.oam[i] + 1uy |> int // スプライトは 1 スキャンライン分遅れて表示される
 
         let attr = ppu.oam[i + 2]
-        let flipVertical   = SpriteAttributes.flipVertical attr
-        let flipHorizontal = SpriteAttributes.flipHorizontal attr
 
-        let priority = SpriteAttributes.priority attr
-        let paletteIdx = SpriteAttributes.paletteIndex attr
-        let sprPal = spritePalette ppu paletteIdx
+        match mode with
+        | Mode8x8 ->
+          let bank = Ppu.spritePatternAddr ppu.ctrl |> int
+          let tileStart = bank + tileIdx * 0x10
+          frameAcc <- drawSpriteTile ppu tileStart tileX tileY attr frameAcc
 
-        let tileStart = bank + (int tileIdx * 16)
-        let tile =
-          if ppu.chr <> [||] then
-            ppu.chr[tileStart .. tileStart + 15]
+        | Mode8x16 ->
+          let bank = (tileIdx &&& 1) * 0x1000
+          let tileTopStart = bank + (tileIdx &&& 0xFE ) * 0x10
+          let tileBottomStart = tileTopStart + 0x10
+          let flipVertical   = SpriteAttributes.flipVertical attr
+          // 8x16 スプライトモードの上下反転は上下のスプライトも入れ替える
+          if flipVertical then
+            frameAcc <- drawSpriteTile ppu tileBottomStart tileX tileY attr frameAcc
+            frameAcc <- drawSpriteTile ppu tileTopStart tileX (tileY + 8) attr frameAcc
           else
-            ppu.chrRam[tileStart .. tileStart + 15]
+            frameAcc <- drawSpriteTile ppu tileTopStart tileX tileY attr frameAcc
+            frameAcc <- drawSpriteTile ppu tileBottomStart tileX (tileY + 8) attr frameAcc
 
-        for y = 0 to 7 do
-          let upper = tile[y]
-          let lower = tile[y + 8]
-
-          for x = 0 to 7 do
-            let bit0 = (upper >>> (7 - x)) &&& 1uy
-            let bit1 = (lower >>> (7 - x)) &&& 1uy
-            let value = (bit1 <<< 1) ||| bit0
-
-            if value <> 0uy then
-              let color = nesPalette[int sprPal[int value]]
-              let px, py =
-                match flipHorizontal, flipVertical with
-                | false, false -> tileX + x,     tileY + y
-                | true,  false -> tileX + 7 - x, tileY + y
-                | false, true  -> tileX + x,     tileY + 7 - y
-                | true,  true  -> tileX + 7 - x, tileY + 7 - y
-              let pos = py * Frame.width + px
-              if isValidPixel (uint px) (uint py) then
-                let bgIdx = frameAcc.bgPaletteIdx[pos]
-                if spriteOverBackground priority bgIdx then
-                  frameAcc <- setSpritePixel (uint px) (uint py) color frameAcc
     frameAcc
 
   let renderNameTableScanline
