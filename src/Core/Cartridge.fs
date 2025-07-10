@@ -43,7 +43,7 @@ module Cartridge =
     | _ -> printfn "Unsupported mapper: %A" n
            NROM ()
 
-  let parseRom (raw : byte array) = 
+  let parseCartridge (raw : byte array) = 
     result {
       do! validateTag raw
       // NES2.0 は互換性があるのでバージョンチェックしなくても大丈夫
@@ -82,23 +82,24 @@ module Cartridge =
       }
     }
 
-  type TestRom = {
+  type private TestCartrige = {
     header: byte array
     trainer: byte array option
-    prgRom: byte array
-    chrRom: byte array
+    prg: byte array
+    chr: byte array
   }
-  let createRom rom =
+
+  let private createRawCartridge cart =
     Array.concat [
-      rom.header
-      match rom.trainer with
+      cart.header
+      match cart.trainer with
       | Some t -> t
       | None -> [||]
-      rom.prgRom
-      rom.chrRom
+      cart.prg
+      cart.chr
     ]
 
-  let normalizePrgRom (prg : byte array) = // PRG ROM を 32KB に正規化
+  let private normalizePrgRom (prg : byte array) = // PRG ROM を 32KB に正規化
     match prg.Length with
     | len when len < 0x8000 ->
       let padded = Array.create 0x8000 0uy
@@ -108,12 +109,16 @@ module Cartridge =
     | len when len > 0x8000 -> prg[0..0x7FFF] // 切り詰める
     | _ -> failwith "Unexpected PRG ROM size"
 
-  let testRom program =
+  let testCartridge program =
     let prgRomContents = normalizePrgRom program
-    let rom = {
+    let cart = {
       header = Array.append nesTag [| 0x02uy; 0x01uy; 0x31uy; 00uy; 00uy; 00uy; 00uy; 00uy; 00uy; 00uy; 00uy; 00uy |]
       trainer = None
-      prgRom = prgRomContents
-      chrRom = Array.create chrRomPageSize 2uy
+      prg = prgRomContents
+      chr = Array.create chrRomPageSize 2uy
     }
-    rom |> createRom |> parseRom |> Result.defaultWith (fun msg -> failwith $"Cannot create test rom: %s{msg}")
+    cart
+      |> createRawCartridge
+      |> parseCartridge
+      |> Result.defaultWith (fun msg -> failwith $"Cannot create test rom: %s{msg}")
+  

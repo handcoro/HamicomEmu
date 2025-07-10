@@ -20,13 +20,11 @@ type ScrollRegisters = {
 }
 
 type PpuState = {
-  chr: byte array
-  chrRam: byte array
+  cartridge: Cartridge
   pal: byte array
   vram: byte array
   oam: byte array
   mutable oamAddr: byte
-  mirror: Mirroring
   scroll: ScrollRegisters
   ctrl: byte
   mask: byte

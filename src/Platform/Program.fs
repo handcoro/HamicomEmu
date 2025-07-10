@@ -94,7 +94,7 @@ type basicNesGame(loadedRom, traceFn) as this =
   let mutable audioEngine = AudioEngine(sampleRate)
 
   let raw = loadedRom
-  let parsed = raw |> Result.bind parseRom
+  let parsed = raw |> Result.bind parseCartridge
   let mutable emu = Unchecked.defaultof<EmulatorCore.EmulatorState>
   let mutable frame = initialFrame
   let traceFn = traceFn

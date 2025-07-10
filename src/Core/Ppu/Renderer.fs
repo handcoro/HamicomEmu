@@ -7,6 +7,7 @@ module Renderer =
   open HamicomEmu.Ppu.Palette
   open HamicomEmu.Ppu.Types
   open HamicomEmu.Ppu
+  open HamicomEmu.Mapper
 
   /// 画面に見える範囲
   type Rect = {
@@ -72,11 +73,7 @@ module Renderer =
     let paletteIdx = SpriteAttributes.paletteIndex attr
     let sprPal = spritePalette ppu paletteIdx
 
-    let tile =
-      if ppu.chr <> [||] then
-        ppu.chr[tileStart .. tileStart + 15]
-      else
-        ppu.chrRam[tileStart .. tileStart + 15]
+    let tile = Mapper.ppuReadRange tileStart (tileStart + 15) ppu.cartridge
 
     for y = 0 to 7 do
       let upper = tile[y]
@@ -102,6 +99,11 @@ module Renderer =
               frameAcc <- setSpritePixel (uint px) (uint py) color frameAcc
     frameAcc
 
+  let swap (left : 'a byref) (right : 'a byref) =
+    let temp = left
+    left <- right
+    right <- temp
+
   /// 全スプライト描画
   let drawSprites (ppu: PpuState) (frame: Frame) : Frame =
     let mutable frameAcc = frame
@@ -123,16 +125,13 @@ module Renderer =
 
         | Mode8x16 ->
           let bank = (tileIdx &&& 1) * 0x1000
-          let tileTopStart = bank + (tileIdx &&& 0xFE ) * 0x10
-          let tileBottomStart = tileTopStart + 0x10
           let flipVertical   = SpriteAttributes.flipVertical attr
+          let mutable tileTopStart = bank + (tileIdx &&& 0xFE ) * 0x10
+          let mutable tileBottomStart = tileTopStart + 0x10
           // 8x16 スプライトモードの上下反転は上下のスプライトも入れ替える
-          if flipVertical then
-            frameAcc <- drawSpriteTile ppu tileBottomStart tileX tileY attr frameAcc
-            frameAcc <- drawSpriteTile ppu tileTopStart tileX (tileY + 8) attr frameAcc
-          else
-            frameAcc <- drawSpriteTile ppu tileTopStart tileX tileY attr frameAcc
-            frameAcc <- drawSpriteTile ppu tileBottomStart tileX (tileY + 8) attr frameAcc
+          if flipVertical then swap &tileTopStart &tileBottomStart
+          frameAcc <- drawSpriteTile ppu tileTopStart tileX tileY attr frameAcc
+          frameAcc <- drawSpriteTile ppu tileBottomStart tileX (tileY + 8) attr frameAcc
 
     frameAcc
 
@@ -161,11 +160,7 @@ module Renderer =
       if scanline >= y && scanline < y + drawLines then
         let bank = Ppu.backgroundPatternAddr snapshot.ctrlPerScanline[scanline] |> int
         let tileIdx = nameTable[i] |> int
-        let tile =
-          if ppu.chr <> [||] then // CHR ROM と CHR RAM の暫定的な判定
-            ppu.chr[(bank + tileIdx * 16) .. (bank + tileIdx * 16 + 15)]
-          else
-            ppu.chrRam[(bank + tileIdx * 16) .. (bank + tileIdx * 16 + 15)]
+        let tile = Mapper.ppuReadRange (bank + tileIdx * 16) (bank + tileIdx * 16 + 15) ppu.cartridge
         let palette = backgroundPalette ppu attrTable tileX tileY
 
         for y = 0 to 7 do
@@ -207,11 +202,11 @@ module Renderer =
     let n = 240 / drawLines - 1 // スキャンライン一本ずつだと非効率なのである程度まとめて描いてみる
 
     for y = 0 to n do
-      let drawStartY = y * drawLines |> uint
+      let drawStartY = y * drawLines
 
-      let scrlX, scrlY = snapshot.scrollPerScanline[int drawStartY] |> getScrollXY
+      let scrlX, scrlY = snapshot.scrollPerScanline[drawStartY] |> getScrollXY
 
-      let correctedAddr = Ppu.getNameTableAddress snapshot.scrollPerScanline[int drawStartY]
+      let correctedAddr = Ppu.getNameTableAddress snapshot.scrollPerScanline[drawStartY]
       let mainNT, subNTH, subNTV, subNTVH =
         Ppu.getVisibleNameTables ppu correctedAddr
 

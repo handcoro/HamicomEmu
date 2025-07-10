@@ -4,20 +4,18 @@ module Ppu =
 
   open HamicomEmu.Common.BitUtils
   open HamicomEmu.Cartridge
+  open HamicomEmu.Mapper
   open HamicomEmu.Ppu.Types
 
   let initialScroll = { v = 0us; t = 0us; x = 0uy; w = false }
 
   let initial (cart: Cartridge) = {
     // TODO: マッパー対応のため chr, chrRam, mirror を独立して持つのではなく cartridge を参照するようにする
-    // cartridge = cart
-    chr = cart.chrRom
-    chrRam = cart.chrRam
+    cartridge = cart
     pal = Array.create 32 0uy // パレットテーブルは32バイト
     vram = Array.create 0x2000 0uy // PPU VRAM は8KB
     oam = Array.create 256 0uy // OAM データは256バイト
     oamAddr = 0uy
-    mirror = cart.screenMirroring
     scroll = initialScroll
     ctrl = 0uy // 初期状態では制御レジスタは0
     mask = 0b0001_0000uy
@@ -90,92 +88,88 @@ module Ppu =
   //   [ a ] [ b ]
 
   let mirrorVramAddr mirror addr =
-    let mirroredVram = addr &&& 0b10_1111_1111_1111us // 0x3000 - 0x3EFF を 0x2000 - 0x2EFF にミラーリング
-    let vramIndex = mirroredVram - 0x2000us // VRAM ベクター
-    let nameTable = vramIndex / 0x400us 
+    let mirroredVram = addr &&& 0b10_1111_1111_1111 // 0x3000 - 0x3EFF を 0x2000 - 0x2EFF にミラーリング
+    let vramIndex = mirroredVram - 0x2000 // VRAM ベクター
+    let nameTable = vramIndex / 0x400 
     match mirror, nameTable with
-    | Vertical, 2us | Vertical, 3us -> vramIndex - 0x800us |> int // a b -> A B
-    | Horizontal, 2us -> vramIndex - 0x400us |> int // B -> B
-    | Horizontal, 1us -> vramIndex - 0x400us |> int // a -> A
-    | Horizontal, 3us -> vramIndex - 0x800us |> int // b -> B
-    | _ -> int vramIndex // それ以外はそのまま
+    | Vertical, 2 | Vertical, 3 -> vramIndex - 0x800 // a b -> A B
+    | Horizontal, 2 -> vramIndex - 0x400 // B -> B
+    | Horizontal, 1 -> vramIndex - 0x400 // a -> A
+    | Horizontal, 3 -> vramIndex - 0x800 // b -> B
+    | _ -> vramIndex // それ以外はそのまま
 
   /// baseAddr は $2000, $2400, $2800, $2C00 のいずれか
   let getVisibleNameTables ppu baseAddr =
     let baseIndex =
-      match baseAddr &&& 0x0FFFus with
-      | n when n < 0x400us -> 0us
-      | n when n < 0x800us -> 1us
-      | n when n < 0xC00us -> 2us
-      | _ -> 3us
+      match baseAddr &&& 0x0FFF with
+      | n when n < 0x400 -> 0
+      | n when n < 0x800 -> 1
+      | n when n < 0xC00 -> 2
+      | _ -> 3
 
     // ミラーリング結果に基づいて VRAM のスライスを取得
     let getTable i =
-      let addr = 0x2000us + (i * 0x400us)
-      let index = mirrorVramAddr ppu.mirror addr |> int
+      let addr = 0x2000 + (i * 0x400)
+      let index = mirrorVramAddr ppu.cartridge.screenMirroring addr
       ppu.vram[index .. index + 0x3FF]
 
     let main = baseIndex |> getTable
-    let right = (baseIndex + 1us) % 4us |> getTable
-    let below = (baseIndex + 2us) % 4us |> getTable
-    let belowRight = (baseIndex + 3us) % 4us |> getTable
+    let right = (baseIndex + 1) % 4 |> getTable
+    let below = (baseIndex + 2) % 4 |> getTable
+    let belowRight = (baseIndex + 3) % 4 |> getTable
     main, right, below, belowRight
 
   let getNameTableAddress scroll =
     let nt = scroll.v &&& ScrollMasks.nameTable >>> 10
     match nt with
-    | 0us -> 0x2000us
-    | 1us -> 0x2400us
-    | 2us -> 0x2800us
-    | 3us -> 0x2C00us
+    | 0us -> 0x2000
+    | 1us -> 0x2400
+    | 2us -> 0x2800
+    | 3us -> 0x2C00
     | _ -> failwith "can't be"
 
 
   let mirrorPaletteAddr addr =
-    let index = addr &&& 0x1Fus
+    let index = addr &&& 0x1F
     match index with
-      | 0x10us | 0x14us | 0x18us | 0x1Cus -> index - 0x10us |> int
-      | _ -> int index
+      | 0x10 | 0x14 | 0x18 | 0x1C -> index - 0x10
+      | _ -> index
 
   let readFromDataRegister ppu =
-    let addr = ppu.scroll.v &&& 0x3FFFus
+    let addr = ppu.scroll.v &&& 0x3FFFus |> int
     // アドレスをインクリメント
     let ppu' = incrementVramAddress ppu
 
     match addr with
-    | addr when addr <= 0x1FFFus ->
+    | addr when addr <= 0x1FFF ->
       let result = ppu'.buffer
-      let chr = if ppu.chr <> [||] then ppu'.chr[int addr] else ppu'.chrRam[int addr]
+      let chr = Mapper.ppuRead addr ppu'.cartridge
       result, { ppu' with buffer = chr }
 
-    | addr when addr <= 0x3EFFus ->
+    | addr when addr <= 0x3EFF ->
       let result = ppu'.buffer
-      result, { ppu' with buffer = ppu'.vram[addr |> mirrorVramAddr ppu'.mirror] }
+      result, { ppu' with buffer = ppu'.vram[addr |> mirrorVramAddr ppu'.cartridge.screenMirroring] }
 
-    | addr when addr <= 0x3FFFus ->
+    | addr when addr <= 0x3FFF ->
       // NOTE: 新しい PPU はバッファを介さないらしい？ そしてバッファにはネームテーブルのミラーが入る
       // TODO: 上位 2 bit にオープンバス情報を含める
       let result = ppu'.pal[addr |> mirrorPaletteAddr]
-      result, { ppu' with buffer = ppu'.vram[addr |> mirrorVramAddr ppu'.mirror] }
+      result, { ppu' with buffer = ppu'.vram[addr |> mirrorVramAddr ppu'.cartridge.screenMirroring] }
     | _ -> failwithf "Invalid PPU address: %04X" addr
 
   let writeToDataRegister value ppu =
-    let addr = ppu.scroll.v &&& 0x3FFFus
+    let addr = ppu.scroll.v &&& 0x3FFFus |> int
     let ppu' = incrementVramAddress ppu
 
     match addr with
-    | addr when addr <= 0x1FFFus ->
-      if ppu.chr <> [||] then
-        ppu'
-      else
-        ppu'.chrRam[int addr] <- value
-        ppu'
+    | addr when addr <= 0x1FFF ->
+      { ppu' with cartridge = Mapper.ppuWrite addr value ppu'.cartridge }
 
-    | addr when addr <= 0x3EFFus ->
-      ppu'.vram[addr |> mirrorVramAddr ppu'.mirror] <- value
+    | addr when addr <= 0x3EFF ->
+      ppu'.vram[addr |> mirrorVramAddr ppu'.cartridge.screenMirroring] <- value
       ppu'
 
-    | addr when addr <= 0x3FFFus ->
+    | addr when addr <= 0x3FFF ->
       ppu'.pal[addr |> mirrorPaletteAddr] <- value
       ppu'
     | _ -> failwithf "Invalid PPU address: %04X" addr
