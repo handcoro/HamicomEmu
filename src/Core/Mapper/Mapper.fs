@@ -30,17 +30,21 @@ module Mapper =
 
   let cpuRead addr cart =
     match cart.mapper with
-    | NROM _ ->
-      readNrom addr cart
     | UxROM state ->
       readUxrom addr cart state
+    | NROM _ | _ ->
+      readNrom addr cart
 
   let cpuWrite addr value cart =
     match cart.mapper with
     | UxROM _ when addr >= 0x8000us ->
-        // bank 選択
-        let newState = { bankSelect = value &&& 0x0Fuy }
-        UxROM newState, ()
+      // bank 選択
+      let newState = { bankSelect = value &&& 0x0Fuy }
+      UxROM newState, ()
+    | J87 _ when addr >= 0x6000us && addr <= 0x7FFFus ->
+      let newState = { bankSelect = value &&& 0b11uy } // 0-1 bits 使用
+      // printfn "[MAPPER CPU WRITE] Bank Select: %A" newState.bankSelect
+      J87 newState, ()
     | _ ->
       printfn "Attempt to write to Cartridge Rom space. addr: %04X" addr
       cart.mapper, ()
@@ -48,6 +52,17 @@ module Mapper =
   let ppuRead addr cart =
     let addr = int addr
     match cart.mapper with
+    | J87 state ->
+      let chr = cart.chrRom
+      let hi = state.bankSelect &&& 0b01uy
+      let lo = state.bankSelect &&& 0b10uy
+      let bitsCorrected = ((hi <<< 1) ||| (lo >>> 1)) |> int
+      let bankSize = 8 * 1024
+      let totalBanks = chr.Length / bankSize
+      let bank = bitsCorrected % totalBanks
+      let offset = bank * bankSize
+      chr[addr + offset]
+
     | NROM _ | _ when cart.chrRom <> [||] ->
       cart.chrRom[addr]
     | NROM _ | _ ->
@@ -55,12 +70,12 @@ module Mapper =
 
   let ppuReadRange startAddr endAddr cart =
     match cart.mapper with
+    | J87 _ ->
+      Array.init (endAddr - startAddr + 1) (fun i -> ppuRead (startAddr + i) cart)
     | NROM _ | _ when cart.chrRom <> [||] ->
       cart.chrRom[startAddr .. endAddr]
     | NROM _ | _ ->
       cart.chrRam[startAddr .. endAddr]
-    // | Others ->
-    //   Array.init (endAddr - startAddr + 1) (fun i -> ppuRead (startAddr + i) cart)
 
   let ppuWrite addr value cart =
     let addr = int addr

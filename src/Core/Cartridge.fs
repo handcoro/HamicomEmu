@@ -36,10 +36,11 @@ module Cartridge =
       Error "NES2.0 format is not supported"
 
   /// TODO: できればこの関数は Cartridge モジュールには書きたくない
-  let createMapper n =
+  let private createMapper n =
     match n with
-    | 0 -> NROM ()
-    | 2 -> UxROM { bankSelect = 0uy }
+    | 0  -> NROM ()
+    | 2  -> UxROM { bankSelect = 0uy }
+    | 87 -> J87 { bankSelect = 0uy }
     | _ -> printfn "Unsupported mapper: %A" n
            NROM ()
 

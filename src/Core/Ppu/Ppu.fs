@@ -10,7 +10,6 @@ module Ppu =
   let initialScroll = { v = 0us; t = 0us; x = 0uy; w = false }
 
   let initial (cart: Cartridge) = {
-    // TODO: マッパー対応のため chr, chrRam, mirror を独立して持つのではなく cartridge を参照するようにする
     cartridge = cart
     pal = Array.create 32 0uy // パレットテーブルは32バイト
     vram = Array.create 0x2000 0uy // PPU VRAM は8KB

@@ -1,8 +1,13 @@
-namespace HamicomEmu.Mapper.Types
+namespace HamicomEmu.Mapper
 
-type Mapper =
-| NROM of NromState // マッパー 0
-| UxROM of UnromState // マッパー2
+module Types =
 
-and NromState = unit
-and UnromState = { bankSelect: byte }
+  type Mapper =
+  | NROM of NromState // マッパー 0
+  | UxROM of UxromState // マッパー2
+  | J87 of J87State
+
+  and NromState = unit
+  and BankSelectState = { bankSelect: byte }
+  and UxromState = BankSelectState
+  and J87State = BankSelectState

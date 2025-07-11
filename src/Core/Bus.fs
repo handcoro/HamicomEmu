@@ -207,9 +207,9 @@ module Bus =
       let apu = Apu.write addr value bus.apu
       { bus with apu = apu }
 
-    | addr when addr |> inRange PrgRom.Begin PrgRom.End -> // PRG ROM は書き込み禁止
+    | addr when addr |> inRange 0x6000us PrgRom.End -> // PRG ROM は書き込み禁止
       let mapper, _ = Mapper.cpuWrite addr value bus.cartridge
-      { bus with cartridge.mapper = mapper }
+      { bus with cartridge.mapper = mapper; ppu.cartridge.mapper = mapper }
 
     | _ -> printfn "Invalid Memory write-access at: %04X" addr; bus
 
