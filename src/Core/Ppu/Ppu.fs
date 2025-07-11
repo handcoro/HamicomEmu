@@ -5,6 +5,7 @@ module Ppu =
   open HamicomEmu.Common.BitUtils
   open HamicomEmu.Cartridge
   open HamicomEmu.Mapper
+  open HamicomEmu.Mapper.Types
   open HamicomEmu.Ppu.Types
 
   let initialScroll = { v = 0us; t = 0us; x = 0uy; w = false }
@@ -27,6 +28,7 @@ module Ppu =
     // スクロール情報のスナップショット
     scrollPerScanline = Array.init 240 (fun _ -> initialScroll)
     ctrlPerScanline = Array.zeroCreate 240
+    mapperPerScanline = Array.init 240 (fun _ -> cart.mapper)
     frameIsOdd = false
     frameJustCompleted = false
   }
@@ -86,10 +88,14 @@ module Ppu =
   //   [ A ] [ B ]
   //   [ a ] [ b ]
 
-  let mirrorVramAddr mirror addr =
+  let mirrorVramAddr mirror mapper addr =
     let mirroredVram = addr &&& 0b10_1111_1111_1111 // 0x3000 - 0x3EFF を 0x2000 - 0x2EFF にミラーリング
     let vramIndex = mirroredVram - 0x2000 // VRAM ベクター
-    let nameTable = vramIndex / 0x400 
+    let nameTable = vramIndex / 0x400
+
+    // VRC1 などのマッパーミラーリングも取得
+    let mirror = Mapper.getMirroring mirror mapper
+
     match mirror, nameTable with
     | Vertical, 2 | Vertical, 3 -> vramIndex - 0x800 // a b -> A B
     | Horizontal, 2 -> vramIndex - 0x400 // B -> B
@@ -109,7 +115,7 @@ module Ppu =
     // ミラーリング結果に基づいて VRAM のスライスを取得
     let getTable i =
       let addr = 0x2000 + (i * 0x400)
-      let index = mirrorVramAddr ppu.cartridge.screenMirroring addr
+      let index = mirrorVramAddr ppu.cartridge.screenMirroring ppu.cartridge.mapper addr
       ppu.vram[index .. index + 0x3FF]
 
     let main = baseIndex |> getTable
@@ -142,18 +148,18 @@ module Ppu =
     match addr with
     | addr when addr <= 0x1FFF ->
       let result = ppu'.buffer
-      let chr = Mapper.ppuRead addr ppu'.cartridge
+      let chr = Mapper.ppuRead addr ppu'.cartridge ppu'.cartridge.mapper
       result, { ppu' with buffer = chr }
 
     | addr when addr <= 0x3EFF ->
       let result = ppu'.buffer
-      result, { ppu' with buffer = ppu'.vram[addr |> mirrorVramAddr ppu'.cartridge.screenMirroring] }
+      result, { ppu' with buffer = ppu'.vram[addr |> mirrorVramAddr ppu'.cartridge.screenMirroring ppu'.cartridge.mapper] }
 
     | addr when addr <= 0x3FFF ->
       // NOTE: 新しい PPU はバッファを介さないらしい？ そしてバッファにはネームテーブルのミラーが入る
       // TODO: 上位 2 bit にオープンバス情報を含める
       let result = ppu'.pal[addr |> mirrorPaletteAddr]
-      result, { ppu' with buffer = ppu'.vram[addr |> mirrorVramAddr ppu'.cartridge.screenMirroring] }
+      result, { ppu' with buffer = ppu'.vram[addr |> mirrorVramAddr ppu'.cartridge.screenMirroring ppu'.cartridge.mapper] }
     | _ -> failwithf "Invalid PPU address: %04X" addr
 
   let writeToDataRegister value ppu =
@@ -165,7 +171,7 @@ module Ppu =
       { ppu' with cartridge = Mapper.ppuWrite addr value ppu'.cartridge }
 
     | addr when addr <= 0x3EFF ->
-      ppu'.vram[addr |> mirrorVramAddr ppu'.cartridge.screenMirroring] <- value
+      ppu'.vram[addr |> mirrorVramAddr ppu'.cartridge.screenMirroring ppu'.cartridge.mapper] <- value
       ppu'
 
     | addr when addr <= 0x3FFF ->
@@ -225,7 +231,7 @@ module Ppu =
     hasFlag MaskFlags.spriteRendering ppu.mask
 
   /// PPU を n サイクル進める（1スキャンラインをまたぐときは精密タイミング処理を行う）
-  /// FIXME: 精密にやろうとすると動作のボトルネックになりやすいので作りを考え直したい
+  /// TODO: 再現度向上のためにはレンダリングを tick 内で行うようにしたい
   /// TODO: Coarse X や Y のインクリメント
   let tick ppu =
     let c, s = ppu.cycle, ppu.scanline
@@ -309,6 +315,7 @@ module Ppu =
         let i = int s
         ppu.scrollPerScanline[i] <- ppu.scroll
         ppu.ctrlPerScanline[i]   <- ppu.ctrl
+        ppu.mapperPerScanline[i] <- ppu.cartridge.mapper
 
       ppu
 
@@ -322,11 +329,13 @@ module PpuPublicState =
 
   open HamicomEmu.Ppu.Types
 
-  let initial = {
+  let initial mapper = {
       scrollPerScanline = Array.init 240 (fun _ -> Ppu.initialScroll)
       ctrlPerScanline = Array.zeroCreate 240
+      mapperPerScanline = Array.init 240 (fun _ -> mapper)
     }
   let fromPpu (ppu: PpuState) : PpuPublicState = {
       scrollPerScanline = Array.copy ppu.scrollPerScanline
       ctrlPerScanline   = Array.copy ppu.ctrlPerScanline
+      mapperPerScanline = Array.copy ppu.mapperPerScanline
     }

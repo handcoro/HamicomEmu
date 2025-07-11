@@ -1,6 +1,7 @@
 namespace HamicomEmu.Ppu.Types
 
 open HamicomEmu.Cartridge
+open HamicomEmu.Mapper.Types
 
 /// https://www.nesdev.org/wiki/PPU_scrolling
 /// v:
@@ -36,6 +37,7 @@ type PpuState = {
   clearNmiInterrupt: bool
   mutable scrollPerScanline: ScrollRegisters array
   mutable ctrlPerScanline: byte array
+  mutable mapperPerScanline: Mapper array
   mutable frameIsOdd: bool
   mutable frameJustCompleted: bool
 }
@@ -43,4 +45,5 @@ type PpuState = {
 type PpuPublicState = {
   scrollPerScanline: ScrollRegisters array
   ctrlPerScanline: byte array
+  mapperPerScanline: Mapper array
 }

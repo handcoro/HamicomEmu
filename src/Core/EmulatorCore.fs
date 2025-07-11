@@ -13,15 +13,17 @@ module EmulatorCore =
     mutable ppuSnapshot: PpuPublicState
   }
 
-  let initial rom = {
-    cpu = Cpu.initial
-    bus = Bus.initial rom
-    ppuSnapshot = PpuPublicState.initial
-  }
+  let initial cart =
+    let bus = Bus.initial cart
+    {
+      cpu = Cpu.initial
+      bus = bus
+      ppuSnapshot = PpuPublicState.initial bus.cartridge.mapper
+    }
 
   let reset emu =
     let cpu', bus' = Cpu.reset emu.cpu emu.bus
-    { cpu = cpu'; bus = bus' ; ppuSnapshot = PpuPublicState.initial }
+    { cpu = cpu'; bus = bus'; ppuSnapshot = PpuPublicState.initial bus'.cartridge.mapper }
 
   let updateSnapshot (ppu: PpuState) (emu: EmulatorState) : EmulatorState =
     { emu with ppuSnapshot = PpuPublicState.fromPpu ppu }

@@ -73,7 +73,11 @@ module Renderer =
     let paletteIdx = SpriteAttributes.paletteIndex attr
     let sprPal = spritePalette ppu paletteIdx
 
-    let tile = Mapper.ppuReadRange tileStart (tileStart + 15) ppu.cartridge
+    let tile =
+      if tileY < 240 then
+        Mapper.ppuReadRange tileStart (tileStart + 15) ppu.cartridge ppu.mapperPerScanline[tileY]
+      else
+        Mapper.ppuReadRange tileStart (tileStart + 15) ppu.cartridge ppu.cartridge.mapper
 
     for y = 0 to 7 do
       let upper = tile[y]
@@ -160,7 +164,7 @@ module Renderer =
       if scanline >= y && scanline < y + drawLines then
         let bank = Ppu.backgroundPatternAddr snapshot.ctrlPerScanline[scanline] |> int
         let tileIdx = nameTable[i] |> int
-        let tile = Mapper.ppuReadRange (bank + tileIdx * 16) (bank + tileIdx * 16 + 15) ppu.cartridge
+        let tile = Mapper.ppuReadRange (bank + tileIdx * 16) (bank + tileIdx * 16 + 15) ppu.cartridge ppu.mapperPerScanline[y]
         let palette = backgroundPalette ppu attrTable tileX tileY
 
         for y = 0 to 7 do
