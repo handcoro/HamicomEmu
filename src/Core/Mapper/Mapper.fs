@@ -1,5 +1,7 @@
 namespace HamicomEmu.Mapper
 
+/// TODO: マッパーごとにファイル分割
+/// TODO: バス競合の再現 https://www.nesdev.org/wiki/Bus_conflict
 module Mapper =
 
     open HamicomEmu.Mapper.Types
@@ -144,6 +146,10 @@ module Mapper =
             let newState = { bankSelect = value &&& 0x0Fuy }
             UxROM newState, ()
 
+        | CNROM _ when addr >= 0x8000 ->
+            // TODO: マスクに関しては今後要確認
+            let newState = { bankSelect = value }
+            CNROM newState, ()
         | VRC1 state ->
             let newState = writePrgVRC1 addr value state
             VRC1 newState, ()
@@ -156,6 +162,14 @@ module Mapper =
         | _ ->
             printfn "Attempt to write to Cartridge Rom space. addr: %04X" addr
             cart.mapper, ()
+
+    let getChrAddressCnrom addr cart state =
+        let chr = cart.chrRom
+        let bankSize = 8 * 1024
+        let totalBanks = chr.Length / bankSize
+
+        let offset = getOffset (int state.bankSelect % totalBanks) bankSize 0
+        addr + offset
 
     /// バンクサイズは 4 KB
     let getChrAddressVRC1 addr cart state =
@@ -177,6 +191,9 @@ module Mapper =
         let addr = int addr
 
         match mapper with
+        | CNROM state ->
+            let addr' = getChrAddressCnrom addr cart state
+            cart.chrRom[addr']
         | VRC1 state ->
             let addr' = getChrAddressVRC1 addr cart state
             cart.chrRom[addr']
@@ -200,6 +217,7 @@ module Mapper =
 
     let ppuReadRange startAddr endAddr cart mapper =
         match cart.mapper with
+        | CNROM _
         | VRC1 _
         | J87 _ -> Array.init (endAddr - startAddr + 1) (fun i -> ppuRead (startAddr + i) cart mapper)
 

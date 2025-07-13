@@ -35,6 +35,7 @@ module Cartridge =
         match n with
         | 0 -> NROM()
         | 2 -> UxROM { bankSelect = 0uy }
+        | 3 -> CNROM { bankSelect = 0uy }
         | 75 ->
             VRC1 {
                 prgSelect0 = 0uy
