@@ -165,6 +165,17 @@ module Ppu =
         | 0x18
         | 0x1C -> index - 0x10
         | _ -> index
+    
+    let writePaletteRam addr value ppu =
+        let index = addr &&& 0x1F
+        let mirrored = index |> mirrorPaletteAddr
+        let pv = value &&& 0x3Fuy // パレットの色数でマスク
+
+        ppu.pal[index] <- pv
+        // 0x10, 0x14, 0x18, 0x1C への書き込みはミラーリングされる
+        if index <> mirrored then ppu.pal[mirrored] <- pv
+
+        ppu
 
     let readFromDataRegister ppu =
         let addr = ppu.scroll.v &&& 0x3FFFus |> int
@@ -208,8 +219,7 @@ module Ppu =
             ppu'
 
         | addr when addr <= 0x3FFF ->
-            ppu'.pal[addr |> mirrorPaletteAddr] <- value
-            ppu'
+            ppu' |> writePaletteRam addr value
         | _ -> failwithf "Invalid PPU address: %04X" addr
 
     let resetVblankStatus status = clearFlag StatusFlags.vblank status

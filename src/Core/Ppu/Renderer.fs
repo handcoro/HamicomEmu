@@ -57,49 +57,48 @@ module Renderer =
 
     /// タイル指定のスプライト描画
     let drawSpriteTile ppu tileStart tileX tileY attr frame =
-        let mutable frameAcc = frame
+        if tileY >= 240 then
+            frame
+        else
+            let mutable frameAcc = frame
 
-        let flipVertical = SpriteAttributes.flipVertical attr
-        let flipHorizontal = SpriteAttributes.flipHorizontal attr
+            let flipVertical = SpriteAttributes.flipVertical attr
+            let flipHorizontal = SpriteAttributes.flipHorizontal attr
 
-        let priority = SpriteAttributes.priority attr
-        let paletteIdx = SpriteAttributes.paletteIndex attr
-        let sprPal = spritePalette ppu paletteIdx
+            let priority = SpriteAttributes.priority attr
+            let paletteIdx = SpriteAttributes.paletteIndex attr
+            let sprPal = spritePalette ppu paletteIdx
 
-        let tile =
-            if tileY < 240 then
-                Mapper.ppuReadRange tileStart (tileStart + 15) ppu.cartridge ppu.mapperPerScanline[tileY]
-            else
-                Mapper.ppuReadRange tileStart (tileStart + 15) ppu.cartridge ppu.cartridge.mapper
+            let tile = Mapper.ppuReadRange tileStart (tileStart + 15) ppu.cartridge ppu.mapperPerScanline[tileY]
 
-        for y = 0 to 7 do
-            let upper = tile[y]
-            let lower = tile[y + 8]
+            for y = 0 to 7 do
+                let upper = tile[y]
+                let lower = tile[y + 8]
 
-            for x = 0 to 7 do
-                let bit0 = (upper >>> (7 - x)) &&& 1uy
-                let bit1 = (lower >>> (7 - x)) &&& 1uy
-                let value = (bit1 <<< 1) ||| bit0
+                for x = 0 to 7 do
+                    let bit0 = (upper >>> (7 - x)) &&& 1uy
+                    let bit1 = (lower >>> (7 - x)) &&& 1uy
+                    let value = (bit1 <<< 1) ||| bit0
 
-                if value <> 0uy then
-                    let color = nesPalette[int sprPal[int value]]
+                    if value <> 0uy then
+                        let color = nesPalette[int sprPal[int value]]
 
-                    let px, py =
-                        match flipHorizontal, flipVertical with
-                        | false, false -> tileX + x, tileY + y
-                        | true, false -> tileX + 7 - x, tileY + y
-                        | false, true -> tileX + x, tileY + 7 - y
-                        | true, true -> tileX + 7 - x, tileY + 7 - y
+                        let px, py =
+                            match flipHorizontal, flipVertical with
+                            | false, false -> tileX + x, tileY + y
+                            | true, false -> tileX + 7 - x, tileY + y
+                            | false, true -> tileX + x, tileY + 7 - y
+                            | true, true -> tileX + 7 - x, tileY + 7 - y
 
-                    let pos = py * Frame.width + px
+                        let pos = py * Frame.width + px
 
-                    if isValidPixel (uint px) (uint py) then
-                        let bgIdx = frame.bgPaletteIdx[pos]
+                        if isValidPixel (uint px) (uint py) then
+                            let bgIdx = frame.bgPaletteIdx[pos]
 
-                        if spriteOverBackground priority bgIdx then
-                            frameAcc <- setSpritePixel (uint px) (uint py) color frameAcc
+                            if spriteOverBackground priority bgIdx then
+                                frameAcc <- setSpritePixel (uint px) (uint py) color frameAcc
 
-        frameAcc
+            frameAcc
 
     let swap (left: 'a byref) (right: 'a byref) =
         let temp = left
