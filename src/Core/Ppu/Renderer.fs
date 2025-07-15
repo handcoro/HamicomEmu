@@ -56,7 +56,7 @@ module Renderer =
         | _ -> false // それ以外は背景
 
     /// タイル指定のスプライト描画
-    let drawSpriteTile ppu tileStart tileX tileY attr frame =
+    let drawSpriteTile ppu snapshots tileStart tileX tileY attr frame =
         if tileY >= 240 then
             frame
         else
@@ -69,7 +69,7 @@ module Renderer =
             let paletteIdx = SpriteAttributes.paletteIndex attr
             let sprPal = spritePalette ppu paletteIdx
 
-            let tile = Mapper.ppuReadRange tileStart (tileStart + 15) ppu.cartridge ppu.mapperPerScanline[tileY]
+            let tile = Mapper.ppuReadRange tileStart (tileStart + 15) ppu.cartridge snapshots.mapperPerScanline[tileY]
 
             for y = 0 to 7 do
                 let upper = tile[y]
@@ -106,7 +106,7 @@ module Renderer =
         right <- temp
 
     /// 全スプライト描画
-    let drawSprites (ppu: PpuState) (frame: Frame) : Frame =
+    let drawSprites (ppu: PpuState) snapshots (frame: Frame) : Frame =
         let mutable frameAcc = frame
 
         let mode =
@@ -123,29 +123,32 @@ module Renderer =
 
                 let attr = ppu.oam[i + 2]
 
-                match mode with
-                | Mode8x8 ->
-                    let bank = Ppu.spritePatternAddr ppu.ctrl |> int
-                    let tileStart = bank + tileIdx * 0x10
-                    frameAcc <- drawSpriteTile ppu tileStart tileX tileY attr frameAcc
+                if tileY < 240 then
+                    match mode with
+                    | Mode8x8 ->
+                        let bank = Ppu.spritePatternAddr snapshots.ctrlPerScanline[tileY] |> int
+                        let tileStart = bank + tileIdx * 0x10
+                        frameAcc <- drawSpriteTile ppu snapshots tileStart tileX tileY attr frameAcc
 
-                | Mode8x16 ->
-                    let bank = (tileIdx &&& 1) * 0x1000
-                    let flipVertical = SpriteAttributes.flipVertical attr
-                    let mutable tileTopStart = bank + (tileIdx &&& 0xFE) * 0x10
-                    let mutable tileBottomStart = tileTopStart + 0x10
-                    // 8x16 スプライトモードの上下反転は上下のスプライトも入れ替える
-                    if flipVertical then
-                        swap &tileTopStart &tileBottomStart
+                    | Mode8x16 ->
+                        let bank = (tileIdx &&& 1) * 0x1000
+                        let flipVertical = SpriteAttributes.flipVertical attr
+                        let mutable tileTopStart = bank + (tileIdx &&& 0xFE) * 0x10
+                        let mutable tileBottomStart = tileTopStart + 0x10
+                        // 8x16 スプライトモードの上下反転は上下のスプライトも入れ替える
+                        if flipVertical then
+                            swap &tileTopStart &tileBottomStart
 
-                    frameAcc <- drawSpriteTile ppu tileTopStart tileX tileY attr frameAcc
-                    frameAcc <- drawSpriteTile ppu tileBottomStart tileX (tileY + 8) attr frameAcc
+                        frameAcc <-
+                            frameAcc
+                            |> drawSpriteTile ppu snapshots tileTopStart tileX tileY attr
+                            |> drawSpriteTile ppu snapshots tileBottomStart tileX (tileY + 8) attr
 
         frameAcc
 
     let renderNameTableScanline
         (ppu: PpuState)
-        (snapshot: PpuPublicState)
+        (snapshots: PpuPublicState)
         (nameTable: byte[])
         (viewPort: Rect)
         (shiftX: int)
@@ -169,7 +172,7 @@ module Renderer =
                 let y = tileY * 8
 
                 if scanline >= y && scanline < y + drawLines then
-                    let bank = Ppu.backgroundPatternAddr snapshot.ctrlPerScanline[scanline] |> int
+                    let bank = Ppu.backgroundPatternAddr snapshots.ctrlPerScanline[scanline] |> int
                     let tileIdx = nameTable[i] |> int
 
                     let tile =
@@ -219,16 +222,16 @@ module Renderer =
 
     /// 分割スクロールのためのスキャンラインごとの描画
     /// TODO: ネームテーブルが 4 つ表示される場合に対応したい
-    let renderScanlineBased (ppu: PpuState) (snapshot: PpuPublicState) (frame: Frame) : Frame =
+    let renderScanlineBased (ppu: PpuState) (snapshots: PpuPublicState) (frame: Frame) : Frame =
         let mutable frameAcc = frame
         let n = 240 / drawLines - 1 // スキャンライン一本ずつだと非効率なのである程度まとめて描いてみる
 
         for y = 0 to n do
             let drawStartY = y * drawLines
 
-            let scrlX, scrlY = snapshot.scrollPerScanline[drawStartY] |> getScrollXY
+            let scrlX, scrlY = snapshots.scrollPerScanline[drawStartY] |> getScrollXY
 
-            let correctedAddr = Ppu.getNameTableAddress snapshot.scrollPerScanline[drawStartY]
+            let correctedAddr = Ppu.getNameTableAddress snapshots.scrollPerScanline[drawStartY]
             let mainNT, subNTH, subNTV, subNTVH = Ppu.getVisibleNameTables ppu correctedAddr
 
             let needSubH = scrlX > 0
@@ -249,13 +252,13 @@ module Renderer =
 
             // メイン背景描画
             frameAcc <-
-                renderNameTableScanline ppu snapshot mainNT rect1 (-scrlX) (-scrlY) (int drawStartY) drawLines frameAcc
+                renderNameTableScanline ppu snapshots mainNT rect1 (-scrlX) (-scrlY) (int drawStartY) drawLines frameAcc
             // サブ背景
             if needSubH then
                 frameAcc <-
                     renderNameTableScanline
                         ppu
-                        snapshot
+                        snapshots
                         subNTH
                         rect2
                         (int screenW - scrlX)
@@ -268,7 +271,7 @@ module Renderer =
                 frameAcc <-
                     renderNameTableScanline
                         ppu
-                        snapshot
+                        snapshots
                         subNTV
                         rect3
                         (-scrlX)
@@ -281,7 +284,7 @@ module Renderer =
                 frameAcc <-
                     renderNameTableScanline
                         ppu
-                        snapshot
+                        snapshots
                         subNTVH
                         rect4
                         (int screenW - scrlX)
@@ -290,4 +293,4 @@ module Renderer =
                         drawLines
                         frameAcc
 
-        drawSprites ppu frameAcc
+        drawSprites ppu snapshots frameAcc
