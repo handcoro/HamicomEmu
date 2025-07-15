@@ -38,12 +38,12 @@ module Cartridge =
         | 3 -> CNROM { bankSelect = 0uy }
         | 75 ->
             VRC1 {
-                prgSelect0 = 0uy
-                prgSelect1 = 0uy
-                prgSelect2 = 0uy
+                prgBank0 = 0uy
+                prgBank1 = 0uy
+                prgBank2 = 0uy
                 mirroring = mirror
-                chrSelect0 = 0uy
-                chrSelect1 = 0uy
+                chrBank0 = 0uy
+                chrBank1 = 0uy
             }
         | 87 -> J87 { bankSelect = 0uy }
         | _ ->

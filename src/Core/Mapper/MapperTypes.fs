@@ -9,22 +9,31 @@ module Types =
 
     type Mapper =
         | NROM of NromState // マッパー 0
+        | MMC1 of Mmc1State
         | UxROM of UxromState // マッパー2
         | CNROM of CnromState
         | J87 of J87State
         | VRC1 of VRC1State
 
     and NromState = unit
+    and Mmc1State = {
+        shiftReg: byte
+        shiftCount: int
+        control: byte
+        chrBank0: byte
+        chrBank1: byte
+        prgBank: byte
+    }
     and BankSelectState = { bankSelect: byte }
     and UxromState = BankSelectState
     and CnromState = BankSelectState
     and J87State = BankSelectState
 
     and VRC1State = {
-        prgSelect0: byte
-        prgSelect1: byte
-        prgSelect2: byte
+        prgBank0: byte
+        prgBank1: byte
+        prgBank2: byte
         mirroring: Mirroring
-        chrSelect0: byte
-        chrSelect1: byte
+        chrBank0: byte
+        chrBank1: byte
     }

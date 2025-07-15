@@ -57,15 +57,15 @@ module Mapper =
 
         // ここから可変バンク
         if addr >= 0x8000 && addr < 0xA000 then
-            let offset = getOffset (int state.prgSelect0 % totalBanks) bankSize 0x8000
+            let offset = getOffset (int state.prgBank0 % totalBanks) bankSize 0x8000
             prg[addr + offset]
 
         elif addr >= 0xA000 && addr < 0xC000 then
-            let offset = getOffset (int state.prgSelect1 % totalBanks) bankSize 0xA000
+            let offset = getOffset (int state.prgBank1 % totalBanks) bankSize 0xA000
             prg[addr + offset]
 
         elif addr >= 0xC000 && addr < 0xE000 then
-            let offset = getOffset (int state.prgSelect2 % totalBanks) bankSize 0xC000
+            let offset = getOffset (int state.prgBank2 % totalBanks) bankSize 0xC000
             prg[addr + offset]
 
         // 固定バンク
@@ -81,46 +81,46 @@ module Mapper =
         // PRG バンク設定 0
         if addr >= 0x8000 && addr < 0x9000 then
             let bank = value &&& 0x0Fuy
-            { state with prgSelect0 = bank }
+            { state with prgBank0 = bank }
 
         // ミラーリングと CHR バンク 0, 1 の上位ビット
         elif addr >= 0x9000 && addr < 0xA000 then
             let mirror = if value &&& 1uy <> 0uy then Horizontal else Vertical
-            let select0Hi = (value &&& 0b0010uy) <<< 3
-            let select1Hi = (value &&& 0b0100uy) <<< 2
-            let chrSelect0 = (state.chrSelect0 &&& 0x0Fuy) ||| select0Hi
-            let chrSelect1 = (state.chrSelect1 &&& 0x0Fuy) ||| select1Hi
-            // printfn "[VRC WRITE CHR HI] chrSel0: %04X chrSel1: %04X, Hi0: %02X Hi1: %02X" chrSelect0 chrSelect1 select0Hi select1Hi
+            let bank0Hi = (value &&& 0b0010uy) <<< 3
+            let bank1Hi = (value &&& 0b0100uy) <<< 2
+            let chrBank0 = (state.chrBank0 &&& 0x0Fuy) ||| bank0Hi
+            let chrBank1 = (state.chrBank1 &&& 0x0Fuy) ||| bank1Hi
+            // printfn "[VRC WRITE CHR HI] chrSel0: %04X chrSel1: %04X, Hi0: %02X Hi1: %02X" chrBank0 chrBank1 select0Hi select1Hi
             {
                 state with
                     mirroring = mirror
-                    chrSelect0 = chrSelect0
-                    chrSelect1 = chrSelect1
+                    chrBank0 = chrBank0
+                    chrBank1 = chrBank1
             }
 
         // PRG バンク設定 1
         elif addr >= 0xA000 && addr < 0xC000 then
             let bank = value &&& 0x0Fuy
-            { state with prgSelect1 = bank }
+            { state with prgBank1 = bank }
 
         // PRG バンク設定 2
         elif addr >= 0xC000 && addr < 0xE000 then
             let bank = value &&& 0x0Fuy
-            { state with prgSelect2 = bank }
+            { state with prgBank2 = bank }
 
         // CHR バンク 0 の下位ビット
         elif addr >= 0xE000 && addr < 0xF000 then
             let lo = value &&& 0x0Fuy
-            let v = (state.chrSelect0 &&& 0xF0uy) ||| lo
+            let v = (state.chrBank0 &&& 0xF0uy) ||| lo
             // printfn "[VRC WRITE CHR LO] chrSel0: %04X, Lo: %02X" v lo
-            { state with chrSelect0 = v }
+            { state with chrBank0 = v }
 
         // CHR バンク 1 の下位ビット
         elif addr >= 0xF000 then
             let lo = value &&& 0x0Fuy
-            let v = (state.chrSelect1 &&& 0xF0uy) ||| lo
+            let v = (state.chrBank1 &&& 0xF0uy) ||| lo
             // printfn "[VRC WRITE CHR LO] chrSel1: %04X Lo: %02X" v lo
-            { state with chrSelect1 = v }
+            { state with chrBank1 = v }
 
         else
             printfn "[MAPPER VRC1 WRITE PRG] Invalid address: %04X" addr
@@ -148,14 +148,20 @@ module Mapper =
 
         | CNROM _ when addr >= 0x8000 ->
             // TODO: マスクに関しては今後要確認
-            let newState = { bankSelect = value }
+            let romSignal = cart.prgRom[addr - 0x8000]
+            let v = value &&& romSignal
+            let newState = { bankSelect = v }
             CNROM newState, ()
+
         | VRC1 state ->
             let newState = writePrgVRC1 addr value state
             VRC1 newState, ()
 
         | J87 _ when addr >= 0x6000 && addr <= 0x7FFF ->
-            let newState = { bankSelect = value &&& 0b11uy } // 0-1 bits 使用
+            let hi = value &&& 0b01uy <<< 1
+            let lo = value &&& 0b10uy >>> 1
+            let v = hi ||| lo
+            let newState = { bankSelect = v &&& 0b11uy } // 0-1 bits 使用
             // printfn "[MAPPER CPU WRITE] Bank Select: %A" newState.bankSelect
             J87 newState, ()
 
@@ -174,8 +180,8 @@ module Mapper =
     /// バンクサイズは 4 KB
     let getChrAddressVRC1 addr cart state =
         let chr = cart.chrRom
-        let select0 = int state.chrSelect0
-        let select1 = int state.chrSelect1
+        let select0 = int state.chrBank0
+        let select1 = int state.chrBank1
         let bankSize = 4 * 1024
         let totalBanks = chr.Length / bankSize
 
@@ -186,6 +192,14 @@ module Mapper =
         else
             let offset = getOffset (select1 % totalBanks) bankSize 0x1000
             addr + offset
+
+    let getChrAddressJ87 addr cart state =
+        let chr = cart.chrRom
+        let bankSize = 8 * 1024
+        let totalBanks = chr.Length / bankSize
+
+        let offset = getOffset (int state.bankSelect % totalBanks) bankSize 0
+        addr + offset
 
     let ppuRead addr cart mapper =
         let addr = int addr
@@ -199,15 +213,8 @@ module Mapper =
             cart.chrRom[addr']
 
         | J87 state ->
-            let chr = cart.chrRom
-            let hi = state.bankSelect &&& 0b01uy
-            let lo = state.bankSelect &&& 0b10uy
-            let bitsCorrected = ((hi <<< 1) ||| (lo >>> 1)) |> int
-            let bankSize = 8 * 1024
-            let totalBanks = chr.Length / bankSize
-            let bank = bitsCorrected % totalBanks
-            let offset = bank * bankSize
-            chr[addr + offset]
+            let addr' = getChrAddressJ87 addr cart state
+            cart.chrRom[addr']
 
         | NROM _
         | _ when cart.chrRom <> [||] -> cart.chrRom[addr]
