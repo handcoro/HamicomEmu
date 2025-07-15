@@ -309,7 +309,6 @@ module Apu =
                 apu with
                     triangle.linearCounterLoad = parselinearCounterTriangle value
                     triangle.ctrlAndHalt = parseControlAndHaltTriangle value
-                    triangle.linearReloadFlag = true
             }
         | 0x400Aus ->
             let timer = updateTimerLo apu.triangle.timer value
