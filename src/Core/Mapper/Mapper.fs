@@ -5,17 +5,27 @@ namespace HamicomEmu.Mapper
 module Mapper =
 
     open HamicomEmu.Mapper.Types
+    open HamicomEmu.Mapper.Common
     open HamicomEmu.Cartridge
 
+    /// TODO: もう少し見通しをよくしたい…ミラーリング型を MapperCommons で定義する？
     let getMirroring defaultMirroring mapper =
-        match mapper with
-        | VRC1 state ->
-            match defaultMirroring, state.mirroring with
-            | FourScreen, _ -> defaultMirroring // 4 画面の時はマッパーを無視
-            | _, Vertical -> Vertical
-            | _, Horizontal -> Horizontal
+        match defaultMirroring with
+        | FourScreen -> defaultMirroring // 4 画面の時はマッパーを無視
+        | _ ->
+            match mapper with
+            | MMC1 state ->
+                match MMC1.getMirroring state with
+                | MMC1.NametableArrangement.Vertical -> Vertical
+                | MMC1.NametableArrangement.Horizontal -> Horizontal
+                | _ -> Vertical
+
+            | VRC1 state ->
+                match state.mirroring with
+                | Vertical -> Vertical
+                | Horizontal -> Horizontal
+                | _ -> defaultMirroring
             | _ -> defaultMirroring
-        | _ -> defaultMirroring
 
     let readNrom addr cart = // PRG ROM の読み込み
         let addr' = addr - 0x8000 // 0x8000 - 0xFFFF の範囲を 0x0000 - 0x7FFF に変換
@@ -28,8 +38,6 @@ module Mapper =
                 addr'
 
         cart.prgRom[addr2]
-
-    let getOffset calcBank bankSize baseAddr = calcBank * bankSize - baseAddr
 
     let readUxrom addr cart state =
         let prg = cart.prgRom
@@ -90,7 +98,6 @@ module Mapper =
             let bank1Hi = (value &&& 0b0100uy) <<< 2
             let chrBank0 = (state.chrBank0 &&& 0x0Fuy) ||| bank0Hi
             let chrBank1 = (state.chrBank1 &&& 0x0Fuy) ||| bank1Hi
-            // printfn "[VRC WRITE CHR HI] chrSel0: %04X chrSel1: %04X, Hi0: %02X Hi1: %02X" chrBank0 chrBank1 select0Hi select1Hi
             {
                 state with
                     mirroring = mirror
@@ -126,10 +133,33 @@ module Mapper =
             printfn "[MAPPER VRC1 WRITE PRG] Invalid address: %04X" addr
             state
 
+    let readPrgRam (addr: uint16) cart =
+        let addr = int addr
+        match cart.mapper with
+        | MMC1 state ->
+            MMC1.readPrgRam addr state
+        | _ ->
+            printfn "[MAPPER %A] read from PRG Ram is not supported." cart.mapper
+            0uy
+    
+    let writePrgRam (addr: uint16) value cart =
+        let addr = int addr
+        match cart.mapper with
+        | MMC1 state ->
+            let newState = MMC1.writePrgRam addr value state
+            MMC1 newState, ()
+        | _ ->
+            printfn "[MAPPER %A] write to PRG Ram is not supported." cart.mapper
+            cart.mapper, ()
+
     let cpuRead (addr: uint16) cart =
         let addr = int addr
+        let prg = cart.prgRom
 
         match cart.mapper with
+        | MMC1 state ->
+            MMC1.cpuRead addr prg state
+
         | UxROM state -> readUxrom addr cart state
 
         | VRC1 state -> readPrgVRC1 addr cart state
@@ -141,6 +171,10 @@ module Mapper =
         let addr = int addr
 
         match cart.mapper with
+        | MMC1 state ->
+            let newState = MMC1.cpuWrite addr value state
+            MMC1 newState, ()
+
         | UxROM _ when addr >= 0x8000 ->
             // bank 選択
             let newState = { bankSelect = value &&& 0x0Fuy }
@@ -201,13 +235,24 @@ module Mapper =
         let offset = getOffset (int state.bankSelect % totalBanks) bankSize 0
         addr + offset
 
+    let getChrMem cart =
+        if cart.chrRom <> [||] then
+            cart.chrRom
+        else
+            cart.chrRam
+
     let ppuRead addr cart mapper =
         let addr = int addr
 
         match mapper with
+        | MMC1 state ->
+            let data = MMC1.ppuRead addr (getChrMem cart) state
+            data
+
         | CNROM state ->
             let addr' = getChrAddressCnrom addr cart state
             cart.chrRom[addr']
+
         | VRC1 state ->
             let addr' = getChrAddressVRC1 addr cart state
             cart.chrRom[addr']
@@ -217,13 +262,13 @@ module Mapper =
             cart.chrRom[addr']
 
         | NROM _
-        | _ when cart.chrRom <> [||] -> cart.chrRom[addr]
-
-        | NROM _
-        | _ -> cart.chrRam[addr]
+        | _ ->
+            let chr = getChrMem cart
+            chr[addr]
 
     let ppuReadRange startAddr endAddr cart mapper =
         match cart.mapper with
+        | MMC1 _
         | CNROM _
         | VRC1 _
         | J87 _ -> Array.init (endAddr - startAddr + 1) (fun i -> ppuRead (startAddr + i) cart mapper)

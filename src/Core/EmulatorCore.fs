@@ -52,9 +52,10 @@ module EmulatorCore =
                     // NOTE: ここで割り込み判定をしているけど正確にはもっと複雑らしい？ https://www.nesdev.org/wiki/CPU_interrupts
                     let irq = Bus.pollIrqStatus emu.bus
                     let interruptDisabled = Cpu.interruptDisabled emu.cpu
+                    let suppressIrq = Cpu.isSuppressIrq emu.cpu
 
                     let cpu, bus, consumed =
-                        match Bus.pollNmiStatus emu.bus, irq && not interruptDisabled with
+                        match Bus.pollNmiStatus emu.bus, irq && not interruptDisabled && not suppressIrq with
                         | (b, Some _), _ -> // NMI
                             Cpu.interruptNmi emu.cpu b
                         | (b, None), true -> // IRQ
@@ -62,8 +63,10 @@ module EmulatorCore =
                         | (b, None), false -> // 通常進行
                             // 通常進行の場合はトレース実行
                             trace emu
-                            let c, b, con = Cpu.step emu.cpu b
-                            c, b, con
+                            // FIXME: CLI, SEI, PLP の IRQ 抑制だけど後でもっといい仕組みを考える
+                            let c = if suppressIrq then Cpu.clearSuppressIrq emu.cpu else emu.cpu
+                            let c', b, con = Cpu.step c b
+                            c', b, con
 
                     let bus = Bus.tickNTimes (int consumed) bus
                     let ppu = bus.ppu

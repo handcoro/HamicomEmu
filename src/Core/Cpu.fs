@@ -27,7 +27,9 @@ module Cpu =
         sp: byte
         p: byte
         // NOTE: ブランチ命令用のサイクル増分 本当はもっと例外なくスマートにやりたい
-        cyclePenalty: uint 
+        cyclePenalty: uint
+        // NOTE: CLI, SEI, PLP 後の IRQ を抑制する
+        suppressIrq: bool
     }
 
     let initial = {
@@ -38,6 +40,7 @@ module Cpu =
         sp = 0xFDuy
         p = Flags.I ||| Flags.U
         cyclePenalty = 0u
+        suppressIrq = false
     }
 
     let isPageCrossed (a: uint16) (b: uint16) = (a &&& 0xFF00us) <> (b &&& 0xFF00us)
@@ -348,12 +351,12 @@ module Cpu =
     /// Clear Interrupt Disable
     let cli _ cpu bus =
         let p = clearFlag Flags.I cpu.p
-        { cpu with p = p }, bus
+        { cpu with p = p; suppressIrq = true }, bus
 
     /// Set Interrupt Disable
     let sei _ cpu bus =
         let p = setFlag Flags.I cpu.p
-        { cpu with p = p }, bus
+        { cpu with p = p; suppressIrq = true }, bus
 
     /// Clear Overflow Flag
     let clv _ cpu bus =
@@ -513,7 +516,7 @@ module Cpu =
     let plp _ cpu bus =
         let p, cpu', bus' = pull cpu bus
         let p' = p |> clearFlag Flags.B |> setFlag Flags.U
-        { cpu' with p = p' }, bus'
+        { cpu' with p = p'; suppressIrq = true }, bus'
 
     /// Pull Accumulator
     let pla _ cpu bus =
@@ -523,14 +526,13 @@ module Cpu =
 
     /// BRK - Force Break
     let brk _ cpu bus =
-        // まだ未完成
-        if hasFlag Flags.I cpu.p then
+        if hasFlag Flags.B cpu.p then
             cpu, bus
         else
-            let cpu, bus = (cpu, bus) ||> push16 (cpu.pc + 1us) ||> push cpu.p
+            let cpu, bus = (cpu, bus) ||> push16 (cpu.pc + 2us) ||> push cpu.p
 
             let pc, bus' = Bus.memRead16 0xFFFEus bus // BRK の場合は 0xFFFE に飛ぶ
-            let p = cpu.p |> setFlag Flags.B
+            let p = cpu.p |> setFlag Flags.I
 
             { cpu with p = p; pc = pc }, bus'
 
@@ -632,6 +634,9 @@ module Cpu =
         let pc, busF = Bus.memRead16 0xFFFAus bus2
         { cpu2 with p = p'; pc = pc }, busF, 7u
 
+    let clearSuppressIrq cpu = { cpu with suppressIrq = false }
+
+    let isSuppressIrq cpu = cpu.suppressIrq
 
     let reset cpu bus =
         let pc, bus' = Bus.memRead16 0xFFFCus bus // リセットベクタを読み込む
@@ -653,7 +658,6 @@ module Cpu =
             AND, logicalInstr AND
             ASL, asl
             BIT, bit
-            BRK, brk // 復帰時のアドレスが +1 されるらしいのでここに入れる
             CLC, clc
             CLD, cld
             CLI, cli
@@ -710,6 +714,23 @@ module Cpu =
             AXS_, axs
             ALR_, alr
         ]
+    
+    let jumpMap =
+        Map [
+            BRK, brk
+            BCC, bcc
+            BCS, bcs
+            BEQ, beq
+            BMI, bmi
+            BNE, bne
+            BPL, bpl
+            BVC, bvc
+            BVS, bvs
+            JMP, jmp
+            JSR, jsr
+            RTI, rti
+            RTS, rts
+        ]
 
     /// CPU を 1 命令だけ実行する
     let step cpu (bus: Bus.BusState) =
@@ -734,19 +755,8 @@ module Cpu =
             match Map.tryFind op execMap with
             | Some f -> execInstr f mode cpu bus'
             | None ->
-                match op with
-                | BCC -> bcc mode cpu bus', false // ブランチ系は命令内で追加サイクルを処理する
-                | BCS -> bcs mode cpu bus', false
-                | BEQ -> beq mode cpu bus', false
-                | BMI -> bmi mode cpu bus', false
-                | BNE -> bne mode cpu bus', false
-                | BPL -> bpl mode cpu bus', false
-                | BVC -> bvc mode cpu bus', false
-                | BVS -> bvs mode cpu bus', false
-                | JMP -> jmp mode cpu bus', false
-                | JSR -> jsr mode cpu bus', false
-                | RTI -> rti mode cpu bus', false
-                | RTS -> rts mode cpu bus', false
+                match Map.tryFind op jumpMap with
+                | Some f -> f mode cpu bus', false  // ブランチ系は命令内で追加サイクルを処理する
                 | _ -> failwithf "Unsupported opcode: %A" op
 
         // サイクル追加発生可能性のある命令でページ境界をまたいだ場合はサイクル追加

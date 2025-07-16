@@ -3,6 +3,7 @@ namespace HamicomEmu
 module Cartridge =
     open FsToolkit.ErrorHandling
     open HamicomEmu.Mapper.Types
+    open HamicomEmu.Mapper
 
     type Cartridge = {
         prgRom: byte array
@@ -18,7 +19,7 @@ module Cartridge =
 
     let validateTag (raw: byte[]) =
         if raw.Length >= 4 && raw[0..3] = nesTag then
-            Ok()
+            Ok ()
         else
             Error "File is not in iNES file format"
 
@@ -26,14 +27,15 @@ module Cartridge =
         let inesVer = (raw[7] >>> 2) &&& 0b11uy
 
         if inesVer = 0uy then
-            Ok()
+            Ok ()
         else
             Error "NES2.0 format is not supported"
 
     /// TODO: できればこの関数は Cartridge モジュールには書きたくない
     let private createMapper n mirror =
         match n with
-        | 0 -> NROM()
+        | 0 -> NROM ()
+        | 1 -> MMC1 MMC1.initial
         | 2 -> UxROM { bankSelect = 0uy }
         | 3 -> CNROM { bankSelect = 0uy }
         | 75 ->
@@ -48,7 +50,7 @@ module Cartridge =
         | 87 -> J87 { bankSelect = 0uy }
         | _ ->
             printfn "Unsupported mapper: %A" n
-            NROM()
+            NROM ()
 
     let parseCartridge (raw: byte array) =
         result {

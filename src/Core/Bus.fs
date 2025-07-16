@@ -21,7 +21,7 @@ module Bus =
     module ApuRegisters =
         let Begin = 0x4000us
         let End = 0x4017us
-
+    
     module PrgRom =
         let Begin = 0x8000us
         let End = 0xFFFFus
@@ -64,7 +64,7 @@ module Bus =
         | 0x2005us
         | 0x2006us
         | 0x4014us ->
-            // printfn "Attempt to read from write-only PPU address: %04X" addr
+            printfn "Attempt to read from write-only PPU address: %04X" addr
             0uy, bus
 
         | 0x2002us ->
@@ -95,6 +95,10 @@ module Bus =
         | addr when addr |> inRange ApuRegisters.Begin ApuRegisters.End ->
             let data, apu = Apu.read addr bus.apu
             data, { bus with apu = apu }
+        
+        | addr when addr |> inRange 0x6000us 0x7FFFus ->
+            let data = Mapper.readPrgRam addr bus.cartridge
+            data, bus
 
         | addr when addr |> inRange PrgRom.Begin PrgRom.End ->
             let data = Mapper.cpuRead addr bus.cartridge
@@ -220,7 +224,16 @@ module Bus =
             let apu = Apu.write addr value bus.apu
             { bus with apu = apu }
 
-        | addr when addr |> inRange 0x6000us PrgRom.End -> // PRG ROM は書き込み禁止
+        | addr when addr |> inRange 0x6000us 0x7FFFus ->
+            let mapper, _ = Mapper.writePrgRam addr value bus.cartridge
+
+            {
+                bus with
+                    cartridge.mapper = mapper
+                    ppu.cartridge.mapper = mapper
+            }
+
+        | addr when addr |> inRange PrgRom.Begin PrgRom.End ->
             let mapper, _ = Mapper.cpuWrite addr value bus.cartridge
 
             {
