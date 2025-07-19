@@ -10,14 +10,14 @@ module Noise =
         loopAndHalt = false
         isConstant = false
 
-        periodIndex = 0uy
+        periodIndex = 0
+        timer = 0us
         isShortMode = false
 
         envelope = Envelope.initial
 
         lengthCounter = 1uy
-        shift = 1us
-        phase = 0.0
+        lfsr = 1us
     }
 
     /// 周波数テーブル生成
@@ -28,34 +28,32 @@ module Noise =
 
     /// ノイズ生成
     /// シフトレジスタをいじって疑似乱数を生む
-    let private nextNoise shift isShortMode =
+    let private nextNoise lfsr isShortMode =
         let x = if isShortMode then 6 else 1 // 比較するビットを周期モードによって変える
-        let feedback = (shift &&& 1us) ^^^ (shift >>> x &&& 1us)
-        let shifted = shift >>> 1
-        let newShift = feedback <<< 14 ||| shifted
-        newShift
+        let feedback = (lfsr &&& 1us) ^^^ (lfsr >>> x &&& 1us)
+        let shifted = lfsr >>> 1
+        let newLfsr = feedback <<< 14 ||| shifted
+        newLfsr
+
+    let tick (noi: NoiseState) =
+        if noi.timer = 0us then
+            noi.timer <- Constants.noisePeriods[noi.periodIndex] |> uint16
+            noi.lfsr <- nextNoise noi.lfsr noi.isShortMode
+        else
+            noi.timer <- noi.timer - 1us
+        
+        noi
+
 
     /// ノイズチャンネルの 1 サンプルを生成する
     /// 以下の場合に出力:
     /// * シフトレジスタの bit 0 がセットされていない
     /// * 長さカウンタが 0 でない
-    let output dt (noi: NoiseState) =
+    let output (noi: NoiseState) =
         if noi.lengthCounter = 0uy then
-            0uy, noi
+            0uy
         else
-            let index = noi.periodIndex |> int
-            let freq = noiseFreqs[index]
-            let period = 1.0 / freq
-
-            let newPhase = (noi.phase + dt) % period
-
-            let newShift =
-                if newPhase < noi.phase then
-                    nextNoise noi.shift noi.isShortMode
-                else
-                    noi.shift
-
-            let bit = noi.shift &&& 1us
+            let bit = noi.lfsr &&& 1us
 
             let sample =
                 if bit = 0us then
@@ -63,7 +61,4 @@ module Noise =
                 else
                     0uy
 
-            noi.shift <- newShift
-            noi.phase <- newPhase
-
-            sample, noi
+            sample

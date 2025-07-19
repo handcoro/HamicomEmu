@@ -14,47 +14,42 @@ module Pulse =
 
         sweep = SweepUnit.initial
         timer = 0us
+        targetTimer = 0us
 
         envelope = Envelope.initial
 
         lengthCounter = 1uy
 
-        phase = 0.0
+        dutyStep = 0
     }
 
-    let private freqHz timer =
-        if timer < 8us then
-            0.0
+    let tick (pulse: PulseState) =
+        if pulse.timer = 0us then
+            let nextStep = (pulse.dutyStep + 1) % 8
+            pulse.timer <- pulse.targetTimer
+            pulse.dutyStep <- nextStep
         else
-            Constants.cpuClockNTSC / (16.0 * float (timer + 1us))
+            pulse.timer <- pulse.timer - 1us
+
+        pulse
 
     /// 矩形波出力
-    /// TODO: ミュートによる位相のリセットをするかどうかは後で決めたい
-    let output dt (pulse: PulseState) =
-        let freq = freqHz pulse.timer
+    let output (pulse: PulseState) =
+        let dutyIndex = int pulse.duty &&& 0b11
 
-        if freq = 0.0 then
-            0uy, pulse
-        else
-            let period = 1.0 / freq
-            let dutyIndex = int pulse.duty &&& 0b11
+        let isMuted = Common.isMuted pulse || pulse.lengthCounter = 0uy
 
-            let isMuted = Common.isMuted pulse
+        let bit = Constants.dutyTable[dutyIndex][pulse.dutyStep]
 
-            let newPhase = if isMuted then pulse.phase else (pulse.phase + dt) % period
-
-            let step = int (pulse.phase / period * 8.0) % 8
-            let bit = Constants.dutyTable[dutyIndex][step]
-
-            let sample =
-                if bit = 1 then
-                    if pulse.isConstant then
-                        pulse.volume
-                    else
-                        pulse.envelope.volume
+        let sample =
+            if isMuted then
+                0uy
+            elif bit = 1 then
+                if pulse.isConstant then
+                    pulse.volume
                 else
-                    0uy
+                    pulse.envelope.volume
+            else
+                0uy
 
-            pulse.phase <- newPhase
-
-            sample, pulse
+        sample

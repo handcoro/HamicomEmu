@@ -18,29 +18,26 @@ module SweepUnit =
     let tick pulse =
         let sw = pulse.sweep
 
-        let shouldSweep =
-            sw.enabled && sw.divider = 0uy && sw.shift <> 0uy && not (Common.isMuted pulse)
+        if sw.divider = 0uy && sw.enabled && sw.shift <> 0uy && not (Common.isMuted pulse) then
+            pulse.timer <- pulse.targetTimer
 
-        let newTimer =
-            if shouldSweep then
-                let delta = pulse.timer >>> int sw.shift
+            let delta = pulse.timer >>> int sw.shift
 
+            let newTimer =
                 if sw.negate then
                     pulse.timer - delta - (if pulse.channel = One then 1us else 0us)
                 else
                     pulse.timer + delta
-            else
-                pulse.timer
+
+            // printfn "sweep: ch=%A timer=%A → %A (delta=%A neg=%A)" pulse.channel pulse.timer newTimer (pulse.timer >>> int sw.shift) sw.negate
+
+            pulse.targetTimer <- newTimer
+
 
         if sw.reload || sw.divider = 0uy then
             sw.divider <- sw.period
             sw.reload <- false
         else
             sw.divider <- sw.divider - 1uy
-
-        // if shouldSweep then
-        //   printfn "sweep: ch=%A timer=%A → %A (delta=%A neg=%A)" pulse.channel pulse.timer newTimer (pulse.timer >>> int sw.shift) sw.negate
-
-        pulse.timer <- newTimer
 
         pulse

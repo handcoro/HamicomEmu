@@ -141,31 +141,27 @@ type basicNesGame(loadedRom, traceFn) as this =
         let padJoy = initialJoypad |> handleJoypadInput (Gamepad gs)
         let joy = mergeJoypadStates keyJoy padJoy
 
-        emu <-
-            { emu with
-                bus.joy1.buttonStatus = joy.buttonStatus }
+        emu <- { emu with bus.joy1.buttonStatus = joy.buttonStatus }
 
-        let sampleRate = 44100
         let cpuClock = Constants.cpuClockNTSC
         let cyclesPerSample = cpuClock / float sampleRate // ≒ 40.584
         let samplesPerFrame = sampleRate / 60 // = 735
+
+        let mutable cycleAcc = 0.0
 
         // 1フレーム分のサンプルを作るバッファ
         let samples = ResizeArray<float32>()
 
         for _ in 1..samplesPerFrame do
-            // 1フレームに達するまで CPU を進める
-            let mutable cyclesRemain = cyclesPerSample
-
-            while cyclesRemain > 0.0 do
+            cycleAcc <- cycleAcc + cyclesPerSample
+            while cycleAcc >= 1.0 do // 1.0 未満はサイクル端数として次サンプルに繰越し
                 let emu', used = EmulatorCore.tick emu traceFn // ← step が消費サイクル数を返すように
                 emu <- emu'
-                cyclesRemain <- cyclesRemain - float used
+                cycleAcc <- cycleAcc - float used
 
             // APU から 1 サンプル取り出す
-            let sample, apu' = Apu.mix (1.0 / float sampleRate) emu.bus.apu
+            let sample, apu' = Apu.mix emu.bus.apu
             emu <- { emu with bus.apu = apu' }
-
             samples.Add(sample)
 
         // AudioEngine へ一括送信

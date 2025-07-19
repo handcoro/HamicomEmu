@@ -10,13 +10,14 @@ module Triangle =
         ctrlAndHalt = false
 
         timer = 0us
+        timerReloadValue = 0us
 
         linearCounter = 0uy
         linearReloadFlag = false
 
         lengthCounter = 1uy
 
-        phase = 0.0
+        triangleStep = 0
     }
 
 
@@ -33,30 +34,21 @@ module Triangle =
         tri.linearReloadFlag <- reloadFlag
         tri
 
-    let private freqHz timer =
-        Constants.cpuClockNTSC / (32.0 * float (timer + 1us))
+    let tick (tri: TriangleState) =
+        let isMuted = tri.lengthCounter = 0uy || tri.linearCounter = 0uy
+
+        if isMuted then
+            ()
+        elif tri.timer = 0us then
+            let nextStep = (tri.triangleStep + 1) % 32
+            tri.timer <- tri.timerReloadValue
+            tri.triangleStep <- nextStep
+        else
+            tri.timer <- tri.timer - 1us
+
+        tri
 
     /// 三角波出力
-    let output dt (tri: TriangleState) =
-        let mutable tri = tri
-        let freq = freqHz tri.timer
-
-        if freq = 0.0 then
-            0uy, tri
-        else
-            let period = 1.0 / float freq
-
-            let isMuted = tri.lengthCounter = 0uy || tri.linearCounter = 0uy
-
-            let newPhase =
-                if isMuted then
-                    tri.phase // ミュート時は位相を維持する
-                else
-                    (tri.phase + dt) % period
-
-            let index = int (tri.phase / period * 32.0) % 32
-            let sample = Constants.triangleTable[index] |> byte
-
-            tri.phase <- newPhase
-
-            sample, tri
+    let output (tri: TriangleState) =
+        let sample = Constants.triangleTable[tri.triangleStep] |> byte
+        sample

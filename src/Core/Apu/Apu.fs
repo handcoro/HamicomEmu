@@ -29,7 +29,6 @@ module Apu =
 
     let hasLoopFlag v = hasFlag GeneralMasks.envelopeLoopFlag v
 
-    /// TODO: DMC 関連の操作
     let writeToStatus value apu =
         let pulse1Enabled = hasFlag StatusFlags.pulse1Enable value
         let pulse2Enabled = hasFlag StatusFlags.pulse2Enable value
@@ -132,23 +131,17 @@ module Apu =
 
     /// APU のサイクルを進める
     /// 4-step モードは 240Hz で 1 フレーム
-    let tick n apu : TickResult =
+    let tick apu : TickResult =
         let mutable apu = apu
-        apu.cycle <- apu.cycle + n
+        let mutable req = None
+        let mutable stall = None
+
+        apu.cycle <- apu.cycle + 1u
 
         let mode = apu.frameCounter.mode
 
-        let dmc', req, stall = Dmc.tick apu.dmc
-        apu.dmc <- dmc'
+        if apu.cycle >= Constants.frameStepCycles then
 
-        if apu.cycle < Constants.frameStepCycles then
-            {
-                apu = apu
-                dmcRead = req
-                stallCpuCycles = stall
-            }
-
-        else
             apu.cycle <- apu.cycle - Constants.frameStepCycles
 
             // フレームステップ更新
@@ -160,11 +153,28 @@ module Apu =
             | Step5, FiveStep -> apu.step <- Step1
             | _ -> apu.step <- nextStep apu.step
 
-            {
-                apu = apu
-                dmcRead = req
-                stallCpuCycles = stall
-            }
+        // 矩形波は CPU サイクル 2 ごとにタイマーを
+        if apu.cycle % 2u <> 0u then
+            let pul1 = Pulse.tick apu.pulse1
+            let pul2 = Pulse.tick apu.pulse2
+
+            apu.pulse1 <- pul1
+            apu.pulse2 <- pul2
+
+        let tri = Triangle.tick apu.triangle
+        let noi = Noise.tick apu.noise
+        let dmc', r, s = Dmc.tick apu.dmc
+        apu.triangle <- tri
+        apu.noise <- noi
+        apu.dmc <- dmc'
+        req <- r
+        stall <- s
+
+        {
+            apu = apu
+            dmcRead = req
+            stallCpuCycles = stall
+        }
 
     let getReadRequest apu =
         if Dmc.needsSampleRead apu.dmc then
@@ -186,7 +196,7 @@ module Apu =
         let fc = { 
             mode = mode
             irqInhibit = irqInhibit
-            irqRequested = irqReq 
+            irqRequested = irqReq
         }
 
         apu.cycle <- 0u
@@ -269,19 +279,22 @@ module Apu =
             { apu with pulse1 = pulse }
         | 0x4001us ->
             let sweep = parseSweep value
+            // if sweep.enabled  then printfn "SWEEP ENABLED" else printfn "SWEEP DISABLED"
             { apu with pulse1.sweep = sweep }
         | 0x4002us -> // timer lo 部分の上書き
-            let timer = updateTimerLo apu.pulse1.timer value
-            { apu with pulse1.timer = timer }
+            let t = updateTimerLo apu.pulse1.targetTimer value
+            { apu with pulse1.timer = t; pulse1.targetTimer = t }
         | 0x4003us -> // timer hi と長さカウンタ
-            let timer = updateTimerHi apu.pulse1.timer value
-            let c = parseLengthCounter value
+            let t = updateTimerHi apu.pulse1.targetTimer value
+            let lc = parseLengthCounter value
 
             {
                 apu with
-                    pulse1.timer = timer
+                    pulse1.timer = t
+                    pulse1.targetTimer = t
                     pulse1.envelope.reload = true
-                    pulse1.lengthCounter = c
+                    pulse1.lengthCounter = lc
+                    pulse1.dutyStep = 0
             }
         // Ch2: 矩形波
         | 0x4004us ->
@@ -291,17 +304,19 @@ module Apu =
             let sweep = parseSweep value
             { apu with pulse2.sweep = sweep }
         | 0x4006us ->
-            let timer = updateTimerLo apu.pulse2.timer value
-            { apu with pulse2.timer = timer }
+            let t = updateTimerLo apu.pulse2.targetTimer value
+            { apu with pulse2.timer = t; pulse2.targetTimer = t }
         | 0x4007us ->
-            let timer = updateTimerHi apu.pulse2.timer value
-            let c = parseLengthCounter value
+            let t = updateTimerHi apu.pulse2.targetTimer value
+            let lc = parseLengthCounter value
 
             {
                 apu with
-                    pulse2.timer = timer
+                    pulse2.timer = t
+                    pulse2.targetTimer = t
                     pulse2.envelope.reload = true
-                    pulse2.lengthCounter = c
+                    pulse2.lengthCounter = lc
+                    pulse2.dutyStep = 0
             }
         // Ch3: 三角波
         | 0x4008us ->
@@ -311,15 +326,16 @@ module Apu =
                     triangle.ctrlAndHalt = parseControlAndHaltTriangle value
             }
         | 0x400Aus ->
-            let timer = updateTimerLo apu.triangle.timer value
-            { apu with triangle.timer = timer }
+            let t = updateTimerLo apu.triangle.timerReloadValue value
+            { apu with triangle.timer = t; triangle.timerReloadValue = t }
         | 0x400Bus ->
             let c = parseLengthCounter value
-            let timer = updateTimerHi apu.triangle.timer value
+            let t = updateTimerHi apu.triangle.timerReloadValue value
 
             {
                 apu with
-                    triangle.timer = timer
+                    triangle.timer = t
+                    triangle.timerReloadValue = t
                     triangle.lengthCounter = c
                     triangle.linearReloadFlag = true
             }
@@ -328,7 +344,7 @@ module Apu =
             { apu with
                 noise = parseVolumeControlNoise apu.noise value }
         | 0x400Eus ->
-            let pIdx = parsePeriodIndexNoise value
+            let pIdx = parsePeriodIndexNoise value |> int
             let mode = parseModeNoise value
 
             {
@@ -425,16 +441,15 @@ module Apu =
         let y = alpha * input + (1.0f - alpha) * state.lastOutput
         y, { state with lastOutput = y }
 
-    /// 1 サンプル合成出力（dtベース）
-    let mix (dt: float) apu =
-        let ch1, pu1 = Pulse.output dt apu.pulse1
-        let ch2, pu2 = Pulse.output dt apu.pulse2
-        let ch3, tri = Triangle.output dt apu.triangle
-        let ch4, noi = Noise.output dt apu.noise
+    /// 1 サンプル合成出力（DMC のみ dt ベース）
+    let mix apu =
+        let ch1 = Pulse.output apu.pulse1
+        let ch2 = Pulse.output apu.pulse2
+        let ch3 = Triangle.output apu.triangle
+        let ch4 = Noise.output apu.noise
 
-        let samplesToPop = int (dt * Constants.cpuClockNTSC)
-
-        let dmcSamples, dmc' = Dmc.popSamples samplesToPop apu.dmc
+        // TODO: DMC がサンプルバッファを持つ利点が無くなったで将来的に廃止したい
+        let dmcSamples, dmc' = Dmc.popSamples 1 apu.dmc
 
         let ch5 =
             match dmcSamples with
@@ -468,13 +483,10 @@ module Apu =
         let sample = (pulseMix + tndMix) * masterGain
 
         // NOTE: ローパスフィルタ実装は検討中
-        // let sample, filterState = nextLowPass 0.18f sample apu.filterState
+        // let alpha = 0.30f // default: 0.18f
+        // let sample, filterState = nextLowPass alpha sample apu.filterState
         // apu.filterState <- filterState
 
-        apu.pulse1 <- pu1
-        apu.pulse2 <- pu2
-        apu.triangle <- tri
-        apu.noise <- noi
         apu.dmc <- dmc'
 
         sample, apu

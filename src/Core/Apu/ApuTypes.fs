@@ -29,28 +29,31 @@ module Types =
 
         sweep: SweepState
         // timer は値が低いほど周波数が高くなる
+        // TODO: 他チャンネルも含めて timer の仕様をよく調べる
         mutable timer: uint16
+        mutable targetTimer: uint16
 
         mutable envelope: EnvelopeState
 
         // 長さカウンタ内部状態
         mutable lengthCounter: byte
 
-        mutable phase: float
+        mutable dutyStep: int
     }
 
     type TriangleState = {
         linearCounterLoad: byte
         ctrlAndHalt: bool
 
-        timer: uint16
+        mutable timer: uint16
+        timerReloadValue: uint16
 
         mutable linearCounter: byte
         mutable linearReloadFlag: bool
 
         mutable lengthCounter: byte
 
-        mutable phase: float
+        mutable triangleStep: int
     }
 
     type NoiseState = {
@@ -58,14 +61,15 @@ module Types =
         loopAndHalt: bool
         isConstant: bool
 
-        periodIndex: byte
+        periodIndex: int
         isShortMode: bool
 
         mutable envelope: EnvelopeState
 
         mutable lengthCounter: byte
-        mutable shift: uint16
-        mutable phase: float
+        // Linear feedback shift register
+        mutable lfsr: uint16
+        mutable timer: uint16
     }
 
     type DmcState = {

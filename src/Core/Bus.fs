@@ -134,7 +134,7 @@ module Bus =
 
         ppu <- Ppu.tickN 3u ppu
 
-        let result = Apu.tick 1u apu
+        let result = Apu.tick apu
         let p = result.stallCpuCycles
 
         apu <- result.apu
