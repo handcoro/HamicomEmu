@@ -8,7 +8,6 @@ module Mapper =
     open HamicomEmu.Mapper.Common
     open HamicomEmu.Cartridge
 
-    /// TODO: もう少し見通しをよくしたい…ミラーリング型を MapperCommons で定義する？
     let getMirroring defaultMirroring mapper =
         match defaultMirroring with
         | FourScreen -> defaultMirroring // 4 画面の時はマッパーを無視
@@ -16,15 +15,13 @@ module Mapper =
             match mapper with
             | MMC1 state ->
                 match MMC1.getMirroring state with
-                | MMC1.NametableArrangement.Vertical -> Vertical
-                | MMC1.NametableArrangement.Horizontal -> Horizontal
-                | _ -> Vertical
+                | Some mirror -> mirror
+                | None -> defaultMirroring
 
             | VRC1 state ->
-                match state.mirroring with
-                | Vertical -> Vertical
-                | Horizontal -> Horizontal
-                | _ -> defaultMirroring
+                match VRC1.getMirroring state with
+                | Some mirror -> mirror
+                | None -> defaultMirroring
             | _ -> defaultMirroring
 
     let readNrom addr cart = // PRG ROM の読み込み
@@ -58,81 +55,6 @@ module Mapper =
             // PRG-ROM の外参照
             0uy
 
-    let readPrgVRC1 addr cart state =
-        let prg = cart.prgRom
-        let bankSize = 8 * 1024 // 8 KB
-        let totalBanks = prg.Length / bankSize
-
-        // ここから可変バンク
-        if addr >= 0x8000 && addr < 0xA000 then
-            let offset = getOffset (int state.prgBank0 % totalBanks) bankSize 0x8000
-            prg[addr + offset]
-
-        elif addr >= 0xA000 && addr < 0xC000 then
-            let offset = getOffset (int state.prgBank1 % totalBanks) bankSize 0xA000
-            prg[addr + offset]
-
-        elif addr >= 0xC000 && addr < 0xE000 then
-            let offset = getOffset (int state.prgBank2 % totalBanks) bankSize 0xC000
-            prg[addr + offset]
-
-        // 固定バンク
-        elif addr >= 0xE000 then
-            let offset = getOffset (totalBanks - 1) bankSize 0xE000
-            prg[addr + offset]
-
-        else
-            printfn "[MAPPER VRC1 READ PRG] Invalid address: %04X" addr
-            0uy
-
-    let writePrgVRC1 addr value state =
-        // PRG バンク設定 0
-        if addr >= 0x8000 && addr < 0x9000 then
-            let bank = value &&& 0x0Fuy
-            { state with prgBank0 = bank }
-
-        // ミラーリングと CHR バンク 0, 1 の上位ビット
-        elif addr >= 0x9000 && addr < 0xA000 then
-            let mirror = if value &&& 1uy <> 0uy then Horizontal else Vertical
-            let bank0Hi = (value &&& 0b0010uy) <<< 3
-            let bank1Hi = (value &&& 0b0100uy) <<< 2
-            let chrBank0 = (state.chrBank0 &&& 0x0Fuy) ||| bank0Hi
-            let chrBank1 = (state.chrBank1 &&& 0x0Fuy) ||| bank1Hi
-            {
-                state with
-                    mirroring = mirror
-                    chrBank0 = chrBank0
-                    chrBank1 = chrBank1
-            }
-
-        // PRG バンク設定 1
-        elif addr >= 0xA000 && addr < 0xC000 then
-            let bank = value &&& 0x0Fuy
-            { state with prgBank1 = bank }
-
-        // PRG バンク設定 2
-        elif addr >= 0xC000 && addr < 0xE000 then
-            let bank = value &&& 0x0Fuy
-            { state with prgBank2 = bank }
-
-        // CHR バンク 0 の下位ビット
-        elif addr >= 0xE000 && addr < 0xF000 then
-            let lo = value &&& 0x0Fuy
-            let v = (state.chrBank0 &&& 0xF0uy) ||| lo
-            // printfn "[VRC WRITE CHR LO] chrSel0: %04X, Lo: %02X" v lo
-            { state with chrBank0 = v }
-
-        // CHR バンク 1 の下位ビット
-        elif addr >= 0xF000 then
-            let lo = value &&& 0x0Fuy
-            let v = (state.chrBank1 &&& 0xF0uy) ||| lo
-            // printfn "[VRC WRITE CHR LO] chrSel1: %04X Lo: %02X" v lo
-            { state with chrBank1 = v }
-
-        else
-            printfn "[MAPPER VRC1 WRITE PRG] Invalid address: %04X" addr
-            state
-
     let readPrgRam (addr: uint16) cart =
         let addr = int addr
         match cart.mapper with
@@ -162,7 +84,7 @@ module Mapper =
 
         | UxROM state -> readUxrom addr cart state
 
-        | VRC1 state -> readPrgVRC1 addr cart state
+        | VRC1 state -> VRC1.cpuRead addr prg state
 
         | NROM _
         | _ -> readNrom addr cart
@@ -188,7 +110,7 @@ module Mapper =
             CNROM newState, ()
 
         | VRC1 state ->
-            let newState = writePrgVRC1 addr value state
+            let newState = VRC1.cpuWrite addr value state
             VRC1 newState, ()
 
         | J87 _ when addr >= 0x6000 && addr <= 0x7FFF ->
@@ -210,22 +132,6 @@ module Mapper =
 
         let offset = getOffset (int state.bankSelect % totalBanks) bankSize 0
         addr + offset
-
-    /// バンクサイズは 4 KB
-    let getChrAddressVRC1 addr cart state =
-        let chr = cart.chrRom
-        let select0 = int state.chrBank0
-        let select1 = int state.chrBank1
-        let bankSize = 4 * 1024
-        let totalBanks = chr.Length / bankSize
-
-        if addr < 0x1000 then
-            let offset = getOffset (select0 % totalBanks) bankSize 0
-            addr + offset
-
-        else
-            let offset = getOffset (select1 % totalBanks) bankSize 0x1000
-            addr + offset
 
     let getChrAddressJ87 addr cart state =
         let chr = cart.chrRom
@@ -254,8 +160,8 @@ module Mapper =
             cart.chrRom[addr']
 
         | VRC1 state ->
-            let addr' = getChrAddressVRC1 addr cart state
-            cart.chrRom[addr']
+            let data = VRC1.ppuRead addr (getChrMem cart) state
+            data
 
         | J87 state ->
             let addr' = getChrAddressJ87 addr cart state

@@ -5,7 +5,7 @@ module Ppu =
     open HamicomEmu.Common.BitUtils
     open HamicomEmu.Cartridge
     open HamicomEmu.Mapper
-    open HamicomEmu.Mapper.Types
+    open HamicomEmu.Mapper.Common
     open HamicomEmu.Ppu.Types
 
     let initialScroll = { v = 0us; t = 0us; x = 0uy; w = false }
@@ -156,9 +156,9 @@ module Ppu =
         | 3us -> 0x2C00
         | _ -> failwith "can't be"
 
-    let mirrorPaletteAddr addr =
-        let index = addr &&& 0x1F
+    let paletteAddrToIndex addr = addr &&& 0x1F
 
+    let mirrorPaletteIndex index =
         match index with
         | 0x10
         | 0x14
@@ -167,8 +167,8 @@ module Ppu =
         | _ -> index
     
     let writePaletteRam addr value ppu =
-        let index = addr &&& 0x1F
-        let mirrored = index |> mirrorPaletteAddr
+        let index = paletteAddrToIndex addr
+        let mirrored = index |> mirrorPaletteIndex
         let pv = value &&& 0x3Fuy // パレットの色数でマスク
 
         ppu.pal[index] <- pv
@@ -198,7 +198,7 @@ module Ppu =
         | addr when addr <= 0x3FFF ->
             // NOTE: 新しい PPU はバッファを介さないらしい？ そしてバッファにはネームテーブルのミラーが入る
             // TODO: 上位 2 bit にオープンバス情報を含める
-            let result = ppu'.pal[addr |> mirrorPaletteAddr]
+            let result = ppu'.pal[addr |> paletteAddrToIndex |> mirrorPaletteIndex]
 
             result,
             { ppu' with buffer = ppu'.vram[mirrored] }

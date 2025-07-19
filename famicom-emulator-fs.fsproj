@@ -9,6 +9,7 @@
     <Compile Include="src\Core\Instructions.fs" />
     <Compile Include="src\Core\Mapper\MapperCommon.fs" />
     <Compile Include="src\Core\Mapper\MMC1.fs" />
+    <Compile Include="src\Core\Mapper\VRC1.fs" />
     <Compile Include="src\Core\Mapper\MapperTypes.fs" />
     <Compile Include="src\Core\Cartridge.fs" />
     <Compile Include="src\Core\Mapper\Mapper.fs" />

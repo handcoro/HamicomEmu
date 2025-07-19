@@ -71,9 +71,9 @@ module MMC1 =
 
     let getMirroring state =
         match state.nametableSwitch with
-        | Vertical -> Vertical
-        | Horizontal -> Horizontal
-        | _ -> Vertical
+        | Vertical -> Some Mirroring.Vertical
+        | Horizontal -> Some Mirroring.Horizontal
+        | _ -> None // とりあえずの処置
 
     let basePrgAddr = 0x8000
     let prgBankSize mode =

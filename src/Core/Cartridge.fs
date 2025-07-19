@@ -3,6 +3,7 @@ namespace HamicomEmu
 module Cartridge =
     open FsToolkit.ErrorHandling
     open HamicomEmu.Mapper.Types
+    open HamicomEmu.Mapper.Common
     open HamicomEmu.Mapper
 
     type Cartridge = {
@@ -32,21 +33,13 @@ module Cartridge =
             Error "NES2.0 format is not supported"
 
     /// TODO: できればこの関数は Cartridge モジュールには書きたくない
-    let private createMapper n mirror =
+    let private createMapper n =
         match n with
         | 0 -> NROM ()
         | 1 -> MMC1 MMC1.initial
         | 2 -> UxROM { bankSelect = 0uy }
         | 3 -> CNROM { bankSelect = 0uy }
-        | 75 ->
-            VRC1 {
-                prgBank0 = 0uy
-                prgBank1 = 0uy
-                prgBank2 = 0uy
-                mirroring = mirror
-                chrBank0 = 0uy
-                chrBank1 = 0uy
-            }
+        | 75 -> VRC1 VRC1.initial
         | 87 -> J87 { bankSelect = 0uy }
         | _ ->
             printfn "Unsupported mapper: %A" n
@@ -84,7 +77,7 @@ module Cartridge =
                 prgRom = prgRom
                 chrRom = chrRom
                 chrRam = chrRam
-                mapper = createMapper mapper screenMirroring
+                mapper = createMapper mapper
                 screenMirroring = screenMirroring
             }
         }
