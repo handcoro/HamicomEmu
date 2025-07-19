@@ -5,7 +5,7 @@ module Noise =
     open HamicomEmu.Common
     open HamicomEmu.Apu.Types
 
-    let initial = {
+    let init = {
         volume = 0uy
         loopAndHalt = false
         isConstant = false
@@ -14,7 +14,7 @@ module Noise =
         timer = 0us
         isShortMode = false
 
-        envelope = Envelope.initial
+        envelope = Envelope.init
 
         lengthCounter = 1uy
         lfsr = 1us

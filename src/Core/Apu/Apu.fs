@@ -14,12 +14,12 @@ module Apu =
         irqRequested = false
     }
 
-    let initial = {
-        pulse1 = Pulse.initial One
-        pulse2 = Pulse.initial Two
-        triangle = Triangle.initial
-        noise = Noise.initial
-        dmc = Dmc.initial
+    let init = {
+        pulse1 = Pulse.init One
+        pulse2 = Pulse.init Two
+        triangle = Triangle.init
+        noise = Noise.init
+        dmc = Dmc.init
         filterState = initialLowPassFilter
         status = 0uy
         frameCounter = initialFrameCounter

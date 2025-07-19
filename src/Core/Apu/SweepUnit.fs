@@ -4,7 +4,7 @@ module SweepUnit =
 
     open HamicomEmu.Apu.Types
 
-    let initial = {
+    let init = {
         enabled = false
         negate = false
         period = 0uy

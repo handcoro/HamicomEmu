@@ -97,7 +97,7 @@ type basicNesGame(loadedRom, traceFn) as this =
     do
         match parsed with
         | Ok rom ->
-            emu <- EmulatorCore.initial rom
+            emu <- EmulatorCore.init rom
             let emu' = EmulatorCore.reset emu
             emu <- emu'
         | Error e -> failwith $"Failed to parse ROM: {e}"

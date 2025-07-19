@@ -38,11 +38,11 @@ module Bus =
         mutable pendingStallCpuCycles: uint option
     }
 
-    let initial cart = {
+    let init cart = {
         cpuVram = Array.create 0x2000 0uy
         cartridge = cart
-        ppu = Ppu.initial cart
-        apu = Apu.initial
+        ppu = Ppu.init cart
+        apu = Apu.init
         joy1 = initialJoypad
         joy2 = initialJoypad
         cycleTotal = 0u

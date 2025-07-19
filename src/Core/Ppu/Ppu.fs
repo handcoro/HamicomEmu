@@ -10,7 +10,7 @@ module Ppu =
 
     let initialScroll = { v = 0us; t = 0us; x = 0uy; w = false }
 
-    let initial (cart: Cartridge) = {
+    let init (cart: Cartridge) = {
         cartridge = cart
         pal = Array.create 32 0uy // パレットテーブルは32バイト
         vram = Array.create 0x2000 0uy // PPU VRAM は8KB
@@ -403,7 +403,7 @@ module PpuPublicState =
 
     open HamicomEmu.Ppu.Types
 
-    let initial mapper = {
+    let init mapper = {
         scrollPerScanline = Array.init 240 (fun _ -> Ppu.initialScroll)
         ctrlPerScanline = Array.zeroCreate 240
         mapperPerScanline = Array.init 240 (fun _ -> mapper)

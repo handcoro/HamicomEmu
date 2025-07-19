@@ -37,7 +37,7 @@ module MMC1 =
         prgRamDisable: bool
     }
 
-    let initial = {
+    let init = {
         shiftReg = 0x10uy
         shiftCount = 0
         nametableSwitch = OneScreenLower

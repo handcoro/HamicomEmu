@@ -5,18 +5,18 @@ module Pulse =
     open HamicomEmu.Common
     open HamicomEmu.Apu.Types
 
-    let initial ch = {
+    let init ch = {
         channel = ch
         volume = 0uy
         duty = 0uy
         loopAndHalt = false
         isConstant = false
 
-        sweep = SweepUnit.initial
+        sweep = SweepUnit.init
         timer = 0us
         targetTimer = 0us
 
-        envelope = Envelope.initial
+        envelope = Envelope.init
 
         lengthCounter = 1uy
 

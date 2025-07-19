@@ -4,7 +4,7 @@ module Envelope =
 
     open HamicomEmu.Apu.Types
 
-    let initial = {
+    let init = {
         volume = 0uy
         divider = 0uy
         decay = 0uy

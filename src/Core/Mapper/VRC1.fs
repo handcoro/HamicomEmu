@@ -13,7 +13,7 @@ module VRC1 =
         chrBank1: byte
     }
 
-    let initial = {
+    let init = {
         prgBank0 = 0uy
         prgBank1 = 0uy
         prgBank2 = 0uy

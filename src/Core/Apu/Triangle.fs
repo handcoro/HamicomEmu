@@ -5,7 +5,7 @@ module Triangle =
     open HamicomEmu.Common
     open HamicomEmu.Apu.Types
 
-    let initial = {
+    let init = {
         linearCounterLoad = 0uy
         ctrlAndHalt = false
 

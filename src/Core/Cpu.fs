@@ -32,7 +32,7 @@ module Cpu =
         suppressIrq: bool
     }
 
-    let initial = {
+    let init = {
         a = 0uy
         x = 0uy
         y = 0uy

@@ -4,7 +4,7 @@ module Dmc =
 
     open HamicomEmu.Apu.Types
 
-    let initial = {
+    let init = {
         irqEnabled = false
         isLoop = false
         rateIndex = 0uy

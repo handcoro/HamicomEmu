@@ -193,12 +193,12 @@ let tests =
 
             test "APU $4015 read reflects all channel statuses and IRQ flags" {
                 let apu = {
-                    Apu.initial with
-                        pulse1 = { Pulse.initial One with lengthCounter = 5uy }
-                        pulse2 = { Pulse.initial Two with lengthCounter = 0uy }
-                        triangle = { Triangle.initial with lengthCounter = 2uy }
-                        noise = { Noise.initial with lengthCounter = 0uy }
-                        dmc = { Dmc.initial with bytesRemaining = 10us; irqRequested = true }
+                    Apu.init with
+                        pulse1 = { Pulse.init One with lengthCounter = 5uy }
+                        pulse2 = { Pulse.init Two with lengthCounter = 0uy }
+                        triangle = { Triangle.init with lengthCounter = 2uy }
+                        noise = { Noise.init with lengthCounter = 0uy }
+                        dmc = { Dmc.init with bytesRemaining = 10us; irqRequested = true }
                         frameCounter.irqRequested = true
                         status =
                             StatusFlags.pulse1Enable |||
@@ -242,7 +242,7 @@ let tests =
                 let ppuAddr = 0x2000us
                 let value = 0x77uy
 
-                let bus0 = Bus.initial (testCartridge [||])
+                let bus0 = Bus.init (testCartridge [||])
                 let mutable ppu = bus0.ppu
 
                 // コントロールレジスタ設定
@@ -270,8 +270,8 @@ let tests =
                 Expect.equal actual value "Should correctly read back the value written to PPU memory"
             }
             // 初期値がすべて0か
-            test "Initial values are all zero" {
-                let ppu = Ppu.initial (testCartridge [||])
+            test "init values are all zero" {
+                let ppu = Ppu.init (testCartridge [||])
                 Expect.equal ppu.scroll.v 0us "v should be zero"
                 Expect.equal ppu.scroll.t 0us "t should be zero"
                 Expect.equal ppu.scroll.x 0uy "x should be zero"
@@ -280,7 +280,7 @@ let tests =
 
             // $2006 最初の書き込みで t の上位バイトが更新され、w が true になる
             test "writeToAddressRegister (first) updates t hi and sets w=true" {
-                let ppu = Ppu.initial (testCartridge [||])
+                let ppu = Ppu.init (testCartridge [||])
                 let ppu' = Ppu.writeToAddressRegister 0x21uy ppu
                 Expect.equal ppu'.scroll.t 0x2100us "t hi byte should be set"
                 Expect.equal ppu'.scroll.w true "w should be true"
@@ -288,7 +288,7 @@ let tests =
 
             // $2006 2回目の書き込みで t が完成し、v にコピーされ、w が false になる
             test "writeToAddressRegister (second) completes t, copies t to v, sets w=false" {
-                let ppu = Ppu.initial (testCartridge [||]) |> Ppu.writeToAddressRegister 0x21uy
+                let ppu = Ppu.init (testCartridge [||]) |> Ppu.writeToAddressRegister 0x21uy
                 let ppu' = Ppu.writeToAddressRegister 0x34uy ppu
                 Expect.equal ppu'.scroll.t 0x2134us "t should be combined"
                 Expect.equal ppu'.scroll.v 0x2134us "v should be updated"
@@ -297,7 +297,7 @@ let tests =
 
             // $2005 書き込みで x, t, w が正しく変化するか
             test "writeToScrollRegister updates x, t, and w" {
-                let ppu = Ppu.initial (testCartridge [||])
+                let ppu = Ppu.init (testCartridge [||])
                 let ppu' = Ppu.writeToScrollRegister 0xE3uy ppu
                 // x = 3, t下位5ビット = 0x1C, w = true
                 Expect.equal ppu'.scroll.x 0x3uy "x should be 3"
@@ -307,14 +307,14 @@ let tests =
 
             // $2002 ステータスレジスタ読み出しで w がリセットされるか
             test "Status read resets w" {
-                let ppu = Ppu.initial (testCartridge [||]) |> Ppu.writeToScrollRegister 0x12uy
+                let ppu = Ppu.init (testCartridge [||]) |> Ppu.writeToScrollRegister 0x12uy
                 let _, ppu' = Ppu.readFromStatusRegister ppu
                 Expect.equal ppu'.scroll.w false "w should be reset to false"
             }
 
             // アドレスは必ず 0x3FFF でマスクされているか
             test "Address should always be masked to 0x3FFF" {
-                let ppu = Ppu.initial (testCartridge [||])
+                let ppu = Ppu.init (testCartridge [||])
                 let ppu' = { ppu with scroll = { ppu.scroll with v = 0x5555us } }
                 let _, ppu'' = Ppu.readFromDataRegister ppu'
                 Expect.isTrue (ppu''.scroll.v <= 0x3FFFus) "v should be masked"
@@ -322,7 +322,7 @@ let tests =
         
             test "write and read VRAM at $2000" {
                 // PPUの初期化
-                let ppu0 = Ppu.initial (testCartridge [||])
+                let ppu0 = Ppu.init (testCartridge [||])
 
                 // $2005: Xスクロールを設定
                 let ppu1 = Ppu.writeToScrollRegister 0x23uy ppu0
@@ -357,7 +357,7 @@ let tests =
 
             test "increment by 1 when increment bit is 0" {
                 // PPU初期化
-                let ppu0 = Ppu.initial (testCartridge [||])
+                let ppu0 = Ppu.init (testCartridge [||])
 
                 // $2000: コントロールレジスタ (インクリメント=1)
                 let ppu1 = Ppu.writeToControlRegister 0x00uy ppu0
@@ -374,7 +374,7 @@ let tests =
             }
 
             test "increment by 32 when increment bit is set" {
-                let ppu0 = Ppu.initial (testCartridge [||])
+                let ppu0 = Ppu.init (testCartridge [||])
 
                 // $2000: コントロールレジスタ (インクリメント=32)
                 let ppu1 = Ppu.writeToControlRegister 0x04uy ppu0
@@ -392,7 +392,7 @@ let tests =
 
             test "$2005 twice then $2006 twice sets v and x correctly (NESDev accurate)" {
                 // PPUの初期化
-                let ppu0 = Ppu.initial (testCartridge [||])
+                let ppu0 = Ppu.init (testCartridge [||])
 
                 // $2005: Xスクロール（下位3ビットがx, 上位5ビットがcoarse X）
                 let ppu1 = Ppu.writeToScrollRegister 0x12uy ppu0
@@ -416,7 +416,7 @@ let tests =
             }
 
             test "alternate $2005/$2006 changes w and x (NESDev accurate)" {
-                let ppu0 = Ppu.initial (testCartridge [||])
+                let ppu0 = Ppu.init (testCartridge [||])
 
                 // $2005: Xスクロール w = false
                 let ppu1 = Ppu.writeToScrollRegister 0x16uy ppu0
