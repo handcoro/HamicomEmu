@@ -70,6 +70,9 @@ module Mapper =
         | MMC1 state ->
             let newState = MMC1.writePrgRam addr value state
             MMC1 newState, ()
+        | J87 _ ->
+            let newState = J87.writePrgRam value
+            J87 newState, ()
         | _ ->
             printfn "[MAPPER %A] write to PRG Ram is not supported." cart.mapper
             cart.mapper, ()
@@ -112,14 +115,6 @@ module Mapper =
         | VRC1 state ->
             let newState = VRC1.cpuWrite addr value state
             VRC1 newState, ()
-
-        | J87 _ when addr >= 0x6000 && addr <= 0x7FFF ->
-            let hi = value &&& 0b01uy <<< 1
-            let lo = value &&& 0b10uy >>> 1
-            let v = hi ||| lo
-            let newState = { bankSelect = v &&& 0b11uy } // 0-1 bits 使用
-            // printfn "[MAPPER CPU WRITE] Bank Select: %A" newState.bankSelect
-            J87 newState, ()
 
         | _ ->
             printfn "Attempt to write to Cartridge Rom space. addr: %04X" addr
@@ -164,8 +159,8 @@ module Mapper =
             data
 
         | J87 state ->
-            let addr' = getChrAddressJ87 addr cart state
-            cart.chrRom[addr']
+            let data = J87.ppuRead addr cart.chrRom state
+            data
 
         | NROM _
         | _ ->

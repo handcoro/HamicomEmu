@@ -7,11 +7,10 @@ module Types =
         | MMC1 of MMC1.State // マッパー 1
         | UxROM of UxromState // マッパー2
         | CNROM of CnromState
-        | J87 of J87State
+        | J87 of J87.State
         | VRC1 of VRC1.State
 
     and NromState = unit
     and BankSelectState = { bankSelect: byte }
     and UxromState = BankSelectState
     and CnromState = BankSelectState
-    and J87State = BankSelectState
