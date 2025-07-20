@@ -26,7 +26,6 @@ module Dmc =
 
         irqRequested = false
 
-        outputBuffer = ResizeArray()
         lastOutput = 0uy
     }
 
@@ -65,27 +64,6 @@ module Dmc =
         else
             dmc'
 
-    let clearOutputBuffer dmc = dmc.outputBuffer.Clear
-
-    let popSample dmc =
-        if dmc.outputBuffer.Count > 0 then
-            let value = dmc.outputBuffer[0]
-            dmc.outputBuffer.RemoveAt(0)
-            value, dmc
-        else
-            0uy, dmc
-
-    let popSamples (n: int) (dmc: DmcState) =
-        let taken = ResizeArray<byte>()
-        let count = min n dmc.outputBuffer.Count
-
-        for _ in 1..count do
-            taken.Add(dmc.outputBuffer[0])
-            dmc.outputBuffer.RemoveAt(0)
-
-        Seq.toList taken, dmc
-
-    ///
     /// 1 bit ずつ判定して音量を上げ下げする
     let tick (dmc: DmcState) =
         let mutable dmc = dmc
@@ -131,16 +109,9 @@ module Dmc =
                 else
                     dmc.outputLevel
 
-            let output = dmc.outputLevel
-
-            dmc.outputBuffer.Add(output)
-
             dmc.shiftRegister <- shift'
             dmc.bitsRemaining <- max 0 (dmc.bitsRemaining - 1)
             dmc.outputLevel <- level
-            // バッファが切れたときの保険用
-            // 色々なエミュレーションがきちんと実装できてきたらいらなくなるはず
-            dmc.lastOutput <- output
 
             // 必要なら Bus.tick でメモリ読み込みの要求をしてバッファに格納
             let req =
@@ -153,3 +124,5 @@ module Dmc =
                     None
 
             dmc, req, stall
+
+    let output dmc = dmc.outputLevel

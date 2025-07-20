@@ -441,20 +441,13 @@ module Apu =
         let y = alpha * input + (1.0f - alpha) * state.lastOutput
         y, { state with lastOutput = y }
 
-    /// 1 サンプル合成出力（DMC のみ dt ベース）
+    /// 1 サンプル合成出力
     let mix apu =
         let ch1 = Pulse.output apu.pulse1
         let ch2 = Pulse.output apu.pulse2
         let ch3 = Triangle.output apu.triangle
         let ch4 = Noise.output apu.noise
-
-        // TODO: DMC がサンプルバッファを持つ利点が無くなったで将来的に廃止したい
-        let dmcSamples, dmc' = Dmc.popSamples 1 apu.dmc
-
-        let ch5 =
-            match dmcSamples with
-            | hd :: _ -> hd // 先頭のサンプルを採用
-            | [] -> dmc'.lastOutput
+        let ch5 = Dmc.output apu.dmc
 
         let ch1 = ch1 |> int
         let ch2 = ch2 |> int
@@ -483,10 +476,9 @@ module Apu =
         let sample = (pulseMix + tndMix) * masterGain
 
         // NOTE: ローパスフィルタ実装は検討中
+        // filterState は APU の外に持つのがいいかも
         // let alpha = 0.30f // default: 0.18f
         // let sample, filterState = nextLowPass alpha sample apu.filterState
         // apu.filterState <- filterState
 
-        apu.dmc <- dmc'
-
-        sample, apu
+        sample

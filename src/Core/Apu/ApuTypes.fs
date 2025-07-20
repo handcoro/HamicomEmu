@@ -94,7 +94,6 @@ module Types =
 
         mutable irqRequested: bool
 
-        outputBuffer: ResizeArray<byte>
         mutable lastOutput: byte
     }
 

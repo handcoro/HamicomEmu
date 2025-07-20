@@ -160,8 +160,7 @@ type basicNesGame(loadedRom, traceFn) as this =
                 cycleAcc <- cycleAcc - float used
 
             // APU から 1 サンプル取り出す
-            let sample, apu' = Apu.mix emu.bus.apu
-            emu <- { emu with bus.apu = apu' }
+            let sample = Apu.mix emu.bus.apu
             samples.Add(sample)
 
         // AudioEngine へ一括送信

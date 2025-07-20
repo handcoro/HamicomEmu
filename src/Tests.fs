@@ -31,7 +31,6 @@ let initialDmcState = {
     timer = 0us
     isSilence = false
     irqRequested = false
-    outputBuffer = ResizeArray()
     lastOutput = 0uy
 }
 

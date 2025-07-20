@@ -2,7 +2,6 @@ namespace HamicomEmu.Apu
 
 module Noise =
 
-    open HamicomEmu.Common
     open HamicomEmu.Apu.Types
 
     let init = {
@@ -19,12 +18,6 @@ module Noise =
         lengthCounter = 1uy
         lfsr = 1us
     }
-
-    /// 周波数テーブル生成
-    let private generateFreqTable (cpuClockHz: float) =
-        Constants.noisePeriods |> Array.map (fun p -> cpuClockHz / float p)
-
-    let private noiseFreqs = generateFreqTable Constants.cpuClockNTSC
 
     /// ノイズ生成
     /// シフトレジスタをいじって疑似乱数を生む
