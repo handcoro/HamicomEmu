@@ -7,7 +7,7 @@ open HamicomEmu.Ppu.Renderer
 open HamicomEmu.Apu
 open HamicomEmu.Trace
 open HamicomEmu.Platform.AudioEngine
-open Joypad
+open HamicomEmu.Input
 
 open System
 open System.IO
@@ -23,41 +23,43 @@ type InputSource =
     | Keyboard of KeyboardState
     | Gamepad of GamePadState
 
-let keyMap =
-    [ Keys.Right, JoyButton.Right
-      Keys.Left, JoyButton.Left
-      Keys.Down, JoyButton.Down
-      Keys.Up, JoyButton.Up
-      Keys.Enter, JoyButton.Start
-      Keys.Space, JoyButton.Select
-      Keys.S, JoyButton.B
-      Keys.A, JoyButton.A ]
+let keyMap = [
+    Keys.Right, Joypad.Button.right
+    Keys.Left, Joypad.Button.left
+    Keys.Down, Joypad.Button.down
+    Keys.Up, Joypad.Button.up
+    Keys.Enter, Joypad.Button.start
+    Keys.Space, Joypad.Button.select
+    Keys.S, Joypad.Button.b
+    Keys.A, Joypad.Button.a
+]
 
 /// XBox Gamepad 前提の設定
-let padMap =
-    [ Buttons.DPadRight, JoyButton.Right
-      Buttons.DPadLeft, JoyButton.Left
-      Buttons.DPadDown, JoyButton.Down
-      Buttons.DPadUp, JoyButton.Up
-      Buttons.Start, JoyButton.Start
-      Buttons.Back, JoyButton.Select
-      Buttons.A, JoyButton.B
-      Buttons.B, JoyButton.A ]
+let padMap = [
+    Buttons.DPadRight, Joypad.Button.right
+    Buttons.DPadLeft, Joypad.Button.left
+    Buttons.DPadDown, Joypad.Button.down
+    Buttons.DPadUp, Joypad.Button.up
+    Buttons.Start, Joypad.Button.start
+    Buttons.Back, Joypad.Button.select
+    Buttons.A, Joypad.Button.b
+    Buttons.B, Joypad.Button.a
+]
 
 let isKeyPressed (ks: KeyboardState) key = ks.IsKeyDown key
 
 let isPadPressed (gs: GamePadState) button = gs.IsButtonDown button
 
-let handleJoypadInput (input: InputSource) (joy: JoypadState) =
+let handleJoypadInput (input: InputSource) joy =
     let joy =
         match input with
         | Keyboard ks ->
             keyMap
-            |> List.fold (fun accJoy (key, button) -> accJoy |> setButtonPressed button (isKeyPressed ks key)) joy
+            |> List.fold (fun accJoy (key, button) -> accJoy |> Joypad.setButtonPressed button (isKeyPressed ks key)) joy
         | Gamepad gs when gs.IsConnected ->
             padMap
             |> List.fold
-                (fun accJoy (padButton, button) -> accJoy |> setButtonPressed button (isPadPressed gs padButton))
+                (fun accJoy (padButton, button) -> accJoy |> Joypad.setButtonPressed button (isPadPressed gs padButton))
                 joy
         | _ -> joy
 
@@ -137,9 +139,9 @@ type basicNesGame(loadedRom, traceFn) as this =
         if ks.IsKeyDown(Keys.Escape) then
             this.Exit()
 
-        let keyJoy = initialJoypad |> handleJoypadInput (Keyboard ks)
-        let padJoy = initialJoypad |> handleJoypadInput (Gamepad gs)
-        let joy = mergeJoypadStates keyJoy padJoy
+        let keyJoy = Joypad.init |> handleJoypadInput (Keyboard ks)
+        let padJoy = Joypad.init |> handleJoypadInput (Gamepad gs)
+        let joy = Joypad.mergeStates keyJoy padJoy
 
         emu <- { emu with bus.joy1.buttonStatus = joy.buttonStatus }
 

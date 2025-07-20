@@ -5,6 +5,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="src\Core\Common.fs" />
+    <Compile Include="src\Core\InputTypes.fs" />
     <Compile Include="src\Core\Joypad.fs" />
     <Compile Include="src\Core\Instructions.fs" />
     <Compile Include="src\Core\Mapper\MapperCommon.fs" />

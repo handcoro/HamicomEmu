@@ -8,7 +8,8 @@ module Bus =
     open HamicomEmu.Ppu
     open HamicomEmu.Apu.Types
     open HamicomEmu.Apu
-    open Joypad
+    open HamicomEmu.Input.Types
+    open HamicomEmu.Input
 
     module Ram =
         let Begin = 0x0000us
@@ -43,8 +44,8 @@ module Bus =
         cartridge = cart
         ppu = Ppu.init cart
         apu = Apu.init
-        joy1 = initialJoypad
-        joy2 = initialJoypad
+        joy1 = Joypad.init
+        joy2 = Joypad.init
         cycleTotal = 0u
         oamDmaCyclesRemaining = None
         pendingStallCpuCycles = None
@@ -84,7 +85,7 @@ module Bus =
             memRead mirrorDownAddr bus
 
         | 0x4016us ->
-            let data, joy = readJoypad bus.joy1
+            let data, joy = Joypad.read bus.joy1
             data, { bus with joy1 = joy }
 
         | 0x4017us -> // TODO: Joypad
@@ -216,8 +217,8 @@ module Bus =
             let bus' = tickNTimes 114 bus
             { bus' with ppu = ppu }
 
-        | 0x4016us -> // TODO: Joypad
-            let joy = bus.joy1 |> writeJoypad value
+        | 0x4016us ->
+            let joy = bus.joy1 |> Joypad.write value
             { bus with joy1 = joy }
 
         | addr when addr |> inRange ApuRegisters.Begin ApuRegisters.End ->
