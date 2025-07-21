@@ -1,23 +1,57 @@
-namespace HamicomEmu.Platform.AudioEngine
+namespace HamicomEmu.Platform
 
-open System
-open Microsoft.Xna.Framework.Audio
+module AudioEngine =
 
-type AudioEngine(sampleRate: int) =
+    open System.Collections.Generic
+    open OpenTK.Audio.OpenAL
 
-    let instance = new DynamicSoundEffectInstance(sampleRate, AudioChannels.Mono)
-    let mutable isPlaying = false
-    let mutable timeOffset = 0.0
+    type AudioEngine(sampleRate: int) =
+        // OpenALデバイス/コンテキスト
+        let device = ALC.OpenDevice(null)
+        let context = ALC.CreateContext(device, (null: int[]))
+        do ALC.MakeContextCurrent(context) |> ignore
 
-    member _.Submit(samples: float32 list) =
-        let clipped = samples |> List.map (fun s -> s |> max -1.0f |> min 1.0f)
+        let source = AL.GenSource()
+        let buffers = [| for _ in 1..6 -> AL.GenBuffer() |]
+        // バッファごとに送信したサンプル数を記録するキュー
+        let submittedLengths = Queue<int>()
+        let availableBuffers = Queue<int>(buffers)
 
-        let pcmArray = clipped |> List.map (fun x -> int16 (x * 32767.0f)) |> List.toArray
+        member _.Submit(samples: float32[]) =
+            // 再生済みバッファをすべてアンキューして available に戻す
+            let processed = AL.GetSource(source, ALGetSourcei.BuffersProcessed)
+            for _ in 1..processed do
+                let id = AL.SourceUnqueueBuffer(source)
+                availableBuffers.Enqueue(id)
+                if submittedLengths.Count > 0 then submittedLengths.Dequeue() |> ignore
 
-        let byteArray = Array.zeroCreate<byte> (pcmArray.Length * 2)
-        Buffer.BlockCopy(pcmArray, 0, byteArray, 0, byteArray.Length)
+            // バッファが足りなければ skip（または一時的に GenBuffer する？）
+            if availableBuffers.Count = 0 then
+                () // バッファ不足（本来は警告を出す）
 
-        instance.SubmitBuffer(byteArray)
+            else
+                // 空いてるバッファにPCMを書き込み
+                let pcm = samples |> Array.map (fun x -> int16 (x * 32767.0f)) // float32[] → int16[]（PCM16）へ変換
+                let bufferId = availableBuffers.Dequeue()
+                if pcm.Length > 0 then
+                    AL.BufferData(bufferId, ALFormat.Mono16, &pcm[0], pcm.Length * 2, sampleRate)
+                AL.SourceQueueBuffer(source, bufferId)
+                submittedLengths.Enqueue(samples.Length)
 
-        if instance.State <> SoundState.Playing then
-            instance.Play()
+                // ソースが止まっていたら再生
+                let state = AL.GetSource(source, ALGetSourcei.SourceState) |> enum<ALSourceState>
+                if state <> ALSourceState.Playing then
+                    AL.SourcePlay(source)
+
+        member _.PendingSamples =
+            submittedLengths |> Seq.sum
+
+        /// 明示的なリソース開放が必要らしい
+        member _.Dispose() =
+            AL.SourceStop(source)
+            AL.DeleteSource(source)
+            buffers |> Array.iter AL.DeleteBuffer
+            ALC.DestroyContext(context)
+            let closed = ALC.CloseDevice(device)
+            if not closed then
+                printfn "Warning: ALC.CloseDevice failed!"

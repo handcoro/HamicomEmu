@@ -108,6 +108,12 @@ type basicNesGame(loadedRom, traceFn) as this =
         graphics.PreferredBackBufferHeight <- Frame.height * scale
         graphics.ApplyChanges()
 
+    /// リソース開放
+    override _.Dispose(disposing: bool) =
+        if disposing then
+            audioEngine.Dispose()
+        base.Dispose(disposing)
+
     override _.Initialize() =
         this.IsFixedTimeStep <- true
         this.TargetElapsedTime <- TimeSpan.FromSeconds(1.0 / 60.0) // フレームの更新間隔
@@ -166,7 +172,7 @@ type basicNesGame(loadedRom, traceFn) as this =
             samples.Add(sample)
 
         // AudioEngine へ一括送信
-        audioEngine.Submit(samples |> Seq.toList)
+        audioEngine.Submit(samples |> Seq.toArray)
 
 
         base.Update(gameTime)
