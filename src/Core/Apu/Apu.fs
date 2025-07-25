@@ -455,23 +455,23 @@ module Apu =
         let ch4 = ch4 |> int
         let ch5 = ch5 |> int
 
-        let masterGain = 1.0f
+        let masterGain = 1.
 
         // 実機の回路を模したミキサーらしい
         // https://www.nesdev.org/wiki/APU_Mixer
         let pulseMix =
             if ch1 + ch2 = 0 then
-                0.0f
+                0.
             else
-                95.88f / (8128.0f / float32 (ch1 + ch2) + 100.0f)
+                95.88 / (8128. / float (ch1 + ch2) + 100.)
 
         let tndMix =
-            let t, n, d = float32 ch3, float32 ch4, float32 ch5
+            let t, n, d = float ch3, float ch4, float ch5
 
-            if t = 0.0f && n = 0.0f && d = 0.0f then
-                0.0f
+            if t = 0. && n = 0. && d = 0. then
+                0.
             else
-                159.79f / (1.0f / (t / 8227.0f + n / 12241.0f + d / 22638.0f) + 100.0f)
+                159.79 / (1.0 / (t / 8227. + n / 12241. + d / 22638.) + 100.)
 
         let sample = (pulseMix + tndMix) * masterGain
 

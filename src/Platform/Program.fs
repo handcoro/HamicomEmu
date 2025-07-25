@@ -9,6 +9,8 @@ open HamicomEmu.Trace
 open HamicomEmu.Platform.AudioEngine
 open HamicomEmu.Input
 
+open HamicomEmu.Audio
+
 open System
 open System.IO
 open FsToolkit.ErrorHandling
@@ -155,13 +157,17 @@ type basicNesGame(loadedRom, traceFn) as this =
         let cyclesPerSample = cpuClock / float sampleRate // ≒ 40.584
         let samplesPerFrame = sampleRate / 60 // = 735
 
+        let oversample = 4 // 4 の場合
+        let cyclesPerOversample = cyclesPerSample / float oversample // ≒ 10.146
+        let oversamplesPerFrame = samplesPerFrame * oversample // = 2940
+
         let mutable cycleAcc = 0.0
 
         // 1フレーム分のサンプルを作るバッファ
-        let samples = ResizeArray<float32>()
+        let samples = ResizeArray<float>()
 
-        for _ in 1..samplesPerFrame do
-            cycleAcc <- cycleAcc + cyclesPerSample
+        for _ in 1..oversamplesPerFrame do
+            cycleAcc <- cycleAcc + cyclesPerOversample
             while cycleAcc >= 1.0 do // 1.0 未満はサイクル端数として次サンプルに繰越し
                 let emu', used = EmulatorCore.tick emu traceFn // ← step が消費サイクル数を返すように
                 emu <- emu'
@@ -171,8 +177,18 @@ type basicNesGame(loadedRom, traceFn) as this =
             let sample = Apu.mix emu.bus.apu
             samples.Add(sample)
 
+        let samples =
+            samples
+            |> Seq.toArray
+            // |> SoundFilters.downsampleAverage oversample
+            // |> SoundFilters.cleanDownsample oversample
+            |> SoundFilters.downsampleWithLowpass oversample
+            // |> SoundFilters.simpleFirLowpass
+            // |> SoundFilters.firMovingAverageHighpass 15
+            |> SoundFilters.removeDC
+            |> Array.map float32
         // AudioEngine へ一括送信
-        audioEngine.Submit(samples |> Seq.toArray)
+        audioEngine.Submit(samples)
 
 
         base.Update(gameTime)

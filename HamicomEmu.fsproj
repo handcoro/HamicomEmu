@@ -38,6 +38,7 @@
     <Compile Include="src\Core\Trace.fs" />
     <Compile Include="src\Platform\AudioEngine.fs" />
     <Compile Include="src\Tests.fs" />
+    <Compile Include="src\Core\Audio\SoundFilters.fs" />
     <Compile Include="src\Platform\Program.fs" />
   </ItemGroup>
   <ItemGroup>
