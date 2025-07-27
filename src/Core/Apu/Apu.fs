@@ -5,7 +5,8 @@ module Apu =
     open HamicomEmu.Apu.Types
     open HamicomEmu.Common
     open HamicomEmu.Common.BitUtils
-
+    open HamicomEmu.Audio.BlipBuffer
+    open HamicomEmu.Apu.Constants
     let initialLowPassFilter = { lastOutput = 0.0f }
 
     let initialFrameCounter = {
@@ -24,6 +25,7 @@ module Apu =
         status = 0uy
         frameCounter = initialFrameCounter
         cycle = 0u
+        blipCycle = 0.
         step = Step1
     }
 
@@ -137,12 +139,26 @@ module Apu =
         let mutable stall = None
 
         apu.cycle <- apu.cycle + 1u
+        apu.blipCycle <- apu.blipCycle + 1.
 
         let mode = apu.frameCounter.mode
 
         if apu.cycle >= Constants.frameStepCycles then
 
+            // Blip の強制読み出し
+            // この間に音声再生バッファに送らないといけない
+            // let pul1 = Pulse.tick apu.pulse1
+            // let pul2 = Pulse.tick apu.pulse2
+            // pul1.blip.ReadSamples(pul1.blipOutputs, int apu.cycle) |> ignore
+            // pul2.blip.ReadSamples(pul2.blipOutputs, int apu.cycle) |> ignore
+            apu.pulse1.blip.Clear()
+            apu.pulse2.blip.Clear()
+            printfn "* BLIP CLEARED *"
+            // apu.pulse1.blip.EndFrame(int apu.cycle)
+            // apu.pulse2.blip.EndFrame(int apu.cycle)
+
             apu.cycle <- apu.cycle - Constants.frameStepCycles
+
 
             // フレームステップ更新
             apu <- runFrameStep apu.step mode apu
@@ -153,20 +169,34 @@ module Apu =
             | Step5, FiveStep -> apu.step <- Step1
             | _ -> apu.step <- nextStep apu.step
 
-        // 矩形波は CPU サイクル 2 ごとにタイマーを
+        let time = 4. * float apu.cycle / (Constants.cpuClockNTSC / float sampleRate)
+
+        // 矩形波は CPU サイクル 2 ごとにタイマーを動かす
         if apu.cycle % 2u <> 0u then
             let pul1 = Pulse.tick apu.pulse1
             let pul2 = Pulse.tick apu.pulse2
+
+            // Blip のエッジ情報更新
+            let d1 = Pulse.getDelta pul1
+            let d2 = Pulse.getDelta pul2
+
+            if d1 <> 0. then
+                pul1.blip.AddDelta(float time, d1)
+                Pulse.updateLastOutput pul1 d1
+            if d2 <> 0. then
+                pul2.blip.AddDelta(float time, d2)
+                Pulse.updateLastOutput pul2 d2
 
             apu.pulse1 <- pul1
             apu.pulse2 <- pul2
 
         let tri = Triangle.tick apu.triangle
         let noi = Noise.tick apu.noise
-        let dmc', r, s = Dmc.tick apu.dmc
+        let dmc, r, s = Dmc.tick apu.dmc
+
         apu.triangle <- tri
         apu.noise <- noi
-        apu.dmc <- dmc'
+        apu.dmc <- dmc
         req <- r
         stall <- s
 

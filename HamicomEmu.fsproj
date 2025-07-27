@@ -21,6 +21,7 @@
     <Compile Include="src\Core\Ppu\Screen.fs" />
     <Compile Include="src\Core\Ppu\Ppu.fs" />
     <Compile Include="src\Core\Ppu\Renderer.fs" />
+    <Compile Include="src\Core\Audio\BlipBuffer.fs" />
     <Compile Include="src\Core\Apu\ApuTypes.fs" />
     <Compile Include="src\Core\Apu\ApuConstants.fs" />
     <Compile Include="src\Core\Apu\ApuCommon.fs" />
@@ -36,9 +37,11 @@
     <Compile Include="src\Core\Cpu.fs" />
     <Compile Include="src\Core\EmulatorCore.fs" />
     <Compile Include="src\Core\Trace.fs" />
+    <Compile Include="src\Core\Audio\Mixer.fs" />
     <Compile Include="src\Platform\AudioEngine.fs" />
     <Compile Include="src\Tests.fs" />
     <Compile Include="src\Core\Audio\SoundFilters.fs" />
+    <!-- <Compile Include="src\Tests.fs" /> -->
     <Compile Include="src\Platform\Program.fs" />
   </ItemGroup>
   <ItemGroup>

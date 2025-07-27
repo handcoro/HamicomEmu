@@ -2,6 +2,8 @@ namespace HamicomEmu.Apu
 
 module Types =
 
+    open HamicomEmu.Audio.BlipBuffer
+
     type EnvelopeState = {
       mutable volume: byte
       mutable divider: byte
@@ -39,6 +41,10 @@ module Types =
         mutable lengthCounter: byte
 
         mutable dutyStep: int
+        blip: BlipBuffer
+        blipOutputs: float[]
+
+        mutable lastOutput: float
     }
 
     type TriangleState = {
@@ -126,6 +132,7 @@ module Types =
         status: byte
         frameCounter: FrameCounter
         mutable cycle: uint
+        mutable blipCycle: float
         mutable step: FrameStep
     }
 

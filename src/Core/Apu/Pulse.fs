@@ -4,6 +4,8 @@ module Pulse =
 
     open HamicomEmu.Common
     open HamicomEmu.Apu.Types
+    open HamicomEmu.Audio.BlipBuffer
+    open HamicomEmu.Apu.Constants
 
     let init ch = {
         channel = ch
@@ -21,6 +23,10 @@ module Pulse =
         lengthCounter = 1uy
 
         dutyStep = 0
+        blip = BlipBuffer(sampleRate, bufferSize, numPhase, kernelLength)
+        blipOutputs = Array.zeroCreate bufferSize
+
+        lastOutput = 0.
     }
 
     let tick (pulse: PulseState) =
@@ -53,3 +59,11 @@ module Pulse =
                 0uy
 
         sample
+
+    let getDelta (pulse: PulseState) =
+        let newValue = output pulse |> float
+        let delta = newValue - pulse.lastOutput
+        delta
+
+    let updateLastOutput (pulse: PulseState) delta =
+        pulse.lastOutput <- pulse.lastOutput + delta

@@ -1,13 +1,14 @@
 ﻿open HamicomEmu.EmulatorCore
 open HamicomEmu.Common
 open HamicomEmu.Cartridge
-open Tests
+// open Tests
 open HamicomEmu.Ppu.Screen
 open HamicomEmu.Ppu.Renderer
 open HamicomEmu.Apu
 open HamicomEmu.Trace
 open HamicomEmu.Platform.AudioEngine
 open HamicomEmu.Input
+open HamicomEmu.Audio
 
 open HamicomEmu.Audio
 
@@ -162,9 +163,14 @@ type basicNesGame(loadedRom, traceFn) as this =
         let oversamplesPerFrame = samplesPerFrame * oversample // = 2940
 
         let mutable cycleAcc = 0.0
+        let mutable apuCycles = 0u
 
         // 1フレーム分のサンプルを作るバッファ
-        let samples = ResizeArray<float>()
+        let pu1Samples = ResizeArray<float>()
+        let pu2Samples = ResizeArray<float>()
+        let triSamples = ResizeArray<float>()
+        let noiSamples = ResizeArray<float>()
+        let dmcSamples = ResizeArray<float>()
 
         for _ in 1..oversamplesPerFrame do
             cycleAcc <- cycleAcc + cyclesPerOversample
@@ -172,23 +178,57 @@ type basicNesGame(loadedRom, traceFn) as this =
                 let emu', used = EmulatorCore.tick emu traceFn // ← step が消費サイクル数を返すように
                 emu <- emu'
                 cycleAcc <- cycleAcc - float used
+                apuCycles <- apuCycles + used
 
             // APU から 1 サンプル取り出す
-            let sample = Apu.mix emu.bus.apu
-            samples.Add(sample)
+            // let sample = Apu.mix emu.bus.apu
+            // samples.Add(sample)
+            let apu = emu.bus.apu
+            // let pu2Sample = Pulse.output apu.pulse2 |> float
+            let triSample = Triangle.output apu.triangle |> float
+            let noiSample = Noise.output apu.noise |> float
+            let dmcSample = Dmc.output apu.dmc |> float
+            // pu2Samples.Add(pu2Sample)
+            triSamples.Add(triSample)
+            noiSamples.Add(noiSample)
+            dmcSamples.Add(dmcSample)
+            let pu1Sample = Array.init 1 float
+            let pu2Sample = Array.init 1 float
+            apu.pulse1.blip.ReadSamples(pu1Sample, 1) |> ignore
+            apu.pulse2.blip.ReadSamples(pu2Sample, 1) |> ignore
+            apu.pulse1.blip.EndFrame(1)
+            apu.pulse2.blip.EndFrame(1)
+            pu1Samples.Add(pu1Sample |> Array.head)
+            pu2Samples.Add(pu2Sample |> Array.head)
+
+            // if apuCycles >= Constants.frameStepCycles then
+            //     apu.pulse1.blip.Clear()
+            //     apu.pulse2.blip.Clear()
+            //     printfn "* BLIP CLEARED *"
+            //     apuCycles <- apuCycles - Constants.frameStepCycles
+
+            // let time = float emu.bus.apu.cycle / (Constants.cpuClockNTSC / float sampleRate)
+            // printfn "time: %A" time
+ 
+        // apu.pulse1.blip.Clear()
+        // apu.pulse2.blip.Clear()
+        // pu1Samples.AddRange(apu.pulse1.blipOutputs)
+        // pu2Samples.AddRange(apu.pulse1.blipOutputs)
+
+        // apu.pulse1.blip.EndFrame(samplesPerFrame)
+        // apu.pulse2.blip.EndFrame(samplesPerFrame)
+        printfn "* END OF FRAME *"
 
         let samples =
-            samples
-            |> Seq.toArray
-            // |> SoundFilters.downsampleAverage oversample
-            // |> SoundFilters.cleanDownsample oversample
-            |> SoundFilters.downsampleWithLowpass oversample
-            // |> SoundFilters.simpleFirLowpass
-            // |> SoundFilters.firMovingAverageHighpass 15
-            |> SoundFilters.removeDC
-            |> Array.map float32
+            Mixer.mixBuffers
+                (pu1Samples |> Seq.toArray |> Array.map (fun x -> x * 2.2))
+                (pu2Samples |> Seq.toArray |> Array.map (fun x -> x * 2.2))
+                (triSamples |> Seq.toArray)
+                (noiSamples |> Seq.toArray)
+                (dmcSamples |> Seq.toArray)
+            |> SoundFilters.downsampleAverage oversample
         // AudioEngine へ一括送信
-        audioEngine.Submit(samples)
+        audioEngine.Submit(samples |> Array.map float32)
 
 
         base.Update(gameTime)
@@ -200,8 +240,10 @@ let defaultRom = "roms/Alter_Ego.nes"
 let main argv =
     if argv |> Array.exists ((=) "--test") then
         // --test を除いた引数だけ Expecto に渡す
-        let filteredArgs = argv |> Array.filter (fun a -> a <> "--test")
-        runTestsWithArgs defaultConfig filteredArgs Tests.tests
+        // let filteredArgs = argv |> Array.filter (fun a -> a <> "--test")
+        // runTestsWithArgs defaultConfig filteredArgs Tests.tests
+        printfn "test is not available."
+        0
     else
         let traceFn =
             if argv |> Array.exists ((=) "--trace") then

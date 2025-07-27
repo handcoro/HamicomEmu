@@ -3,6 +3,11 @@ namespace HamicomEmu.Apu
 module Constants =
 
     let frameStepCycles = 7457u // 1 step のサイクル数
+    let sampleRate = 44100
+    // -- BlipBuffer 用 --
+    let bufferSize = 8192
+    let numPhase = 128
+    let kernelLength = 512
 
     let dutyTable = [|
         [| 0; 1; 0; 0; 0; 0; 0; 0 |] // 12.5%
