@@ -55,6 +55,13 @@ module Renderer =
         | 1uy, 0uy -> true // 背景がパレット 0（透明）ならスプライト
         | _ -> false // それ以外は背景
 
+    /// 画面左端 8 ピクセルの位置
+    let inline inLeftmostRange x = x >= 0 && x <= 7
+
+    let inline isHideSpritesInLeftmostAndInRange x ppu = Ppu.isHideSpritesInLeftmost ppu && inLeftmostRange x
+
+    let inline isHideBackgroundInLeftmostAndInRange x ppu = Ppu.isHideBackgroundInLeftmost ppu && inLeftmostRange x
+
     /// タイル指定のスプライト描画
     let drawSpriteTile ppu snapshots tileStart tileX tileY attr frame =
         if tileY >= 240 then
@@ -81,7 +88,7 @@ module Renderer =
                     let value = (bit1 <<< 1) ||| bit0
 
                     if value <> 0uy then
-                        let color = nesPalette[int sprPal[int value]]
+                        let rgb = nesPalette[int sprPal[int value]]
 
                         let px, py =
                             match flipHorizontal, flipVertical with
@@ -90,13 +97,15 @@ module Renderer =
                             | false, true -> tileX + x, tileY + 7 - y
                             | true, true -> tileX + 7 - x, tileY + 7 - y
 
-                        let pos = py * Frame.width + px
-
-                        if isValidPixel (uint px) (uint py) then
+                        if
+                            isValidPixel (uint px) (uint py) &&
+                            not(isHideSpritesInLeftmostAndInRange px ppu)
+                        then
+                            let pos = py * Frame.width + px
                             let bgIdx = frame.bgPaletteIdx[pos]
 
                             if spriteOverBackground priority bgIdx then
-                                frameAcc <- setSpritePixel (uint px) (uint py) color frameAcc
+                                frameAcc <- setSpritePixel (uint px) (uint py) rgb frameAcc
 
             frameAcc
 
@@ -193,7 +202,6 @@ module Renderer =
                             let bit0 = (upper >>> (7 - x)) &&& 1uy
                             let bit1 = (lower >>> (7 - x)) &&& 1uy
                             let value = (bit1 <<< 1) ||| bit0
-                            let rgb = nesPalette[int palette[int value]]
                             let px = tileX * 8 + x
                             let py = tileY * 8 + y
 
@@ -201,6 +209,12 @@ module Renderer =
                                 px >= int viewPort.x1 && px < int viewPort.x2 &&
                                 py >= int viewPort.y1 && py < int viewPort.y2
                             then
+                                let rgb =
+                                    if isHideBackgroundInLeftmostAndInRange (shiftX + px) ppu then
+                                        nesPalette[int palette[0]]
+                                    else
+                                        nesPalette[int palette[int value]]
+
                                 frameAcc <-
                                     setBackgroundPixel (uint (shiftX + px)) (uint (shiftY + py)) rgb value frameAcc
 

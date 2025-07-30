@@ -283,9 +283,15 @@ module Ppu =
                 scroll.w = w'
         }
 
-    let inline private renderingEnabled ppu =
-        hasFlag MaskFlags.backgroundRendering ppu.mask
-        || hasFlag MaskFlags.spriteRendering ppu.mask
+    let inline isHideBackgroundInLeftmost ppu = hasFlag MaskFlags.showBackgroundInLeftmost ppu.mask |> not
+
+    let inline isHideSpritesInLeftmost ppu = hasFlag MaskFlags.showSpritesInLeftmost ppu.mask |> not
+
+    let inline isRenderingBackgroundEnabled ppu = hasFlag MaskFlags.backgroundRendering ppu.mask
+    let inline isRenderingSpritesEnabled ppu = hasFlag MaskFlags.spriteRendering ppu.mask
+
+    let inline private isRenderingEnabled ppu =
+        isRenderingBackgroundEnabled ppu || isRenderingSpritesEnabled ppu
 
     /// PPU を n サイクル進める（1スキャンラインをまたぐときは精密タイミング処理を行う）
     /// TODO: 再現度向上のためにはレンダリングを tick 内で行うようにしたい
@@ -294,7 +300,7 @@ module Ppu =
         let c, s = ppu.cycle, ppu.scanline
         let newCycle = c + 1u
 
-        if renderingEnabled ppu then
+        if isRenderingEnabled ppu then
             // v ← t: 水平スクロール位置コピー
             if s < 240us && newCycle = 257u then
                 // v[0:4] ← t[0:4] (coarse X)
