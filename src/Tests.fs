@@ -6,6 +6,7 @@ open Expecto
 open HamicomEmu.Common.BitUtils
 open HamicomEmu.Cpu
 open HamicomEmu.Bus
+open HamicomEmu.Ppu.Scroll
 open HamicomEmu.Ppu
 open HamicomEmu.Apu
 open HamicomEmu.Apu.Types
@@ -433,6 +434,62 @@ let tests =
                 Expect.equal ppu4.scroll.v 0x80us "v should be set to $80"
                 Expect.isFalse ppu4.scroll.w "w should be false"
             }
+        ]
+
+        testList "PPU Scroll.v tests" [
+
+            test "coarseX increment" {
+                let v = 0us ||| 1us  // coarseX = 1
+                let result = incrementCoarseX v
+                let expected = v + 1us
+                Expect.equal result expected "coarseX should increment"
+            }
+
+            test "coarseX wrap and switch horizontal nametable" {
+                let v = coarseXMask // coarseX = 31
+                let result = incrementCoarseX v
+                let expected = 0us ^^^ horizontalNTMask
+                Expect.equal result expected "coarseX wrap and horizontal nametable toggle"
+            }
+
+            test "fineY increment (fineY < 7)" {
+                for fy in 0us .. 6us do
+                    let v = fy <<< 12
+                    let result = incrementY v
+                    let expected = v + 0x1000us
+                    Expect.equal result expected $"fineY={fy}: fineY should increment"
+            }
+
+            test "fineY wrap and coarseY++" {
+                let fineY7 = 7us <<< 12
+                let coarseY3 = 3us <<< 5
+                let v = fineY7 ||| coarseY3
+                let result = incrementY v
+                let expected = (v &&& ~~~fineYMask) + 0x0020us
+                Expect.equal result expected "fineY wrap and coarseY increment"
+            }
+
+            test "coarseY = 29 → wrap and toggle vertical nametable" {
+                let fineY7 = 7us <<< 12
+                let coarseY29 = 29us <<< 5
+                let v = fineY7 ||| coarseY29
+                let result = incrementY v
+                let expected =
+                    ((v &&& ~~~fineYMask) &&& ~~~coarseYMask) ^^^ verticalNTMask
+                Expect.equal result expected "coarseY=29 triggers vertical nametable switch"
+            }
+
+            test "coarseY = 31 → wrap without toggle" {
+                let fineY7 = 7us <<< 12
+                let coarseY31 = 31us <<< 5
+                let v = fineY7 ||| coarseY31
+                let result = incrementY v
+                let expected =
+                    (v &&& ~~~fineYMask)
+                    &&& ~~~coarseYMask
+                Expect.equal result expected "coarseY=31 wraps without toggle"
+            }
+
         ]
     ]
 

@@ -93,7 +93,6 @@ type basicNesGame(loadedRom, traceFn) as this =
     let raw = loadedRom
     let parsed = raw |> Result.bind parseCartridge
     let mutable emu = Unchecked.defaultof<EmulatorCore.EmulatorState>
-    let mutable frame = initialFrame
     let traceFn = traceFn
 
     do
@@ -127,10 +126,10 @@ type basicNesGame(loadedRom, traceFn) as this =
     override _.Draw(gameTime) =
         this.GraphicsDevice.Clear(Color.Black)
         spriteBatch.Begin(samplerState = SamplerState.PointClamp)
-        frame <- renderScanlineBased emu.bus.ppu emu.ppuSnapshot frame
+        let fr = renderFrame emu.bus.ppu
 
         let colorData =
-            frame.data |> Array.map (fun (r, g, b) -> Color(int r, int g, int b))
+            fr |> Array.map (fun (r, g, b) -> Color(int r, int g, int b))
 
         texture.SetData(colorData)
         let destRect = Rectangle(0, 0, Frame.width * scale, Frame.height * scale)

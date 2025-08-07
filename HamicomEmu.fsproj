@@ -19,6 +19,7 @@
     <Compile Include="src\Core\Ppu\PpuTypes.fs" />
     <Compile Include="src\Core\Ppu\Palette.fs" />
     <Compile Include="src\Core\Ppu\Screen.fs" />
+    <Compile Include="src\Core\Ppu\Scroll.fs" />
     <Compile Include="src\Core\Ppu\Ppu.fs" />
     <Compile Include="src\Core\Ppu\Renderer.fs" />
     <Compile Include="src\Core\Apu\ApuTypes.fs" />

@@ -142,10 +142,10 @@ module Mapper =
         else
             cart.chrRam
 
-    let ppuRead addr cart mapper =
+    let ppuRead addr cart =
         let addr = int addr
 
-        match mapper with
+        match cart.mapper with
         | MMC1 state ->
             let data = MMC1.ppuRead addr (getChrMem cart) state
             data
@@ -172,7 +172,7 @@ module Mapper =
         | MMC1 _
         | CNROM _
         | VRC1 _
-        | J87 _ -> Array.init (endAddr - startAddr + 1) (fun i -> ppuRead (startAddr + i) cart mapper)
+        | J87 _ -> Array.init (endAddr - startAddr + 1) (fun i -> ppuRead (startAddr + i) cart)
 
         | NROM _
         | _ when cart.chrRom <> [||] -> cart.chrRom[startAddr..endAddr]

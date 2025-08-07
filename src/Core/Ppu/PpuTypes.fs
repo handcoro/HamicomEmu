@@ -21,6 +21,20 @@ module Types =
         w: bool
     }
 
+    type ShiftRegisters = {
+        mutable patternLow: uint16
+        mutable patternHigh: uint16
+        mutable attrLow: uint16
+        mutable attrHigh: uint16
+    }
+
+    type PpuLatches = {
+        mutable tile: byte
+        mutable attr: byte
+        mutable patternLow: byte
+        mutable patternHigh: byte
+    }
+
     type PpuState = {
         cartridge: Cartridge
         pal: byte array
@@ -36,15 +50,13 @@ module Types =
         mutable cycle: uint
         mutable nmiInterrupt: option<byte>
         clearNmiInterrupt: bool
+        workBuffer: byte array
+        frameBuffer: byte array
+        regs: ShiftRegisters
+        latches: PpuLatches
         mutable scrollPerScanline: ScrollRegisters array
         mutable ctrlPerScanline: byte array
         mutable mapperPerScanline: Mapper array
         mutable frameIsOdd: bool
-        mutable frameJustCompleted: bool
     }
 
-    type PpuPublicState = {
-        scrollPerScanline: ScrollRegisters array
-        ctrlPerScanline: byte array
-        mapperPerScanline: Mapper array
-    }
