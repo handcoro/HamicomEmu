@@ -35,11 +35,25 @@ module Types =
         mutable patternHigh: byte
     }
 
+    [<Struct>]
+    type SpriteInfo = {
+        mutable index: int
+        mutable y: byte
+        mutable tile: byte
+        mutable attr: byte
+        mutable x: byte
+        mutable tileLo: byte
+        mutable tileHi: byte
+    }
+
     type PpuState = {
         cartridge: Cartridge
         pal: byte array
         vram: byte array
         oam: byte array
+        mutable secondarySprites: SpriteInfo array
+        mutable secondarySpritesCount: int
+        mutable hasSprite: bool array
         mutable oamAddr: byte
         scroll: ScrollRegisters
         ctrl: byte
