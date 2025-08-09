@@ -87,6 +87,8 @@ module Mapper =
 
         | UxROM state -> readUxrom addr cart state
 
+        | GxROM state -> Gxrom.cpuRead addr prg state
+
         | VRC1 state -> VRC1.cpuRead addr prg state
 
         | NROM _
@@ -111,6 +113,10 @@ module Mapper =
             let v = value &&& romSignal
             let newState = { bankSelect = v }
             CNROM newState, ()
+        
+        | GxROM _ when addr >= 0x8000 ->
+            let newState = Gxrom.cpuWrite addr value
+            GxROM newState, ()
 
         | VRC1 state ->
             let newState = VRC1.cpuWrite addr value state
@@ -153,6 +159,10 @@ module Mapper =
         | CNROM state ->
             let addr' = getChrAddressCnrom addr cart state
             cart.chrRom[addr']
+
+        | GxROM state ->
+            let data = Gxrom.ppuRead addr (getChrMem cart) state
+            data
 
         | VRC1 state ->
             let data = VRC1.ppuRead addr (getChrMem cart) state
