@@ -36,24 +36,7 @@ module Mapper =
 
         cart.prgRom[addr2]
 
-    let readUxrom addr cart state =
-        let prg = cart.prgRom
-        let bankSize = 16 * 1024 // 16 KB
-        let totalBanks = prg.Length / bankSize
 
-        if addr >= 0x8000 && addr < 0xC000 then
-            // 可変バンク
-            let offset = getOffset (int state.bankSelect % totalBanks) bankSize 0x8000
-            prg[addr + offset]
-
-        elif addr >= 0xC000 then
-            // 固定バンク（最後尾）
-            let offset = getOffset (totalBanks - 1) bankSize 0xC000
-            prg[addr + offset]
-
-        else
-            // PRG-ROM の外参照
-            0uy
 
     let readPrgRam (addr: uint16) cart =
         let addr = int addr
@@ -85,7 +68,7 @@ module Mapper =
         | MMC1 state ->
             MMC1.cpuRead addr prg state
 
-        | UxROM state -> readUxrom addr cart state
+        | UxROM state -> Uxrom.cpuRead addr prg state
 
         | GxROM state -> Gxrom.cpuRead addr prg state
 
@@ -104,7 +87,7 @@ module Mapper =
 
         | UxROM _ when addr >= 0x8000 ->
             // bank 選択
-            let newState = { bankSelect = value &&& 0x0Fuy }
+            let newState = Uxrom.cpuWrite addr value
             UxROM newState, ()
 
         | CNROM _ when addr >= 0x8000 ->

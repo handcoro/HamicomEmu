@@ -5,7 +5,7 @@ module Types =
     type Mapper =
         | NROM of NromState // マッパー 0
         | MMC1 of MMC1.State // マッパー 1
-        | UxROM of UxromState // マッパー2
+        | UxROM of Uxrom.State // マッパー2
         | CNROM of CnromState
         | GxROM of Gxrom.State
         | J87 of J87.State
@@ -13,5 +13,4 @@ module Types =
 
     and NromState = unit
     and BankSelectState = { bankSelect: byte }
-    and UxromState = BankSelectState
     and CnromState = BankSelectState
