@@ -65,11 +65,29 @@ let handleJoypadInput (input: InputSource) joy =
 
     joy
 
-let loadRom path =
+let createSaveFilename cartridgeFilePath =
+        cartridgeFilePath + ".save"
+
+let saveRamFile path emu =
+    let data = EmulatorCore.fetchRamData emu
+    match data with
+    | Some raw ->
+        use writer = new BinaryWriter(File.Open(path, FileMode.Create))
+        writer.Write(raw)
+        printfn $"Saved: {path}"
+    | None -> ()
+
+let loadRamFile path =
     try
         Ok(File.ReadAllBytes(path))
     with e ->
-        Error $"Failed to load ROM: {e.Message}"
+        Error $"Failed to load savefile '{path}': {e.Message}"
+
+let loadCartridgeFile path =
+    try
+        Ok(File.ReadAllBytes(path))
+    with e ->
+        Error $"Failed to load Cartridge: {e.Message}"
 
 let frameToTexture (graphics: GraphicsDevice) (frame: Frame) : Texture2D =
     let tex = new Texture2D(graphics, Frame.width, Frame.height)
@@ -80,7 +98,7 @@ let frameToTexture (graphics: GraphicsDevice) (frame: Frame) : Texture2D =
     tex.SetData(colorData)
     tex
 
-type basicNesGame(loadedRom, traceFn) as this =
+type basicNesGame(raw, cartridgePath, traceFn) as this =
 
     inherit Game()
     let scale = 4
@@ -90,17 +108,27 @@ type basicNesGame(loadedRom, traceFn) as this =
     let mutable texture = Unchecked.defaultof<Texture2D>
     let mutable audioEngine = AudioEngine(sampleRate)
 
-    let raw = loadedRom
-    let parsed = raw |> Result.bind parseCartridge
+    let parsed = parseCartridge raw
+
+    let cartPath = cartridgePath
     let mutable emu = Unchecked.defaultof<EmulatorCore.EmulatorState>
     let traceFn = traceFn
 
     do
         match parsed with
-        | Ok rom ->
-            emu <- EmulatorCore.init rom
+        | Ok cart ->
+            emu <- EmulatorCore.init cart
             let emu' = EmulatorCore.reset emu
-            emu <- emu'
+            let emu'' =
+                let saveFile = createSaveFilename cartPath
+                match loadRamFile saveFile with
+                | Ok data ->
+                    printfn $"Savefile loaded: {saveFile}"
+                    EmulatorCore.storeRamData data emu'
+                | Error _ ->
+                    emu'
+
+            emu <- emu''
         | Error e -> failwith $"Failed to parse ROM: {e}"
 
         graphics.PreferredBackBufferWidth <- Frame.width * scale
@@ -110,6 +138,8 @@ type basicNesGame(loadedRom, traceFn) as this =
     /// リソース開放
     override _.Dispose(disposing: bool) =
         if disposing then
+            let savePath = createSaveFilename cartPath
+            saveRamFile savePath emu
             audioEngine.Dispose()
         base.Dispose(disposing)
 
@@ -177,7 +207,16 @@ type basicNesGame(loadedRom, traceFn) as this =
         base.Update(gameTime)
 
 /// https://www.nesworld.com/article.php?system=nes&data=neshomebrew
-let defaultRom = "roms/Alter_Ego.nes"
+let defaultCart = "roms/Alter_Ego.nes"
+
+let loadDefaultCartridge f =
+    printfn $"Load default Cartridge {defaultCart}"
+    match loadCartridgeFile defaultCart with
+    | Ok raw ->
+        use game = new basicNesGame (raw, defaultCart, f)
+        game.Run()
+    | Error msg ->
+        printfn $"{msg}"
 
 [<EntryPoint>]
 let main argv =
@@ -193,17 +232,16 @@ let main argv =
                 fun _ -> ()
 
         match argv |> Array.tryHead with
-        | Some romPath ->
-            match loadRom romPath with
-            | Ok rom ->
-                use game = new basicNesGame (loadRom romPath, traceFn)
+        | Some path ->
+            match loadCartridgeFile path with
+            | Ok raw ->
+                use game = new basicNesGame (raw, path, traceFn)
                 game.Run()
                 0
             | Error msg ->
-                use game = new basicNesGame (loadRom defaultRom, traceFn)
-                game.Run()
+                printfn $"{msg}"
+                loadDefaultCartridge traceFn
                 0
         | None ->
-            use game = new basicNesGame (loadRom defaultRom, traceFn)
-            game.Run()
+            loadDefaultCartridge traceFn
             0

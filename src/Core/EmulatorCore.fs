@@ -6,6 +6,7 @@ module EmulatorCore =
     open HamicomEmu.Bus
     open HamicomEmu.Ppu
     open HamicomEmu.Ppu.Types
+    open HamicomEmu.Mapper
 
     type EmulatorState = {
         cpu: Cpu.CpuState
@@ -27,6 +28,13 @@ module EmulatorCore =
             cpu = cpu'
             bus = bus'
         }
+
+    let fetchRamData emu =
+        Mapper.getPrgRam emu.bus.cartridge
+
+    let storeRamData data emu =
+        let cart = Mapper.setPrgRam data emu.bus.cartridge
+        { emu with bus.cartridge = cart }
 
     /// ステップの実行回数指定をできるようにしてあるけど使わないかも
     /// TODO: Bus.tick を 1 ずつ回すようにした影響で再現度は上がったけど実行速度が犠牲に！適宜各種状態の mutable 化を検討中
@@ -57,7 +65,7 @@ module EmulatorCore =
                         | (b, None), false -> // 通常進行
                             // 通常進行の場合はトレース実行
                             trace emu
-                            // FIXME: CLI, SEI, PLP の IRQ 抑制だけど後でもっといい仕組みを考える
+                            // FIXME: CLI, SEI, PLP の IRQ 抑制は後でもっといい仕組みを考える
                             let c = if suppressIrq then Cpu.clearSuppressIrq emu.cpu else emu.cpu
                             let c', b, con = Cpu.step c b
                             c', b, con

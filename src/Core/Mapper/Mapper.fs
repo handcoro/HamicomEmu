@@ -60,6 +60,21 @@ module Mapper =
             printfn "[MAPPER %A] write to PRG Ram is not supported." cart.mapper
             cart.mapper, ()
 
+    let getPrgRam cart =
+        match cart.mapper with
+        | MMC1 state ->
+            Some state.prgRam
+        | _ ->
+            None
+
+    let setPrgRam data cart =
+        match cart.mapper with
+        | MMC1 state ->
+            MMC1.setPrgRam data state
+            cart
+        | _ ->
+            cart
+
     let cpuRead (addr: uint16) cart =
         let addr = int addr
         let prg = cart.prgRom
@@ -110,14 +125,6 @@ module Mapper =
             cart.mapper, ()
 
     let getChrAddressCnrom addr cart state =
-        let chr = cart.chrRom
-        let bankSize = 8 * 1024
-        let totalBanks = chr.Length / bankSize
-
-        let offset = getOffset (int state.bankSelect % totalBanks) bankSize 0
-        addr + offset
-
-    let getChrAddressJ87 addr cart state =
         let chr = cart.chrRom
         let bankSize = 8 * 1024
         let totalBanks = chr.Length / bankSize

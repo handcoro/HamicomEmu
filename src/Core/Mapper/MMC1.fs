@@ -49,6 +49,7 @@ module MMC1 =
         prgRam = Array.create 0x2000 0uy
         prgRamDisable = false
     }
+
     let resetShiftAndCount = 0x10uy, 0
 
     let parseChrBankMode v =
@@ -95,6 +96,9 @@ module MMC1 =
     let writePrgRam addr value state =
         state.prgRam[addr - basePrgRamAddr] <- value
         state
+
+    let setPrgRam data state =
+        Array.blit data 0 state.prgRam 0 data.Length
 
     let cpuRead addr (prg: byte[]) state =
         let mode = state.prgBankMode
