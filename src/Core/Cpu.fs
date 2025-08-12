@@ -638,8 +638,17 @@ module Cpu =
 
     let isSuppressIrq cpu = cpu.suppressIrq
 
+    let powerOn cart =
+        let cpu = init
+        let bus = Bus.init cart
+        let pc, bus = Bus.memRead16 0xFFFCus bus // リセットベクタを読み込む
+        { cpu with pc = pc}, bus
+
     let reset cpu bus =
-        let pc, bus' = Bus.memRead16 0xFFFCus bus // リセットベクタを読み込む
+        let pc, bus = Bus.memRead16 0xFFFCus bus // リセットベクタを読み込む
+        let bus = Bus.memWrite 0x4015us 0uy bus // APU の全てのチャンネルを無効化
+        let triPhase = 0
+        let dmcDirectLoad = bus.apu.dmc.outputLevel &&& 1uy
 
         {
             cpu with
@@ -648,8 +657,13 @@ module Cpu =
                 y = 0uy
                 p = Flags.I ||| Flags.U
                 pc = pc
+                sp = cpu.sp - 3uy
         },
-        bus'
+        {
+            bus with
+                apu.triangle.triangleStep = triPhase
+                apu.dmc.outputLevel = dmcDirectLoad
+        }
 
     /// 命令を関数に対応させる（プログラムカウンタを通常加算させる命令）
     let execMap =

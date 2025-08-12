@@ -13,11 +13,11 @@ module EmulatorCore =
         bus: Bus.BusState
     }
 
-    let init cart =
-        let bus = Bus.init cart
+    let powerOn cart =
+        let cpu, bus = Cpu.powerOn cart
 
         {
-            cpu = Cpu.init
+            cpu = cpu
             bus = bus
         }
 

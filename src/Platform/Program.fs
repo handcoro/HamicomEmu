@@ -23,6 +23,14 @@ type InputSource =
     | Keyboard of KeyboardState
     | Gamepad of GamePadState
 
+// 電源やリセット操作用の直前のキー状態を覚えておく
+let mutable prevFuncKeyboardState = Keyboard.GetState()
+
+let functionKeyMap = [ // ゲーム外操作用
+    Keys.R, EmulatorCore.reset
+    Keys.P, (fun emu -> EmulatorCore.powerOn emu.bus.cartridge) // 電源をトグル
+]
+
 let keyMap = [
     Keys.Right, Joypad.Button.right
     Keys.Left, Joypad.Button.left
@@ -48,6 +56,8 @@ let padMap = [
 
 let isKeyPressed (ks: KeyboardState) key = ks.IsKeyDown key
 
+let wasKeyPressed (prev: KeyboardState) key = prev.IsKeyDown key
+
 let isPadPressed (gs: GamePadState) button = gs.IsButtonDown button
 
 let handleJoypadInput (input: InputSource) joy =
@@ -65,6 +75,23 @@ let handleJoypadInput (input: InputSource) joy =
 
     joy
 
+let handleFunctionKeyInput (input: InputSource) emu =
+    match input with
+    | Keyboard ks ->
+        let emu' =
+            functionKeyMap
+            |> List.fold (fun acc (key, func) ->
+                if isKeyPressed ks key && not (wasKeyPressed prevFuncKeyboardState key) then
+                    func acc
+                else
+                    acc
+            ) emu
+
+        prevFuncKeyboardState <- ks
+        emu'
+    | _ ->
+        emu
+
 let createSaveFilename cartridgeFilePath =
         cartridgeFilePath + ".save"
 
@@ -72,16 +99,21 @@ let saveRamFile path emu =
     let data = EmulatorCore.fetchRamData emu
     match data with
     | Some raw ->
-        use writer = new BinaryWriter(File.Open(path, FileMode.Create))
-        writer.Write(raw)
-        printfn $"Saved: {path}"
-    | None -> ()
+        try
+            Ok(
+                use writer = new BinaryWriter(File.Open(path, FileMode.Create))
+                writer.Write(raw)
+            )
+        with e ->
+            Error $"Failed to write savefile '{path}': {e.Message}"
+
+    | None -> Ok()
 
 let loadRamFile path =
     try
         Ok(File.ReadAllBytes(path))
     with e ->
-        Error $"Failed to load savefile '{path}': {e.Message}"
+        Error $"Failed to read savefile '{path}': {e.Message}"
 
 let loadCartridgeFile path =
     try
@@ -117,18 +149,17 @@ type basicNesGame(raw, cartridgePath, traceFn) as this =
     do
         match parsed with
         | Ok cart ->
-            emu <- EmulatorCore.init cart
-            let emu' = EmulatorCore.reset emu
-            let emu'' =
+            emu <- EmulatorCore.powerOn cart
+            let emu' =
                 let saveFile = createSaveFilename cartPath
                 match loadRamFile saveFile with
                 | Ok data ->
-                    printfn $"Savefile loaded: {saveFile}"
-                    EmulatorCore.storeRamData data emu'
+                    printfn $"Savedata imported successfully."
+                    EmulatorCore.storeRamData data emu
                 | Error _ ->
-                    emu'
+                    emu
 
-            emu <- emu''
+            emu <- emu'
         | Error e -> failwith $"Failed to parse ROM: {e}"
 
         graphics.PreferredBackBufferWidth <- Frame.width * scale
@@ -137,9 +168,14 @@ type basicNesGame(raw, cartridgePath, traceFn) as this =
 
     /// リソース開放
     override _.Dispose(disposing: bool) =
+        let savePath = createSaveFilename cartPath
+        match saveRamFile savePath emu with
+        | Error e ->
+            printfn $"{e}"
+        | _ ->
+            printfn $"Savedata exported successfully."
+
         if disposing then
-            let savePath = createSaveFilename cartPath
-            saveRamFile savePath emu
             audioEngine.Dispose()
         base.Dispose(disposing)
 
@@ -173,6 +209,9 @@ type basicNesGame(raw, cartridgePath, traceFn) as this =
 
         if ks.IsKeyDown(Keys.Escape) then
             this.Exit()
+        
+        // リセット機能など
+        emu <- handleFunctionKeyInput (Keyboard ks) emu
 
         let keyJoy = Joypad.init |> handleJoypadInput (Keyboard ks)
         let padJoy = Joypad.init |> handleJoypadInput (Gamepad gs)

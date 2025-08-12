@@ -11,7 +11,7 @@ module Apu =
     let initialFrameCounter = {
         mode = FourStep
         irqInhibit = false
-        irqRequested = false
+        irqRequested = true
     }
 
     let init = {
