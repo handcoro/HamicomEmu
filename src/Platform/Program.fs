@@ -121,15 +121,6 @@ let loadCartridgeFile path =
     with e ->
         Error $"Failed to load Cartridge: {e.Message}"
 
-let frameToTexture (graphics: GraphicsDevice) (frame: Frame) : Texture2D =
-    let tex = new Texture2D(graphics, Frame.width, Frame.height)
-
-    let colorData =
-        frame.data |> Array.map (fun (r, g, b) -> Color(int r, int g, int b))
-
-    tex.SetData(colorData)
-    tex
-
 type basicNesGame(raw, cartridgePath, traceFn) as this =
 
     inherit Game()
@@ -162,8 +153,8 @@ type basicNesGame(raw, cartridgePath, traceFn) as this =
             emu <- emu'
         | Error e -> failwith $"Failed to parse ROM: {e}"
 
-        graphics.PreferredBackBufferWidth <- Frame.width * scale
-        graphics.PreferredBackBufferHeight <- Frame.height * scale
+        graphics.PreferredBackBufferWidth <- width * scale
+        graphics.PreferredBackBufferHeight <- height * scale
         graphics.ApplyChanges()
 
     /// リソース開放
@@ -186,7 +177,7 @@ type basicNesGame(raw, cartridgePath, traceFn) as this =
 
     override _.LoadContent() =
         spriteBatch <- new SpriteBatch(this.GraphicsDevice)
-        texture <- new Texture2D(this.GraphicsDevice, Frame.width, Frame.height)
+        texture <- new Texture2D(this.GraphicsDevice, width, height)
         base.LoadContent()
 
     override _.Draw(gameTime) =
@@ -198,7 +189,7 @@ type basicNesGame(raw, cartridgePath, traceFn) as this =
             fr |> Array.map (fun (r, g, b) -> Color(int r, int g, int b))
 
         texture.SetData(colorData)
-        let destRect = Rectangle(0, 0, Frame.width * scale, Frame.height * scale)
+        let destRect = Rectangle(0, 0, width * scale, height * scale)
         spriteBatch.Draw(texture, destRect, Color.White)
         spriteBatch.End()
         base.Draw(gameTime)

@@ -2,12 +2,11 @@ namespace HamicomEmu.Ppu
 
 module Ppu =
 
-    open System
     open HamicomEmu.Common.BitUtils
     open HamicomEmu.Cartridge
     open HamicomEmu.Mapper
-    open HamicomEmu.Mapper.Common
     open HamicomEmu.Ppu.Types
+    open HamicomEmu.Ppu.Common
 
     let initialScroll = { v = 0us; t = 0us; x = 0uy; w = false }
 
@@ -35,9 +34,6 @@ module Ppu =
         tileHi = 0uy
     }
 
-    let width = 256
-    let height = 240
-
     let init (cart: Cartridge) = {
         cartridge = cart
         pal = Array.zeroCreate 32 // パレットテーブルは32バイト
@@ -46,7 +42,7 @@ module Ppu =
         oamAddr = 0uy
         secondarySprites = Array.init 8 (fun _ -> initialSpriteInfo) // セカンダリ OAM
         secondarySpritesCount = 0
-        hasSprite = Array.create width false
+        hasSprite = Array.create Screen.width false
         scroll = initialScroll
         ctrl = 0uy // 初期状態では制御レジスタは0
         mask = 0b0001_0000uy
@@ -57,13 +53,10 @@ module Ppu =
         nmiInterrupt = None
         clearNmiInterrupt = false
         // レンダリング用のバッファ
-        workBuffer = Array.zeroCreate (width * height)
-        frameBuffer = Array.zeroCreate (width * height)
+        workBuffer = Array.zeroCreate (Screen.width * Screen.height)
+        frameBuffer = Array.zeroCreate (Screen.width * Screen.height)
         regs = initialShiftRegisters
         latches = initialLatches
-        scrollPerScanline = Array.init 240 (fun _ -> initialScroll)
-        ctrlPerScanline = Array.zeroCreate 240
-        mapperPerScanline = Array.init 240 (fun _ -> cart.mapper)
         frameIsOdd = false
     }
 
@@ -89,15 +82,6 @@ module Ppu =
         }
 
         ppu
-
-    let spritePatternAddr ctrl =
-        if
-            not (hasFlag ControlFlags.spriteSize ctrl)
-            && hasFlag ControlFlags.spritePatternAddress ctrl
-        then
-            0x1000us
-        else
-            0x0000us
 
     /// ネームテーブル情報は t レジスタに移動させる
     let updateControl data ppu =
@@ -127,38 +111,7 @@ module Ppu =
         let v' = (ppu.scroll.v + inc) &&& 0x3FFFus // 15bit wrap
         { ppu with scroll.v = v' }
 
-    // Horizontal:
-    //   [ A ] [ a ]
-    //   [ B ] [ b ]
-    // Vertical:
-    //   [ A ] [ B ]
-    //   [ a ] [ b ]
-
-    let mirrorVramAddr mirror mapper addr =
-        let mirroredVram = addr &&& 0b10_1111_1111_1111 // 0x3000 - 0x3EFF を 0x2000 - 0x2EFF にミラーリング
-        let vramIndex = mirroredVram - 0x2000 // VRAM ベクター
-        let nameTable = vramIndex / 0x400
-
-        // VRC1 などのマッパーミラーリングも取得
-        let mirror = Mapper.getMirroring mirror mapper
-
-        match mirror, nameTable with
-        | Vertical, 2
-        | Vertical, 3 -> vramIndex - 0x800 // a b -> A B
-        | Horizontal, 2 -> vramIndex - 0x400 // B -> B
-        | Horizontal, 1 -> vramIndex - 0x400 // a -> A
-        | Horizontal, 3 -> vramIndex - 0x800 // b -> B
-        | _ -> vramIndex // それ以外はそのまま
-
     let paletteAddrToIndex addr = addr &&& 0x1F
-
-    let mirrorPaletteIndex index =
-        match index with
-        | 0x10
-        | 0x14
-        | 0x18
-        | 0x1C -> index - 0x10
-        | _ -> index
 
     let writePaletteRam addr value ppu =
         let index = paletteAddrToIndex addr
@@ -268,176 +221,6 @@ module Ppu =
                 scroll.w = w'
         }
 
-    /// === 背景描画関係処理 ===
-    /// TODO: モジュール分割する
-    let shiftBackgroundRegisters n (regs: ShiftRegisters) =
-        regs.patternLow <- regs.patternLow <<< n
-        regs.patternHigh <- regs.patternHigh <<< n
-        regs.attrLow <- regs.attrLow <<< n
-        regs.attrHigh <- regs.attrHigh <<< n
-
-    let backgroundPatternAddr ctrl =
-        if hasFlag ControlFlags.backgroundPatternAddress ctrl then
-            0x1000us
-        else
-            0x0000us
-
-    let fetchTileLatch ppu =
-        let v = ppu.scroll.v
-        let addr =
-            Scroll.getTileIndexAddress v
-            |> int
-            |> mirrorVramAddr ppu.cartridge.screenMirroring ppu.cartridge.mapper
-        ppu.latches.tile <- ppu.vram[addr]
-
-    let fetchAttrLatch ppu =
-        let v = ppu.scroll.v
-        let addr =
-            Scroll.getAttributeAddress v
-            |> int
-            |> mirrorVramAddr ppu.cartridge.screenMirroring ppu.cartridge.mapper
-
-        let attrByte = ppu.vram[addr]
-        let v = int v
-        // 該当シフト量 0: 左上タイル 2: 右上タイル 4: 左下タイル 6: 右下タイル
-        let shift = ((v >>> 4) &&& 0b100) ||| (v &&& 0b10)
-        ppu.latches.attr <- (attrByte >>> shift) &&& 0b11uy
-
-    let getPatternAddress ppu =
-        let patternBase = backgroundPatternAddr ppu.ctrl |> int
-        let tile = ppu.latches.tile |> int
-        let fineY = (ppu.scroll.v &&& ScrollMasks.fineY) >>> 12 |> int
-        let addr = patternBase + tile * 16 + fineY
-        addr
-
-    let fetchPatternLowLatch ppu =
-        let addr = getPatternAddress ppu
-        ppu.latches.patternLow <- Mapper.ppuRead addr ppu.cartridge
-
-    let fetchPatternHighLatch ppu =
-        let addr = getPatternAddress ppu + 8 // 上位バイト
-        ppu.latches.patternHigh <- Mapper.ppuRead addr ppu.cartridge
-
-    let loadRegsFromLatches ppu =
-        // patternLow/High の上位8ビットを新規ロード
-        let regs = ppu.regs
-        regs.patternLow  <- regs.patternLow  ||| uint16 ppu.latches.patternLow
-        regs.patternHigh <- regs.patternHigh ||| uint16 ppu.latches.patternHigh
-        // 属性ラッチを 8bit 拡張し reg にセット（属性はラッチの 2 ビット分を 8 ピクセルに展開）
-        let attr = ppu.latches.attr
-        let attrLow  = if attr &&& 0b01uy <> 0uy then 0xFFus else 0x00us
-        let attrHigh = if attr &&& 0b10uy <> 0uy then 0xFFus else 0x00us
-        regs.attrLow  <- regs.attrLow  ||| attrLow
-        regs.attrHigh <- regs.attrHigh ||| attrHigh
-
-    let inline getPaletteIndexFromRegs ppu =
-        let regs = ppu.regs
-        let offset = int ppu.scroll.x
-        let p0 = (regs.patternLow  <<< offset) &&& 0x8000us >>> 15
-        let p1 = (regs.patternHigh <<< offset) &&& 0x8000us >>> 15
-        let a0 = (regs.attrLow  <<< offset) &&& 0x8000us >>> 15
-        let a1 = (regs.attrHigh <<< offset) &&& 0x8000us >>> 15
-        (a1 <<< 3) ||| (a0 <<< 2) ||| (p1 <<< 1) ||| p0 |> byte
-
-    let loadTiles cycle ppu =
-        // 8 サイクルごとに fetch & load
-        match cycle % 8u |> int with
-        | 1 ->
-            fetchTileLatch ppu // ネームテーブル
-            loadRegsFromLatches ppu // 各ラッチ -> シフトレジスタ
-        | 3 -> fetchAttrLatch ppu // 属性テーブル
-        | 5 -> fetchPatternLowLatch ppu // パターンテーブル下位
-        | 7 -> fetchPatternHighLatch ppu // パターンテーブル上位
-        | _ -> ()
-
-    /// ビット反転ユーティリティ
-    let private reverseBits b =
-        let mutable x = 0uy
-        for i in 0 .. 7 do
-            if (b >>> i) &&& 1uy <> 0uy then
-                x <- x ||| (1uy <<< (7 - i))
-        x
-
-    type SpriteSize =
-        | Mode8x8
-        | Mode8x16
-
-    let spriteSize ctrl =
-        if hasFlag ControlFlags.spriteSize ctrl then
-            Mode8x16
-        else
-            Mode8x8
-
-    let loadSpriteTilesInfo idx ppu =
-        // idx: 0 .. secondarySpritesCount - 1
-        // 1. 属性ビット展開
-        let si = ppu.secondarySprites
-        let horiMirror = SpriteAttributes.flipHorizontal si[idx].attr
-        let vertMirror = SpriteAttributes.flipVertical si[idx].attr
-
-        let size = spriteSize ppu.ctrl
-
-        // 2. 行オフセット計算
-        let offset = int ppu.scanline - int si[idx].y
-        let height = if size = Mode8x16 then 16 else 8
-        let lineOffset =
-            if vertMirror then
-                height - 1 - offset 
-            else
-                offset
-
-        // 3. パターンテーブルアドレス計算
-        let tileIdx = int si[idx].tile
-        let tileAddr =
-            match size with
-            | Mode8x16 ->
-                let tableBase = if tileIdx &&& 0x01 <> 0 then 0x1000 else 0x0000 // 8x16 の場合は 0 ビット目がタイルのバンク
-                let tileBase  = (tileIdx &&& 0xFE) <<< 4
-                tableBase + tileBase + if lineOffset >= 8 then lineOffset + 8 else lineOffset
-            | Mode8x8 ->
-                (tileIdx <<< 4)
-                + int (spritePatternAddr ppu.ctrl)
-                + lineOffset
-
-        // 4. VRAM 読み出し
-        let lo = Mapper.ppuRead tileAddr ppu.cartridge
-        let hi = Mapper.ppuRead (tileAddr + 8) ppu.cartridge
-
-        // 5. 反転を考慮
-        si[idx].tileLo <- if horiMirror then reverseBits lo else lo
-        si[idx].tileHi <- if horiMirror then reverseBits hi else hi
-
-        // スキャンライン上でスプライトがある X 座標をマーク
-        for xOff in 0..7 do
-            let px = int si[idx].x + xOff
-            if px >= 0 && px < 256 then
-                ppu.hasSprite[px] <- true
-
-    let evaluateSpritesForLine line ppu =
-        let mutable count = 0
-        let si = ppu.secondarySprites
-        // OAM: 64 エントリー x 4 バイト
-        for i in 0..63 do
-            if count < 8 then
-                let baseIdx = i * 4
-                let y = int ppu.oam[baseIdx] + 1 // NOTE: 1 スキャンライン分遅れるのを表現
-                let size = if spriteSize ppu.ctrl = Mode8x16 then 16 else 8
-                // スプライトの Y 座標がスキャンラインにかかっている場合
-                if y <= 0xEF && y <= line && line < y + size then
-                    si[count].index <- baseIdx // スプライト 0 ヒット判定のため
-                    si[count].y     <- ppu.oam[baseIdx] + 1uy // NOTE: 1 スキャンライン分遅れるのを表現
-                    si[count].tile  <- ppu.oam[baseIdx + 1]
-                    si[count].attr  <- ppu.oam[baseIdx + 2]
-                    si[count].x     <- ppu.oam[baseIdx + 3]
-                    count <- count + 1
-        count
-
-    let getSpritePaletteIndex shift si =
-        let t0 = si.tileLo <<< shift &&& 0x80uy >>> 7
-        let t1 = si.tileHi <<< shift &&& 0x80uy >>> 6
-        let idx = t1 ||| t0 |> int
-        idx
-
     let inline isHideBackgroundInLeftmost ppu = hasFlag MaskFlags.showBackgroundInLeftmost ppu.mask |> not
 
     let inline isHideSpritesInLeftmost ppu = hasFlag MaskFlags.showSpritesInLeftmost ppu.mask |> not
@@ -448,22 +231,9 @@ module Ppu =
     let inline private isRenderingEnabled ppu =
         isRenderingBackgroundEnabled ppu || isRenderingSpritesEnabled ppu
 
-    let inline idx x y = y * width + x
-
-    let inline inLeftmostRange x = x >= 0 && x <= 7
-
-    let inline mirrorTransparentColorIndex i =
-        if i % 4 = 0 then i &&& 0x10 else i
-
-    let spriteOverBackground priority backgroundPaletteIndex =
-        match priority, backgroundPaletteIndex with
-        | 0uy, _ -> true // スプライトが前面
-        | 1uy, 0 -> true // 背景がパレット 0（透明）ならスプライト
-        | _ -> false // それ以外は背景
-
-
     /// PPU を n サイクル進める（1スキャンラインをまたぐときは精密タイミング処理を行う）
     /// tick 内で内部レンダリングを行う
+    /// TODO: コードをもうちょっと見やすいように整理する
     let tick ppu =
         let c, s = ppu.cycle, ppu.scanline
         let newCycle = c + 1u
@@ -479,7 +249,7 @@ module Ppu =
                     // === 描画範囲内の処理 ===
                     if c >= 1u && c <= 256u then
 
-                        loadTiles c ppu
+                        Background.loadTiles c ppu
 
                         if c % 8u = 0u then
                             ppu.scroll.v <- Scroll.incrementCoarseX ppu.scroll.v // Coarse X のインクリメント
@@ -492,7 +262,7 @@ module Ppu =
                             if isHideBackgroundInLeftmost ppu && inLeftmostRange x then
                                 0
                             else
-                                getPaletteIndexFromRegs ppu |> int
+                                Background.getPaletteIndexFromRegs ppu
                         let bgColorMirrored = bgColor |> mirrorTransparentColorIndex
 
                         ppu.workBuffer[idx x y] <- ppu.pal[bgColorMirrored]
@@ -508,9 +278,10 @@ module Ppu =
                                     ()
                                 elif shift >= 0 && shift <= 7 then
 
-                                    let spColor = getSpritePaletteIndex shift si
+                                    let spColor = Sprite.getPaletteIndex shift si
                                     let priority = SpriteAttributes.priority si.attr
-                                    if spColor <> 0 && spriteOverBackground priority bgColorMirrored then
+                                    // TODO: 優先度の判定が不完全っぽいので後で調べる
+                                    if spColor <> 0 && Sprite.spriteOverBackground priority bgColorMirrored then
                                         let palOffset = SpriteAttributes.paletteIndex si.attr <<< 2 ||| 0x10uy |> int // 5 ビット目はスプライトのパレットを表す
                                         ppu.workBuffer[idx x y] <- ppu.pal[spColor + palOffset]
                                     // === スプライトゼロヒット ===
@@ -518,7 +289,7 @@ module Ppu =
                                         ppu.status <- setFlag StatusFlags.spriteZeroHit ppu.status
 
                         // === シフト ===
-                        shiftBackgroundRegisters 1 ppu.regs
+                        Background.shiftRegisters 1 ppu.regs
 
                     // === スキャンラインの終わりに Y をインクリメント ===
                     if c = 256u then
@@ -534,21 +305,21 @@ module Ppu =
                             let mask = 0b000_01_00000_11111us
                             ppu.scroll.v <- (ppu.scroll.v &&& ~~~mask) ||| (ppu.scroll.t &&& mask)
 
-                            System.Array.Clear(ppu.hasSprite, 0, width) // スプライトの存在位置をすべて false で初期化
+                            System.Array.Clear(ppu.hasSprite, 0, Screen.width) // スプライトの存在位置をすべて false で初期化
                             // === スプライト評価 ===
                             // NOTE: 本当は違うタイミングで行うところをかんたん実装で済ませている
                             // https://www.nesdev.org/w/images/default/4/4f/Ppu.svg
-                            ppu.secondarySpritesCount <- evaluateSpritesForLine (int s) ppu
+                            ppu.secondarySpritesCount <- Sprite.evaluateForLine (int s) ppu
 
                             for i = 0 to ppu.secondarySpritesCount - 1 do
-                                loadSpriteTilesInfo i ppu
-
+                                Sprite.loadTilesInfo i ppu
+                                Sprite.updateSpriteExistence i ppu
 
                     // === 次のスキャンラインの冒頭 2 タイル先読み ===
                     elif c >= 321u && c <= 336u then
-                        loadTiles c ppu
+                        Background.loadTiles c ppu
                         if c = 328u || c = 336u then
-                            shiftBackgroundRegisters 8 ppu.regs
+                            Background.shiftRegisters 8 ppu.regs
                             ppu.scroll.v <- Scroll.incrementCoarseX ppu.scroll.v // Coarse X のインクリメント
 
                 // === プリレンダーライン ===
@@ -561,9 +332,9 @@ module Ppu =
 
                     // === 0 番スキャンラインの冒頭 2 タイル先読み ===
                     elif c >= 321u && c <= 336u then
-                        loadTiles c ppu
+                        Background.loadTiles c ppu
                         if c = 328u || c = 336u then
-                            shiftBackgroundRegisters 8 ppu.regs
+                            Background.shiftRegisters 8 ppu.regs
                             ppu.scroll.v <- Scroll.incrementCoarseX ppu.scroll.v // Coarse X のインクリメント
 
                     // === 奇数フレームスキップ（261,339） ===
@@ -612,17 +383,13 @@ module Ppu =
                 let mutable newCycle = nextCycle
                 let mutable frameIsOdd = ppu.frameIsOdd
 
-                // === スプライトゼロヒット検出：描画ライン終端（scanline < 240） ===
-                // if s < 240us then
-                //     status <- updateFlag StatusFlags.spriteZeroHit (isSpriteZeroHit c ppu) status
-
                 // === フレーム終了（scanline >= 262）===
                 if nextScanline >= 262us then
                     newScanline <- 0us
                     newCycle <- nextCycle
                     frameIsOdd <- not ppu.frameIsOdd
                     // フレームバッファにコピー
-                    Array.blit ppu.workBuffer 0 ppu.frameBuffer 0 (width * height)
+                    Array.blit ppu.workBuffer 0 ppu.frameBuffer 0 (Screen.width * Screen.height)
 
                 // === スクロールとコントロールレジスタの記録（描画ラインのみ）===
                 ppu.cycle <- newCycle

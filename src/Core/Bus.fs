@@ -12,23 +12,23 @@ module Bus =
     open HamicomEmu.Input
 
     module Ram =
-        let Begin = 0x0000us
-        let MirrorsEnd = 0x1FFFus
+        let start = 0x0000us
+        let mirrorsEnd = 0x1FFFus
 
     module PpuRegisters =
-        let Begin = 0x2000us
-        let MirrorsEnd = 0x3FFFus
+        let start = 0x2000us
+        let mirrorsEnd = 0x3FFFus
 
     module ApuRegisters =
-        let Begin = 0x4000us
-        let End = 0x4017us
+        let start = 0x4000us
+        let mirrorsEnd = 0x4017us
     
     module PrgRom =
-        let Begin = 0x8000us
-        let End = 0xFFFFus
+        let start = 0x8000us
+        let mirrorsEnd = 0xFFFFus
 
     type BusState = {
-        cpuVram: byte array // 0x0000 - 0x1FFF
+        cpuRam: byte array // 0x0000 - 0x1FFF
         cartridge: Cartridge
         ppu: PpuState
         apu: ApuState
@@ -40,7 +40,7 @@ module Bus =
     }
 
     let init cart = {
-        cpuVram = Array.create 0x2000 0uy
+        cpuRam = Array.create 0x2000 0uy
         cartridge = cart
         ppu = Ppu.init cart
         apu = Apu.init
@@ -55,9 +55,9 @@ module Bus =
 
     let rec memRead addr bus =
         match addr with
-        | addr when addr |> inRange Ram.Begin Ram.MirrorsEnd ->
+        | addr when addr |> inRange Ram.start Ram.mirrorsEnd ->
             let mirrorDownAddr = addr &&& 0b0000_0111_1111_1111us
-            bus.cpuVram[int mirrorDownAddr], bus
+            bus.cpuRam[int mirrorDownAddr], bus
 
         | 0x2000us
         | 0x2001us
@@ -80,7 +80,7 @@ module Bus =
             let data, ppu = Ppu.readFromDataRegister bus.ppu
             data, { bus with ppu = ppu }
 
-        | addr when addr |> inRange 0x2008us PpuRegisters.MirrorsEnd ->
+        | addr when addr |> inRange 0x2008us PpuRegisters.mirrorsEnd ->
             let mirrorDownAddr = addr &&& 0b0010_0000_0000_0111us
             memRead mirrorDownAddr bus
 
@@ -93,7 +93,7 @@ module Bus =
             //   data, {bus with joy2 = joy}
             0uy, bus
 
-        | addr when addr |> inRange ApuRegisters.Begin ApuRegisters.End ->
+        | addr when addr |> inRange ApuRegisters.start ApuRegisters.mirrorsEnd ->
             let data, apu = Apu.read addr bus.apu
             data, { bus with apu = apu }
         
@@ -101,7 +101,7 @@ module Bus =
             let data = Mapper.readPrgRam addr bus.cartridge
             data, bus
 
-        | addr when addr |> inRange PrgRom.Begin PrgRom.End ->
+        | addr when addr |> inRange PrgRom.start PrgRom.mirrorsEnd ->
             let data = Mapper.cpuRead addr bus.cartridge
             data, bus
 
@@ -164,9 +164,9 @@ module Bus =
 
     let rec memWrite addr value bus =
         match addr with
-        | addr when addr |> inRange Ram.Begin Ram.MirrorsEnd ->
+        | addr when addr |> inRange Ram.start Ram.mirrorsEnd ->
             let mirrorDownAddr = addr &&& 0b0000_0111_1111_1111us
-            bus.cpuVram[int mirrorDownAddr] <- value
+            bus.cpuRam[int mirrorDownAddr] <- value
             bus
 
         | 0x2000us ->
@@ -200,7 +200,7 @@ module Bus =
             // printfn "WRITE PPU Data: %02X" value
             { bus with ppu = ppu }
 
-        | addr when addr |> inRange 0x2008us PpuRegisters.MirrorsEnd ->
+        | addr when addr |> inRange 0x2008us PpuRegisters.mirrorsEnd ->
             let mirrorDownAddr = addr &&& 0b0010_0000_0000_0111us
             bus |> memWrite mirrorDownAddr value
 
@@ -221,7 +221,7 @@ module Bus =
             let joy = bus.joy1 |> Joypad.write value
             { bus with joy1 = joy }
 
-        | addr when addr |> inRange ApuRegisters.Begin ApuRegisters.End ->
+        | addr when addr |> inRange ApuRegisters.start ApuRegisters.mirrorsEnd ->
             let apu = Apu.write addr value bus.apu
             { bus with apu = apu }
 
@@ -234,7 +234,7 @@ module Bus =
                     ppu.cartridge.mapper = mapper
             }
 
-        | addr when addr |> inRange PrgRom.Begin PrgRom.End ->
+        | addr when addr |> inRange PrgRom.start PrgRom.mirrorsEnd ->
             let mapper, _ = Mapper.cpuWrite addr value bus.cartridge
 
             {

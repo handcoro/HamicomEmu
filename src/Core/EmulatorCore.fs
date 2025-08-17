@@ -4,8 +4,6 @@ module EmulatorCore =
 
     open HamicomEmu.Cpu
     open HamicomEmu.Bus
-    open HamicomEmu.Ppu
-    open HamicomEmu.Ppu.Types
     open HamicomEmu.Mapper
 
     type EmulatorState = {

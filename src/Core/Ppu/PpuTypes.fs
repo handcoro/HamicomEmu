@@ -68,9 +68,6 @@ module Types =
         frameBuffer: byte array
         regs: ShiftRegisters
         latches: PpuLatches
-        mutable scrollPerScanline: ScrollRegisters array
-        mutable ctrlPerScanline: byte array
-        mutable mapperPerScanline: Mapper array
         mutable frameIsOdd: bool
     }
 

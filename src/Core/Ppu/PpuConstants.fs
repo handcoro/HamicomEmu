@@ -46,3 +46,7 @@ module SpriteAttributes =
         attr &&& 0b0100_0000uy <> 0uy
     let flipVertical attr =
         attr &&& 0b1000_0000uy <> 0uy
+
+module Screen =
+        let width = 256
+        let height = 240
