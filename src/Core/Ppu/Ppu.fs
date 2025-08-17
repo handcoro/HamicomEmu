@@ -281,7 +281,7 @@ module Ppu =
                                     let spColor = Sprite.getPaletteIndex shift si
                                     let priority = SpriteAttributes.priority si.attr
                                     // TODO: 優先度の判定が不完全っぽいので後で調べる
-                                    if spColor <> 0 && Sprite.spriteOverBackground priority bgColorMirrored then
+                                    if Sprite.prioritizeOverBackground bgColorMirrored spColor priority then
                                         let palOffset = SpriteAttributes.paletteIndex si.attr <<< 2 ||| 0x10uy |> int // 5 ビット目はスプライトのパレットを表す
                                         ppu.workBuffer[idx x y] <- ppu.pal[spColor + palOffset]
                                     // === スプライトゼロヒット ===

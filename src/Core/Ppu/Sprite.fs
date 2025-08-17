@@ -99,8 +99,10 @@ module Sprite =
         let idx = t1 ||| t0 |> int
         idx
 
-    let spriteOverBackground priority backgroundPaletteIndex =
-        match priority, backgroundPaletteIndex with
-        | 0uy, _ -> true // スプライトが前面
-        | 1uy, 0 -> true // 背景がパレット 0（透明）ならスプライト
-        | _ -> false // それ以外は背景
+    let prioritizeOverBackground bgPaletteIndex sprPaletteIndex priority =
+        match bgPaletteIndex <> 0, sprPaletteIndex <> 0, priority <> 0uy with
+        | false, false, _ -> false // 背景前面 NOTE: 本来は拡張出力
+        | false,  true, _ -> true // スプライト前面
+        |  true, false, _ -> false // 背景前面
+        |  true,  true, false -> true // スプライト前面
+        |  true,  true, true -> false // 背景前面
