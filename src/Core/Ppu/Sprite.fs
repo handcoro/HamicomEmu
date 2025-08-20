@@ -60,15 +60,13 @@ module Sprite =
         Mapper.onPpuFetch tileAddr ppu.cartridge.mapper
         Mapper.onPpuFetch (tileAddr + 8) ppu.cartridge.mapper
 
-        // NOTE: とりあえずダミーは読み出さないことにする
-        if tileIdx <> 0xFF then
-            // VRAM 読み出し
-            let lo = Mapper.ppuRead tileAddr ppu.cartridge
-            let hi = Mapper.ppuRead (tileAddr + 8) ppu.cartridge
+        // VRAM 読み出し
+        let lo = Mapper.ppuRead tileAddr ppu.cartridge
+        let hi = Mapper.ppuRead (tileAddr + 8) ppu.cartridge
 
-            // 反転を考慮
-            si[idx].tileLo <- if horiMirror then reverseBits lo else lo
-            si[idx].tileHi <- if horiMirror then reverseBits hi else hi
+        // 反転を考慮
+        si[idx].tileLo <- if horiMirror then reverseBits lo else lo
+        si[idx].tileHi <- if horiMirror then reverseBits hi else hi
 
 
     /// スキャンライン上でスプライトがある X 座標をマーク
@@ -86,12 +84,12 @@ module Sprite =
         for i in 0..63 do
             if count < 8 then
                 let baseIdx = i * 4
-                let y = int ppu.oam[baseIdx] + 1 // NOTE: 1 スキャンライン分遅れるのを表現
+                let y = int ppu.oam[baseIdx]
                 let size = if parseSize ppu.ctrl = Mode8x16 then 16 else 8
                 // スプライトの Y 座標がスキャンラインにかかっている場合
                 if y <= 0xEF && y <= line && line < y + size then
                     si[count].index <- baseIdx // スプライト 0 ヒット判定のため
-                    si[count].y     <- ppu.oam[baseIdx] + 1uy // NOTE: 1 スキャンライン分遅れるのを表現
+                    si[count].y     <- ppu.oam[baseIdx]
                     si[count].tile  <- ppu.oam[baseIdx + 1]
                     si[count].attr  <- ppu.oam[baseIdx + 2]
                     si[count].x     <- ppu.oam[baseIdx + 3]

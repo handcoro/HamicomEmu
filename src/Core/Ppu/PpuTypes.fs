@@ -64,8 +64,8 @@ module Types =
         mutable cycle: uint
         mutable nmiInterrupt: option<byte>
         clearNmiInterrupt: bool
-        workBuffer: byte array
-        frameBuffer: byte array
+        mutable workBuffer: byte array
+        mutable frameBuffer: byte array
         regs: ShiftRegisters
         latches: PpuLatches
         mutable frameIsOdd: bool

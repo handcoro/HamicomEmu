@@ -231,12 +231,18 @@ module Ppu =
     let inline private isRenderingEnabled ppu =
         isRenderingBackgroundEnabled ppu || isRenderingSpritesEnabled ppu
 
+    let private swapBuffers ppu =
+        let tmp = ppu.frameBuffer
+        ppu.frameBuffer <- ppu.workBuffer
+        ppu.workBuffer <- tmp
+
     /// PPU を n サイクル進める（1スキャンラインをまたぐときは精密タイミング処理を行う）
     /// tick 内で内部レンダリングを行う
     /// TODO: コードをもうちょっと見やすいように整理する
     let tick ppu =
         let c, s = ppu.cycle, ppu.scanline
         let newCycle = c + 1u
+        let mutable skipRest = false
 
         if c = 0u then
             ppu.cycle <- 1u
@@ -258,17 +264,19 @@ module Ppu =
                         let x = int c - 1
                         let y = int s
 
+                        let pal = ppu.pal
+                        let work = ppu.workBuffer
+
                         let bgColor =
-                            if not (isRenderingBackgroundEnabled ppu) && isHideBackgroundInLeftmost ppu && inLeftmostRange x then
+                            if not (isRenderingBackgroundEnabled ppu)
+                                || isHideBackgroundInLeftmost ppu && inLeftmostRange x
+                            then
                                 0
                             else
                                 Background.getPaletteIndexFromRegs ppu
                         let bgColorMirrored = bgColor |> mirrorTransparentColorIndex
 
-                        if isRenderingBackgroundEnabled ppu then
-                            ppu.workBuffer[idx x y] <- ppu.pal[bgColorMirrored]
-                        else
-                            ppu.workBuffer[idx x y] <- ppu.pal[0]
+                        work[idx x y] <- pal[bgColorMirrored]
 
                         // === スプライト描画 ===
                         if isHideSpritesInLeftmost ppu && inLeftmostRange x then
@@ -293,7 +301,7 @@ module Ppu =
                                 let priority = SpriteAttributes.priority si.attr
                                 if Sprite.prioritizeOverBackground bgColorMirrored spColor priority then
                                     let palOffset = SpriteAttributes.paletteIndex si.attr <<< 2 ||| 0x10uy |> int // 5 ビット目はスプライトのパレットを表す
-                                    ppu.workBuffer[idx x y] <- ppu.pal[spColor + palOffset]
+                                    work[idx x y] <- pal[spColor + palOffset]
                                 // === スプライトゼロヒット ===
                                 if si.index = 0 && bgColor <> 0 && spColor <> 0 then
                                     ppu.status <- setFlag StatusFlags.spriteZeroHit ppu.status
@@ -321,9 +329,8 @@ module Ppu =
                             // https://www.nesdev.org/w/images/default/4/4f/Ppu.svg
                             ppu.secondarySpritesCount <- Sprite.evaluateForLine (int s) ppu
 
-                            for i = 0 to 7 do
-                                Sprite.loadTilesInfo i ppu
                             for i = 0 to ppu.secondarySpritesCount - 1 do
+                                Sprite.loadTilesInfo i ppu
                                 Sprite.updateSpriteExistence i ppu
                         
                         // スキャンラインカウンタ 簡易実装
@@ -354,9 +361,7 @@ module Ppu =
 
                     // === 奇数フレームスキップ（261,339） ===
                     elif c = 339u && ppu.frameIsOdd then
-                        ppu.cycle <- 0u
-                        ppu.scanline <- 0us
-                        ppu.frameIsOdd <- not ppu.frameIsOdd
+                        skipRest <- true
 
             // === VBlank 開始（scanline 241 開始時）===
             if s = 241us && c = 1u then
@@ -375,7 +380,7 @@ module Ppu =
                 ppu.nmiInterrupt <- None
 
             // === 高速パス（スキャンライン内に収まる） ===
-            if c < 341u then
+            if c < 340u && not skipRest then
                 let oamAddr =
                     if c >= 257u && c <= 320u then
                         0uy
@@ -389,7 +394,7 @@ module Ppu =
 
             // === スキャンライン跨ぎ ===
             else
-                let nextCycle = newCycle - 341u
+                let nextCycle = 0u
                 let nextScanline = s + 1us
 
                 let mutable status = ppu.status
@@ -403,8 +408,8 @@ module Ppu =
                     newScanline <- 0us
                     newCycle <- nextCycle
                     frameIsOdd <- not ppu.frameIsOdd
-                    // フレームバッファにコピー
-                    Array.blit ppu.workBuffer 0 ppu.frameBuffer 0 (Screen.width * Screen.height)
+                    // フレームバッファをスワップ
+                    swapBuffers ppu
 
                 // === スクロールとコントロールレジスタの記録（描画ラインのみ）===
                 ppu.cycle <- newCycle
