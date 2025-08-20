@@ -107,7 +107,7 @@ let saveRamFile path emu =
         with e ->
             Error $"Failed to write savefile '{path}': {e.Message}"
 
-    | None -> Ok()
+    | None -> Error "No need to Save."
 
 let loadRamFile path =
     try

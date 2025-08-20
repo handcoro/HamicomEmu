@@ -17,6 +17,9 @@ module Mapper =
                 match MMC1.getMirroring state with
                 | Some mirror -> mirror
                 | None -> defaultMirroring
+            
+            | MMC3 state ->
+                Mmc3.getMirroring state
 
             | VRC1 state ->
                 match VRC1.getMirroring state with
@@ -43,6 +46,8 @@ module Mapper =
         match cart.mapper with
         | MMC1 state ->
             MMC1.readPrgRam addr state
+        | MMC3 state ->
+            Mmc3.readPrgRam addr state
         | _ ->
             printfn "[MAPPER %A] read from PRG Ram is not supported." cart.mapper
             0uy
@@ -53,6 +58,9 @@ module Mapper =
         | MMC1 state ->
             let newState = MMC1.writePrgRam addr value state
             MMC1 newState, ()
+        | MMC3 state ->
+            let newState = Mmc3.writePrgRam addr value state
+            MMC3 newState, ()
         | J87 _ ->
             let newState = J87.writePrgRam value
             J87 newState, ()
@@ -62,8 +70,8 @@ module Mapper =
 
     let getPrgRam cart =
         match cart.mapper with
-        | MMC1 state ->
-            Some state.prgRam
+        | MMC1 state when state.isSaved -> Some state.prgRam
+        | MMC3 state when state.isSaved -> Some state.prgRam
         | _ ->
             None
 
@@ -72,8 +80,17 @@ module Mapper =
         | MMC1 state ->
             MMC1.setPrgRam data state
             cart
+        | MMC3 state ->
+            Mmc3.setPrgRam data state
+            cart
         | _ ->
             cart
+
+    let getChrMem cart =
+        if cart.chrRom <> [||] then
+            cart.chrRom
+        else
+            cart.chrRam
 
     let cpuRead (addr: uint16) cart =
         let addr = int addr
@@ -84,6 +101,9 @@ module Mapper =
             MMC1.cpuRead addr prg state
 
         | UxROM state -> Uxrom.cpuRead addr prg state
+
+        | MMC3 state ->
+            Mmc3.cpuRead addr prg state
 
         | GxROM state -> Gxrom.cpuRead addr prg state
 
@@ -112,6 +132,10 @@ module Mapper =
             let newState = { bankSelect = v }
             CNROM newState, ()
         
+        | MMC3 state ->
+            let newState = Mmc3.cpuWrite addr value cart.prgRom (getChrMem cart) state
+            MMC3 newState, ()
+        
         | GxROM _ when addr >= 0x8000 ->
             let newState = Gxrom.cpuWrite addr value
             GxROM newState, ()
@@ -132,12 +156,6 @@ module Mapper =
         let offset = getOffset (int state.bankSelect % totalBanks) bankSize 0
         addr + offset
 
-    let getChrMem cart =
-        if cart.chrRom <> [||] then
-            cart.chrRom
-        else
-            cart.chrRam
-
     let ppuRead addr cart =
         let addr = int addr
 
@@ -149,6 +167,10 @@ module Mapper =
         | CNROM state ->
             let addr' = getChrAddressCnrom addr cart state
             cart.chrRom[addr']
+        
+        | MMC3 state ->
+            let data = Mmc3.ppuRead addr (getChrMem cart) state
+            data
 
         | GxROM state ->
             let data = Gxrom.ppuRead addr (getChrMem cart) state
@@ -167,19 +189,6 @@ module Mapper =
             let chr = getChrMem cart
             chr[addr]
 
-    let ppuReadRange startAddr endAddr cart mapper =
-        match cart.mapper with
-        | MMC1 _
-        | CNROM _
-        | VRC1 _
-        | J87 _ -> Array.init (endAddr - startAddr + 1) (fun i -> ppuRead (startAddr + i) cart)
-
-        | NROM _
-        | _ when cart.chrRom <> [||] -> cart.chrRom[startAddr..endAddr]
-
-        | NROM _
-        | _ -> cart.chrRam[startAddr..endAddr]
-
     let ppuWrite addr value cart =
         let addr = int addr
 
@@ -187,7 +196,27 @@ module Mapper =
         | NROM _
         | _ when cart.chrRom <> [||] -> cart
 
+        | MMC3 state when cart.chrRam <> [||]->
+            Mmc3.ppuWrite addr value cart.chrRam state
+            cart
         | NROM _
         | _ ->
             cart.chrRam[int addr] <- value
             cart
+
+    let onPpuFetch addr mapper =
+        match mapper with
+        | MMC3 state -> Mmc3.onPpuFetch addr state
+        | _ -> ()
+    
+    let scanlineCounter mapper =
+        match mapper with
+        | MMC3 state -> Mmc3.scanlineCounter state
+        | _ -> ()
+
+    let pollIrq mapper =
+        match mapper with
+        | MMC3 state ->
+            Mmc3.pollIrq state
+        | _ ->
+            false

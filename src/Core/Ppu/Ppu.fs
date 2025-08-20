@@ -259,34 +259,44 @@ module Ppu =
                         let y = int s
 
                         let bgColor =
-                            if isHideBackgroundInLeftmost ppu && inLeftmostRange x then
+                            if not (isRenderingBackgroundEnabled ppu) && isHideBackgroundInLeftmost ppu && inLeftmostRange x then
                                 0
                             else
                                 Background.getPaletteIndexFromRegs ppu
                         let bgColorMirrored = bgColor |> mirrorTransparentColorIndex
 
-                        ppu.workBuffer[idx x y] <- ppu.pal[bgColorMirrored]
+                        if isRenderingBackgroundEnabled ppu then
+                            ppu.workBuffer[idx x y] <- ppu.pal[bgColorMirrored]
+                        else
+                            ppu.workBuffer[idx x y] <- ppu.pal[0]
 
                         // === スプライト描画 ===
                         if isHideSpritesInLeftmost ppu && inLeftmostRange x then
                             ()
-                        elif ppu.hasSprite[x] then
-                            for i = ppu.secondarySpritesCount - 1 downto 0 do // インデックスの小さいほうを優先して描画
-                                let si = ppu.secondarySprites[i]
-                                let shift = x - int si.x
-                                if si.x >= 0xF9uy then // 右端のスプライトの一部表示はできない
-                                    ()
-                                elif shift >= 0 && shift <= 7 then
+                        elif isRenderingSpritesEnabled ppu && ppu.hasSprite[x] then
+                            // スプライトの描画候補を決める
+                            let mutable candidateIndex = -1
+                            let mutable candidateColor = 0
+                            for i = 0 to ppu.secondarySpritesCount - 1 do
+                                if candidateIndex = -1 then
+                                    let si = ppu.secondarySprites[i]
+                                    let shift = x - int si.x
+                                    if si.x < 0xF9uy && shift >= 0 && shift <= 7 then
+                                        let spColor = Sprite.getPaletteIndex shift si
+                                        if spColor <> 0 then
+                                            candidateIndex <- i
+                                            candidateColor <- spColor
 
-                                    let spColor = Sprite.getPaletteIndex shift si
-                                    let priority = SpriteAttributes.priority si.attr
-                                    // TODO: 優先度の判定が不完全っぽいので後で調べる
-                                    if Sprite.prioritizeOverBackground bgColorMirrored spColor priority then
-                                        let palOffset = SpriteAttributes.paletteIndex si.attr <<< 2 ||| 0x10uy |> int // 5 ビット目はスプライトのパレットを表す
-                                        ppu.workBuffer[idx x y] <- ppu.pal[spColor + palOffset]
-                                    // === スプライトゼロヒット ===
-                                    if si.index = 0 && bgColor <> 0 && spColor <> 0 then
-                                        ppu.status <- setFlag StatusFlags.spriteZeroHit ppu.status
+                            if candidateIndex <> -1 then
+                                let si = ppu.secondarySprites[candidateIndex]
+                                let spColor = candidateColor
+                                let priority = SpriteAttributes.priority si.attr
+                                if Sprite.prioritizeOverBackground bgColorMirrored spColor priority then
+                                    let palOffset = SpriteAttributes.paletteIndex si.attr <<< 2 ||| 0x10uy |> int // 5 ビット目はスプライトのパレットを表す
+                                    ppu.workBuffer[idx x y] <- ppu.pal[spColor + palOffset]
+                                // === スプライトゼロヒット ===
+                                if si.index = 0 && bgColor <> 0 && spColor <> 0 then
+                                    ppu.status <- setFlag StatusFlags.spriteZeroHit ppu.status
 
                         // === シフト ===
                         Background.shiftRegisters 1 ppu.regs
@@ -311,9 +321,14 @@ module Ppu =
                             // https://www.nesdev.org/w/images/default/4/4f/Ppu.svg
                             ppu.secondarySpritesCount <- Sprite.evaluateForLine (int s) ppu
 
-                            for i = 0 to ppu.secondarySpritesCount - 1 do
+                            for i = 0 to 7 do
                                 Sprite.loadTilesInfo i ppu
+                            for i = 0 to ppu.secondarySpritesCount - 1 do
                                 Sprite.updateSpriteExistence i ppu
+                        
+                        // スキャンラインカウンタ 簡易実装
+                        if c = 260u then
+                            Mapper.scanlineCounter ppu.cartridge.mapper
 
                     // === 次のスキャンラインの冒頭 2 タイル先読み ===
                     elif c >= 321u && c <= 336u then

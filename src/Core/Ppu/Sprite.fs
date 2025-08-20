@@ -27,16 +27,15 @@ module Sprite =
             0x0000us
 
     let loadTilesInfo idx ppu =
-        // idx: 0 .. secondarySpritesCount - 1
-        // 1. 属性ビット展開
+        // 属性ビット展開
         let si = ppu.secondarySprites
         let horiMirror = SpriteAttributes.flipHorizontal si[idx].attr
         let vertMirror = SpriteAttributes.flipVertical si[idx].attr
 
         let size = parseSize ppu.ctrl
 
-        // 2. 行オフセット計算
-        let offset = int ppu.scanline - int si[idx].y
+        // 行オフセット計算
+        let offset = byte ppu.scanline - si[idx].y |> int
         let height = if size = Mode8x16 then 16 else 8
         let lineOffset =
             if vertMirror then
@@ -44,7 +43,7 @@ module Sprite =
             else
                 offset
 
-        // 3. パターンテーブルアドレス計算
+        // パターンテーブルアドレス計算
         let tileIdx = int si[idx].tile
         let tileAddr =
             match size with
@@ -57,13 +56,19 @@ module Sprite =
                 + int (parsePatternAddr ppu.ctrl)
                 + lineOffset
 
-        // 4. VRAM 読み出し
-        let lo = Mapper.ppuRead tileAddr ppu.cartridge
-        let hi = Mapper.ppuRead (tileAddr + 8) ppu.cartridge
 
-        // 5. 反転を考慮
-        si[idx].tileLo <- if horiMirror then reverseBits lo else lo
-        si[idx].tileHi <- if horiMirror then reverseBits hi else hi
+        Mapper.onPpuFetch tileAddr ppu.cartridge.mapper
+        Mapper.onPpuFetch (tileAddr + 8) ppu.cartridge.mapper
+
+        // NOTE: とりあえずダミーは読み出さないことにする
+        if tileIdx <> 0xFF then
+            // VRAM 読み出し
+            let lo = Mapper.ppuRead tileAddr ppu.cartridge
+            let hi = Mapper.ppuRead (tileAddr + 8) ppu.cartridge
+
+            // 反転を考慮
+            si[idx].tileLo <- if horiMirror then reverseBits lo else lo
+            si[idx].tileHi <- if horiMirror then reverseBits hi else hi
 
 
     /// スキャンライン上でスプライトがある X 座標をマーク
@@ -93,14 +98,14 @@ module Sprite =
                     count <- count + 1
         count
 
-    let getPaletteIndex shift si =
+    let inline getPaletteIndex shift si =
         let t0 = si.tileLo <<< shift &&& 0x80uy >>> 7
         let t1 = si.tileHi <<< shift &&& 0x80uy >>> 6
         let idx = t1 ||| t0 |> int
         idx
 
-    let prioritizeOverBackground bgPaletteIndex sprPaletteIndex priority =
-        match bgPaletteIndex <> 0, sprPaletteIndex <> 0, priority <> 0uy with
+    let inline prioritizeOverBackground bgPaletteIndex sprPaletteIndex bgPriority =
+        match bgPaletteIndex <> 0, sprPaletteIndex <> 0, bgPriority <> 0uy with
         | false, false, _ -> false // 背景前面 NOTE: 本来は拡張出力
         | false,  true, _ -> true // スプライト前面
         |  true, false, _ -> false // 背景前面

@@ -64,7 +64,7 @@ module Cartridge =
                 prgRom = prgRom
                 chrRom = chrRom
                 chrRam = chrRam
-                mapper = Factory.create mapper
+                mapper = Factory.create mapper prgRom (if chrRom <> [||] then chrRom else chrRam)
                 screenMirroring = screenMirroring
             }
         }

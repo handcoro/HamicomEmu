@@ -126,7 +126,9 @@ module Bus =
             { bus with ppu.nmiInterrupt = None }, res
 
     let pollIrqStatus bus =
-        bus.apu.dmc.irqRequested || bus.apu.frameCounter.irqRequested
+        bus.apu.dmc.irqRequested
+        || bus.apu.frameCounter.irqRequested
+        || Mapper.pollIrq bus.cartridge.mapper
 
     let tick bus =
         let mutable apu = bus.apu

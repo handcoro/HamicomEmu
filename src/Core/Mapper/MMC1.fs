@@ -35,6 +35,7 @@ module MMC1 =
         prgBank: byte
         prgRam: byte[]
         prgRamDisable: bool
+        mutable isSaved: bool
     }
 
     let init = {
@@ -48,6 +49,7 @@ module MMC1 =
         prgBank = 0uy
         prgRam = Array.create 0x2000 0uy
         prgRamDisable = false
+        isSaved = false
     }
 
     let resetShiftAndCount = 0x10uy, 0
@@ -95,6 +97,7 @@ module MMC1 =
 
     let writePrgRam addr value state =
         state.prgRam[addr - basePrgRamAddr] <- value
+        state.isSaved <- true
         state
 
     let setPrgRam data state =
