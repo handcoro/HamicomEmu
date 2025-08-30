@@ -316,12 +316,7 @@ module Ppu =
                     elif c >= 257u && c <= 320u then
                         if c = 257u then
                             // v <- t: 水平スクロール位置コピー
-                            // v[0:4] <- t[0:4] (coarse X)
-                            // v[10]  <- t[10]  (nametable X)
-                            // v[0:4] <- t[0:4], v[10] <- t[10]
-                            // ....A.. ...BCDEF
-                            let mask = 0b000_01_00000_11111us
-                            ppu.scroll.v <- (ppu.scroll.v &&& ~~~mask) ||| (ppu.scroll.t &&& mask)
+                            ppu.scroll.v <- Scroll.getHorizontalPosition ppu.scroll.v ppu.scroll.t
 
                             System.Array.Clear(ppu.hasSprite, 0, Screen.width) // スプライトの存在位置をすべて false で初期化
                             // === スプライト評価 ===
@@ -333,7 +328,7 @@ module Ppu =
                                 Sprite.loadTilesInfo i ppu
                                 Sprite.updateSpriteExistence i ppu
                         
-                        // スキャンラインカウンタ 簡易実装
+                        // === スキャンラインカウンタ 簡易実装 ===
                         if c = 260u then
                             Mapper.scanlineCounter ppu.cartridge.mapper
 
@@ -346,11 +341,9 @@ module Ppu =
 
                 // === プリレンダーライン ===
                 if s = 261us then
-                    // v ← t: 垂直スクロール位置コピー
+                    // v <- t: 垂直スクロール位置コピー
                     if c >= 280u && c <= 304u then
-                        // GHIA.BC DEF.....
-                        let mask = 0b111_10_11111_00000us
-                        ppu.scroll.v <- (ppu.scroll.v &&& ~~~mask) ||| (ppu.scroll.t &&& mask)
+                        ppu.scroll.v <- Scroll.getVerticalPosition ppu.scroll.v ppu.scroll.t
 
                     // === 0 番スキャンラインの冒頭 2 タイル先読み ===
                     elif c >= 321u && c <= 336u then
@@ -362,7 +355,7 @@ module Ppu =
                     // === 奇数フレームスキップ（261,339） ===
                     elif c = 339u && ppu.frameIsOdd then
                         skipRest <- true
-
+            // ここからレンダリング状態関係なし
             // === VBlank 開始（scanline 241 開始時）===
             if s = 241us && c = 1u then
                 ppu.status <- setFlag StatusFlags.vblank ppu.status
@@ -380,7 +373,7 @@ module Ppu =
                 ppu.nmiInterrupt <- None
 
             // === 高速パス（スキャンライン内に収まる） ===
-            if c < 340u && not skipRest then
+            if c < 340u && not skipRest then // 奇数フレームスキップで強制スキャンライン跨ぎへ
                 let oamAddr =
                     if c >= 257u && c <= 320u then
                         0uy

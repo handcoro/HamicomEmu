@@ -47,3 +47,17 @@ module Scroll =
     let inline getAttributeAddress v =
         0x23C0us ||| (v &&& 0x0C00us) ||| ((v >>> 4) &&& 0x38us) ||| ((v >>> 2) &&& 0x07us)
         // ntAddr ||| 0x23C0us ||| coarseYHi ||| coarseXHi
+
+    // v <- t: 水平スクロール位置コピー
+    // v[0:4] <- t[0:4] (coarse X)
+    // v[10]  <- t[10]  (nametable X)
+    // v[0:4] <- t[0:4], v[10] <- t[10]
+    // ....A.. ...BCDEF
+    let inline getHorizontalPosition v t =
+        let mask = 0b000_01_00000_11111us
+        (v &&& ~~~mask) ||| (t &&& mask)
+    // v <- t: 垂直スクロール位置コピー
+    // GHIA.BC DEF.....
+    let inline getVerticalPosition v t =
+        let mask = 0b111_10_11111_00000us
+        (v &&& ~~~mask) ||| (t &&& mask)

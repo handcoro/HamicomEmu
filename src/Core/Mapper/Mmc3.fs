@@ -42,7 +42,7 @@ module Mmc3 =
         if risingEdge then
             s.a12LowCycle <- 0
             if s.irqCounter = 0uy then
-                s.irqCounter <- s.irqReload
+                s.irqCounter <- s.irqReloadValue
             else
                 s.irqCounter <- s.irqCounter - 1uy
                 if s.irqCounter = 0uy && s.irqEnabled then
