@@ -45,12 +45,17 @@
     <Compile Include="src\Core\Trace.fs" />
     <Compile Include="src\Platform\AudioEngine.fs" />
     <Compile Include="src\Tests.fs" />
+    <Compile Include="src\Platform\Save.fs" />
+    <Compile Include="src\Platform\Input.fs" />
+    <Compile Include="src\Platform\Gui\Gui.fs" />
+    <Compile Include="src\Platform\GameHost.fs" />
     <Compile Include="src\Platform\Program.fs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Expecto" Version="9.0.4" />
     <PackageReference Include="FsToolkit.ErrorHandling" Version="4.18.0" />
     <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.3" />
+    <PackageReference Include="Myra" Version="1.5.9" />
     <PackageReference Include="OpenTK.Audio.OpenAL" Version="4.9.4" />
   </ItemGroup>
 </Project>
