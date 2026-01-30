@@ -68,7 +68,7 @@ module EmulatorCore =
                             let c', b, con = Cpu.step c b
                             c', b, con
 
-                    let bus = Bus.tickNTimes (int consumed) bus
+                    let bus = Bus.updatePendingStallCpuCycles consumed bus
 
                     let emu' = { emu with cpu = cpu; bus = bus }
 

@@ -113,6 +113,13 @@ module Bus =
         bus.pendingStallCpuCycles <- if newStall = 0u then None else Some newStall
         bus
 
+    let addPendingStallCpuCycles cycles bus =
+        bus.pendingStallCpuCycles <-
+            match bus.pendingStallCpuCycles with
+            | Some p -> Some (p + cycles)
+            | _ -> Some cycles
+        bus
+
     let pollNmiStatus bus =
         if bus.ppu.clearNmiInterrupt then
             {
@@ -138,7 +145,11 @@ module Bus =
         ppu <- Ppu.tickN 3u ppu
 
         let result = Apu.tick apu
-        let p = result.stallCpuCycles
+        // TODO: DMC DMA と OAM DMA が同時に発生しているときの処理を正確にやりたい
+        let bus =
+            match result.stallCpuCycles with
+            | Some c -> addPendingStallCpuCycles c bus
+            | _ -> bus
 
         apu <- result.apu
 
@@ -152,7 +163,6 @@ module Bus =
         | None -> ()
 
         bus.cycleTotal <- cyc
-        bus.pendingStallCpuCycles <- p
         // NOTE: 副作用でおかしくなったときは tick 内で留めるようにレコードの再生成
         // { bus with apu = apu; ppu = ppu }
         bus
@@ -208,16 +218,21 @@ module Bus =
 
         // DMA 転送はページを指定して 0x100 バイト分転送する
         // https://www.nesdev.org/wiki/DMA
-        | 0x4014us -> // TODO: OAM DMA の正確なティック加算処理
+        // TODO: 実際の動作とは違う簡易実装なためいつかなんとかしたい
+        | 0x4014us ->
             let hi = uint16 value <<< 8
             let mutable data = Array.create 0x100 0uy
 
+            // NOTE: 前もって一気に転送してしまう簡易実装
             for i in 0..0xFF do
                 data[i] <- memRead (hi + uint16 i) bus |> fst
 
             let ppu = Ppu.writeToOamDma data bus.ppu
-            let bus' = tickNTimes 114 bus
-            { bus' with ppu = ppu }
+
+            // NOTE: サイクル数が偶数か奇数かで消費サイクル数を変える簡易実装
+            let cycles = if bus.cycleTotal &&& 1u <> 0u then 513u else 514u
+
+            { bus with ppu = ppu; pendingStallCpuCycles = Some cycles }
 
         | 0x4016us ->
             let joy = bus.joy1 |> Joypad.write value
