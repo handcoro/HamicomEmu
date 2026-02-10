@@ -22,7 +22,7 @@ module Background =
             |> int
             |> mirrorVramAddr ppu.cartridge.screenMirroring ppu.cartridge.mapper
         Mapper.onPpuFetch addr ppu.cartridge.mapper
-        ppu.latches.tile <- ppu.vram[addr]
+        ppu.latches.tile <- Mapper.ppuReadNameTable addr ppu.vram ppu.cartridge
 
     /// 属性テーブルのフェッチ
     let fetchAttrLatch ppu =
@@ -32,7 +32,7 @@ module Background =
             |> int
             |> mirrorVramAddr ppu.cartridge.screenMirroring ppu.cartridge.mapper
 
-        let attrByte = ppu.vram[addr]
+        let attrByte = Mapper.ppuReadNameTable addr ppu.vram ppu.cartridge
         let v = int v
         // 該当シフト量 0: 左上タイル 2: 右上タイル 4: 左下タイル 6: 右下タイル
         let shift = ((v >>> 4) &&& 0b100) ||| (v &&& 0b10)
@@ -57,13 +57,13 @@ module Background =
     let fetchPatternLowLatch ppu =
         let addr = getPatternAddress ppu
         Mapper.onPpuFetch addr ppu.cartridge.mapper
-        ppu.latches.patternLow <- Mapper.ppuRead addr ppu.cartridge
+        ppu.latches.patternLow <- Mapper.ppuRead addr ppu.vram ppu.cartridge
 
     /// パターンテーブル上位
     let fetchPatternHighLatch ppu =
         let addr = getPatternAddress ppu + 8 // 上位バイト
         Mapper.onPpuFetch addr ppu.cartridge.mapper
-        ppu.latches.patternHigh <- Mapper.ppuRead addr ppu.cartridge
+        ppu.latches.patternHigh <- Mapper.ppuRead addr ppu.vram ppu.cartridge
 
     /// パターンテーブルをレジスタにロード
     let loadPatternRegsFromLatches ppu =

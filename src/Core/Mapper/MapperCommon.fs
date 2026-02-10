@@ -8,4 +8,6 @@ module Common =
         | Vertical
         | FourScreen
 
-    let inline getOffset calcBank bankSize baseAddr = calcBank * bankSize - baseAddr
+    let inline getOffset bankSelect bankSize baseAddr = bankSelect * bankSize - baseAddr
+
+    let vramSize = 1024 * 2 // 2 KiB

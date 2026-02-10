@@ -11,6 +11,7 @@
     <Compile Include="src\Core\Mapper\MapperCommon.fs" />
     <Compile Include="src\Core\Mapper\MMC1.fs" />
     <Compile Include="src\Core\Mapper\Mmc3.fs" />
+    <Compile Include="src\Core\Mapper\Namco163.fs" />
     <Compile Include="src\Core\Mapper\Uxrom.fs" />
     <Compile Include="src\Core\Mapper\VRC1.fs" />
     <Compile Include="src\Core\Mapper\Gxrom.fs" />

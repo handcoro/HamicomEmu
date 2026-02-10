@@ -61,8 +61,8 @@ module Sprite =
         Mapper.onPpuFetch (tileAddr + 8) ppu.cartridge.mapper
 
         // VRAM 読み出し
-        let lo = Mapper.ppuRead tileAddr ppu.cartridge
-        let hi = Mapper.ppuRead (tileAddr + 8) ppu.cartridge
+        let lo = Mapper.ppuRead tileAddr ppu.vram ppu.cartridge
+        let hi = Mapper.ppuRead (tileAddr + 8) ppu.vram ppu.cartridge
 
         // 反転を考慮
         si[idx].tileLo <- if horiMirror then reverseBits lo else lo

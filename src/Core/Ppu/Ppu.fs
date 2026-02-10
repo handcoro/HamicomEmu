@@ -37,7 +37,7 @@ module Ppu =
     let init (cart: Cartridge) = {
         cartridge = cart
         pal = Array.zeroCreate 32 // パレットテーブルは32バイト
-        vram = Array.zeroCreate 0x2000 // PPU VRAM は8KB
+        vram = Array.zeroCreate Common.vramSize // 背景情報
         oam = Array.zeroCreate 256 // OAM データは256バイト
         oamAddr = 0uy
         secondarySprites = Array.init 8 (fun _ -> initialSpriteInfo) // セカンダリ OAM
@@ -133,14 +133,14 @@ module Ppu =
         match addr with
         | addr when addr <= 0x1FFF ->
             let result = ppu'.buffer
-            let chr = Mapper.ppuRead addr ppu'.cartridge
+            let chr = Mapper.ppuRead addr ppu'.vram ppu'.cartridge
             result, { ppu' with buffer = chr }
 
         | addr when addr <= 0x3EFF ->
             let result = ppu'.buffer
+            let nt = Mapper.ppuReadNameTable mirrored ppu'.vram ppu'.cartridge
 
-            result,
-            { ppu' with buffer = ppu'.vram[mirrored] }
+            result, { ppu' with buffer = nt }
 
         | addr when addr <= 0x3FFF ->
             // NOTE: 新しい PPU はバッファを介さないらしい？ そしてバッファにはネームテーブルのミラーが入る
@@ -149,6 +149,7 @@ module Ppu =
 
             result,
             { ppu' with buffer = ppu'.vram[mirrored] }
+
         | _ -> failwithf "Invalid PPU address: %04X" addr
 
     let writeToDataRegister value ppu =
@@ -158,12 +159,12 @@ module Ppu =
 
         match addr with
         | addr when addr <= 0x1FFF ->
-            let cart = Mapper.ppuWrite addr value ppu'.cartridge
+            let cart = Mapper.ppuWrite addr value ppu'.vram ppu'.cartridge
             { ppu' with cartridge = cart }
 
         | addr when addr <= 0x3EFF ->
-            ppu'.vram[mirrored] <- value
-            ppu'
+            let cart = Mapper.ppuWriteNameTable mirrored value ppu'.vram ppu'.cartridge
+            { ppu' with cartridge = cart }
 
         | addr when addr <= 0x3FFF ->
             ppu' |> writePaletteRam addr value

@@ -21,6 +21,9 @@ module Mapper =
             | MMC3 state ->
                 Mmc3.getMirroring state
 
+            | Namco163 _ ->
+                FourScreen // マッパーが 4 画面分割り当てる仕様
+
             | VRC1 state ->
                 match VRC1.getMirroring state with
                 | Some mirror -> mirror
@@ -39,7 +42,21 @@ module Mapper =
 
         cart.prgRom[addr2]
 
+    let readInternalRam (addr : uint16) cart =
+        match cart.mapper with
+        | Namco163 state ->
+            let data, s = Namco163.readInternalRam state
+            data, Namco163 s
+        | _ ->
+            0uy, cart.mapper
 
+    let writeInternalRam (addr : uint16) value cart =
+        match cart.mapper with
+        | Namco163 state ->
+            let s = Namco163.writeInternalRam value state
+            Namco163 s, ()
+        | _ ->
+            cart.mapper, ()
 
     let readPrgRam (addr: uint16) cart =
         let addr = int addr
@@ -48,8 +65,10 @@ module Mapper =
             MMC1.readPrgRam addr state
         | MMC3 state ->
             Mmc3.readPrgRam addr state
+        | Namco163 state ->
+            Namco163.readPrgRam addr state
         | _ ->
-            printfn "[MAPPER %A] read from PRG Ram is not supported." cart.mapper
+            printfn "[MAPPER] read from PRG Ram is not supported."
             0uy
     
     let writePrgRam (addr: uint16) value cart =
@@ -61,17 +80,22 @@ module Mapper =
         | MMC3 state ->
             let newState = Mmc3.writePrgRam addr value state
             MMC3 newState, ()
+        | Namco163 state ->
+            let newState = Namco163.writePrgRam addr value state
+            Namco163 newState, ()
         | J87 _ ->
             let newState = J87.writePrgRam value
             J87 newState, ()
         | _ ->
-            printfn "[MAPPER %A] write to PRG Ram is not supported." cart.mapper
+            printfn "[MAPPER] write to PRG Ram is not supported."
             cart.mapper, ()
 
     let getPrgRam cart =
         match cart.mapper with
         | MMC1 state when state.isSaved -> Some state.prgRam
         | MMC3 state when state.isSaved -> Some state.prgRam
+        | Namco163 state when state.isSaved ->
+            Some (Namco163.getDataFromRam state)
         | _ ->
             None
 
@@ -82,6 +106,9 @@ module Mapper =
             cart
         | MMC3 state ->
             Mmc3.setPrgRam data state
+            cart
+        | Namco163 state ->
+            Namco163.setDataToRam data state
             cart
         | _ ->
             cart
@@ -104,6 +131,9 @@ module Mapper =
 
         | MMC3 state ->
             Mmc3.cpuRead addr prg state
+
+        | Namco163 state ->
+            Namco163.cpuRead addr prg state
 
         | GxROM state -> Gxrom.cpuRead addr prg state
 
@@ -135,7 +165,11 @@ module Mapper =
         | MMC3 state ->
             let newState = Mmc3.cpuWrite addr value cart.prgRom (getChrMem cart) state
             MMC3 newState, ()
-        
+
+        | Namco163 state ->
+            let newState = Namco163.cpuWrite addr value state
+            Namco163 newState, ()
+
         | GxROM _ when addr >= 0x8000 ->
             let newState = Gxrom.cpuWrite addr value
             GxROM newState, ()
@@ -156,10 +190,18 @@ module Mapper =
         let offset = getOffset (int state.bankSelect % totalBanks) bankSize 0
         addr + offset
 
-    let ppuRead addr cart =
+    // TODO: Namco 163 以外の VRAM 読み出しに対応する
+    let ppuRead addr (vram : byte[]) cart =
         let addr = int addr
 
         match cart.mapper with
+        | Namco163 state ->
+            let data = Namco163.ppuRead addr (getChrMem cart) vram state
+            data
+
+        | _ when addr >= 0x2000 ->
+            vram[addr - 0x2000]
+
         | MMC1 state ->
             let data = MMC1.ppuRead addr (getChrMem cart) state
             data
@@ -189,20 +231,38 @@ module Mapper =
             let chr = getChrMem cart
             chr[addr]
 
-    let ppuWrite addr value cart =
+    let ppuWrite addr value (vram : byte[]) cart =
         let addr = int addr
 
         match cart.mapper with
-        | NROM _
-        | _ when cart.chrRom <> [||] -> cart
-
         | MMC3 state when cart.chrRam <> [||]->
             Mmc3.ppuWrite addr value cart.chrRam state
-            cart
-        | NROM _
+
+        | Namco163 state ->
+            Namco163.ppuWrite addr value (getChrMem cart) vram state
+
+        | _ when cart.chrRom <> [||] -> ()
+
         | _ ->
             cart.chrRam[int addr] <- value
+
+        cart
+
+    let ppuReadNameTable addr (vram : byte[]) cart =
+        match cart.mapper with
+        | Namco163 _ ->
+            ppuRead (addr + 0x2000) vram cart
+        | _ ->
+            vram[addr]
+
+    let ppuWriteNameTable addr value (vram : byte[]) cart =
+        match cart.mapper with
+        | Namco163 _ ->
+            ppuWrite (addr + 0x2000) value vram cart
+        | _ ->
+            vram[addr] <- value
             cart
+
 
     let onPpuFetch addr mapper =
         match mapper with
@@ -214,9 +274,16 @@ module Mapper =
         | MMC3 state -> Mmc3.scanlineCounter state
         | _ -> ()
 
+    let irqCounter mapper =
+        match mapper with
+        | Namco163 state -> Namco163.incrementIrqCounter state
+        | _ -> ()
+
     let pollIrq mapper =
         match mapper with
         | MMC3 state ->
             Mmc3.pollIrq state
+        | Namco163 state ->
+            Namco163.pollIrq state
         | _ ->
             false

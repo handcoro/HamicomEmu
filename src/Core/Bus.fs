@@ -59,11 +59,6 @@ module Bus =
             let mirrorDownAddr = addr &&& 0b0000_0111_1111_1111us
             bus.cpuRam[int mirrorDownAddr], bus
 
-        | 0x2000us
-        | 0x2001us
-        | 0x2003us
-        | 0x2005us
-        | 0x2006us
         | 0x4014us ->
             printfn "Attempt to read from write-only PPU address: %04X" addr
             0uy, bus
@@ -80,6 +75,13 @@ module Bus =
             let data, ppu = Ppu.readFromDataRegister bus.ppu
             data, { bus with ppu = ppu }
 
+        // PPU の書き込み専用レジスタからは減衰するラッチとしてデータバスの値が読み込まれる
+        | 0x2000us
+        | 0x2001us
+        | 0x2003us
+        | 0x2005us
+        | 0x2006us ->
+            0uy, bus // TODO: ラッチの実装
         | addr when addr |> inRange 0x2008us PpuRegisters.mirrorsEnd ->
             let mirrorDownAddr = addr &&& 0b0010_0000_0000_0111us
             memRead mirrorDownAddr bus
@@ -96,7 +98,21 @@ module Bus =
         | addr when addr |> inRange ApuRegisters.start ApuRegisters.mirrorsEnd ->
             let data, apu = Apu.read addr bus.apu
             data, { bus with apu = apu }
-        
+
+        | addr when addr |> inRange 0x4800us 0x4FFFus ->
+            let data, mapper = Mapper.readInternalRam addr bus.cartridge
+            data,
+            {
+                bus with
+                    cartridge.mapper = mapper
+                    ppu.cartridge.mapper = mapper
+            }
+
+        // Namco163 の IRQ など
+        | addr when addr |> inRange 0x5000us 0x5FFFus ->
+            let data = Mapper.cpuRead addr bus.cartridge
+            data, bus
+
         | addr when addr |> inRange 0x6000us 0x7FFFus ->
             let data = Mapper.readPrgRam addr bus.cartridge
             data, bus
@@ -161,6 +177,8 @@ module Bus =
             apu.dmc <- dmc
 
         | None -> ()
+
+        Mapper.irqCounter bus.cartridge.mapper
 
         bus.cycleTotal <- cyc
         // NOTE: 副作用でおかしくなったときは tick 内で留めるようにレコードの再生成
@@ -241,6 +259,24 @@ module Bus =
         | addr when addr |> inRange ApuRegisters.start ApuRegisters.mirrorsEnd ->
             let apu = Apu.write addr value bus.apu
             { bus with apu = apu }
+
+        | addr when addr |> inRange 0x4800us 0x4FFFus ->
+            let mapper, _ = Mapper.writeInternalRam addr value bus.cartridge
+
+            {
+                bus with
+                    cartridge.mapper = mapper
+                    ppu.cartridge.mapper = mapper
+            }
+
+        | addr when addr |> inRange 0x5000us 0x5FFFus ->
+            let mapper, _ = Mapper.cpuWrite addr value bus.cartridge
+
+            {
+                bus with
+                    cartridge.mapper = mapper
+                    ppu.cartridge.mapper = mapper
+            }
 
         | addr when addr |> inRange 0x6000us 0x7FFFus ->
             let mapper, _ = Mapper.writePrgRam addr value bus.cartridge
