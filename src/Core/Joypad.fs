@@ -22,12 +22,17 @@ module Joypad =
 
     /// strobe の書き込み
     /// TODO: 拡張ポート対応
-    let write value joy =
+    let write value joy1 joy2 =
         let strobe = if value &&& 1uy <> 0uy then true else false
-        let idx = if strobe then 0 else joy.buttonIdx // strobe がセットされていれば読み取りは A ボタン固定
+        let idx = if strobe then 0 else joy1.buttonIdx // strobe がセットされていれば読み取りは A ボタン固定
 
         {
-            joy with
+            joy1 with
+                strobe = strobe
+                buttonIdx = idx
+        },
+        {
+            joy2 with
                 strobe = strobe
                 buttonIdx = idx
         }

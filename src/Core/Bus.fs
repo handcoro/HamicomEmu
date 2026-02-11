@@ -90,10 +90,9 @@ module Bus =
             let data, joy = Joypad.read bus.joy1
             data, { bus with joy1 = joy }
 
-        | 0x4017us -> // TODO: Joypad
-            //   let data, joy = readJoypad bus.joy2
-            //   data, {bus with joy2 = joy}
-            0uy, bus
+        | 0x4017us ->
+            let data, joy = Joypad.read bus.joy2
+            data, { bus with joy2 = joy }
 
         | addr when addr |> inRange ApuRegisters.start ApuRegisters.mirrorsEnd ->
             let data, apu = Apu.read addr bus.apu
@@ -253,8 +252,8 @@ module Bus =
             { bus with ppu = ppu; pendingStallCpuCycles = Some cycles }
 
         | 0x4016us ->
-            let joy = bus.joy1 |> Joypad.write value
-            { bus with joy1 = joy }
+            let joy1, joy2 = Joypad.write value bus.joy1 bus.joy2
+            { bus with joy1 = joy1; joy2 = joy2 }
 
         | addr when addr |> inRange ApuRegisters.start ApuRegisters.mirrorsEnd ->
             let apu = Apu.write addr value bus.apu

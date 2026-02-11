@@ -42,6 +42,15 @@ let keyMap = [
     Keys.A, Joypad.Button.a
 ]
 
+let keyMap2 = [
+    Keys.J, Joypad.Button.right
+    Keys.G, Joypad.Button.left
+    Keys.H, Joypad.Button.down
+    Keys.Y, Joypad.Button.up
+    Keys.K, Joypad.Button.b
+    Keys.L, Joypad.Button.a
+]
+
 /// XBox Gamepad 前提の設定
 let padMap = [
     Buttons.DPadRight, Joypad.Button.right
@@ -60,11 +69,17 @@ let wasKeyPressed (prev: KeyboardState) key = prev.IsKeyDown key
 
 let isPadPressed (gs: GamePadState) button = gs.IsButtonDown button
 
-let handleJoypadInput (input: InputSource) joy =
+let getKeyMap number =
+    match number with
+    | 1 -> keyMap
+    | 2 -> keyMap2
+    | _ -> keyMap
+
+let handleJoypadInput (input: InputSource) number joy =
     let joy =
         match input with
         | Keyboard ks ->
-            keyMap
+            getKeyMap number
             |> List.fold (fun accJoy (key, button) -> accJoy |> Joypad.setButtonPressed button (isKeyPressed ks key)) joy
         | Gamepad gs when gs.IsConnected ->
             padMap
@@ -204,11 +219,17 @@ type basicNesGame(raw, cartridgePath, traceFn) as this =
         // リセット機能など
         emu <- handleFunctionKeyInput (Keyboard ks) emu
 
-        let keyJoy = Joypad.init |> handleJoypadInput (Keyboard ks)
-        let padJoy = Joypad.init |> handleJoypadInput (Gamepad gs)
-        let joy = Joypad.mergeStates keyJoy padJoy
+        let keyJoy1 = Joypad.init |> handleJoypadInput (Keyboard ks) 1
+        let padJoy = Joypad.init |> handleJoypadInput (Gamepad gs) 1
+        let keyJoy2 = Joypad.init |> handleJoypadInput (Keyboard ks) 2
+        let joy1 = Joypad.mergeStates keyJoy1 padJoy
+        let joy2 = keyJoy2
 
-        emu <- { emu with bus.joy1.buttonStatus = joy.buttonStatus }
+        emu <- {
+            emu with
+                bus.joy1.buttonStatus = joy1.buttonStatus
+                bus.joy2.buttonStatus = joy2.buttonStatus
+        }
 
         let cpuClock = Constants.cpuClockNTSC
         let cyclesPerSample = cpuClock / float sampleRate // ≒ 40.584
