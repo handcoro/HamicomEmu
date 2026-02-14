@@ -274,7 +274,7 @@ let main argv =
     if argv |> Array.exists ((=) "--test") then
         // --test を除いた引数だけ Expecto に渡す
         let filteredArgs = argv |> Array.filter (fun a -> a <> "--test")
-        runTestsWithArgs defaultConfig filteredArgs Tests.tests
+        runTestsWithCLIArgs [] filteredArgs Tests.tests
     else
         let traceFn =
             if argv |> Array.exists ((=) "--trace") then
