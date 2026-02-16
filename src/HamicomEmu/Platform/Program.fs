@@ -1,7 +1,8 @@
-﻿open HamicomEmu.EmulatorCore
+﻿module HamicomEmu.Main
+
+open HamicomEmu.EmulatorCore
 open HamicomEmu.Common
 open HamicomEmu.Cartridge
-open Tests
 open HamicomEmu.Ppu.Screen
 open HamicomEmu.Ppu.Renderer
 open HamicomEmu.Apu
@@ -12,7 +13,6 @@ open HamicomEmu.Input
 open System
 open System.IO
 open FsToolkit.ErrorHandling
-open Expecto
 
 // MonoGame メインゲームクラス
 open Microsoft.Xna.Framework
@@ -269,30 +269,30 @@ let loadDefaultCartridge f =
     | Error msg ->
         printfn $"{msg}"
 
+let traceFn argv =
+    if argv |> Array.exists ((=) "--trace") then
+        traceAndPrint
+    else
+        fun _ -> ()
+
+let processCartridge path traceFn =
+    match loadCartridgeFile path with
+    | Ok raw ->
+        use game = new basicNesGame (raw, path, traceFn)
+        game.Run()
+        0
+    | Error msg ->
+        printfn $"{msg}"
+        loadDefaultCartridge traceFn
+        0
+
 [<EntryPoint>]
 let main argv =
-    if argv |> Array.exists ((=) "--test") then
-        // --test を除いた引数だけ Expecto に渡す
-        let filteredArgs = argv |> Array.filter (fun a -> a <> "--test")
-        runTestsWithCLIArgs [] filteredArgs Tests.tests
-    else
-        let traceFn =
-            if argv |> Array.exists ((=) "--trace") then
-                traceAndPrint
-            else
-                fun _ -> ()
+    let trace = traceFn argv
 
-        match argv |> Array.tryHead with
-        | Some path ->
-            match loadCartridgeFile path with
-            | Ok raw ->
-                use game = new basicNesGame (raw, path, traceFn)
-                game.Run()
-                0
-            | Error msg ->
-                printfn $"{msg}"
-                loadDefaultCartridge traceFn
-                0
-        | None ->
-            loadDefaultCartridge traceFn
-            0
+    match argv |> Array.tryHead with
+    | Some path ->
+        processCartridge path trace
+    | None ->
+        loadDefaultCartridge trace
+        0

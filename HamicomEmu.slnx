@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="src/HamicomEmu/HamicomEmu.fsproj" />
+  <Project Path="tests/HamicomEmu.Tests/HamicomEmu.Tests.fsproj" />
+</Solution>

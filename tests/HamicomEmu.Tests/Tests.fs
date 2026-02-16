@@ -14,27 +14,13 @@ open HamicomEmu.Cartridge
 open HamicomEmu.Trace
 
 let initialDmcState = {
-    irqEnabled = false
-    isLoop = false
-    rateIndex = 0uy
-
-    startAddress = 0uy
-    sampleLength = 0uy
-
-    currentAddress = 0xC000us
-    bytesRemaining = 0us
-    buffer = Some 0b1111_0000uy
-
-    shiftRegister = 0uy
-    bitsRemaining = 0
-
-    outputLevel = 64uy
-    timer = 0us
-    isSilence = false
-    irqRequested = false
-    lastOutput = 0uy
+    Dmc.init with
+        currentAddress = 0xC000us
+        buffer = Some 0b1111_0000uy
+        outputLevel = 64uy
 }
 
+[<Tests>]
 let tests =
     testList "All Tests" [
         testList "APU Tests" [
@@ -161,20 +147,55 @@ let tests =
                 Expect.equal dmc'.buffer (Some 0xAAuy) "Buffer updated"
             }
 
-            test "DMC requests IRQ when sample ends and loop is disabled" {
+            test "DMC requests IRQ when last sample byte is read and loop is disabled" {
                 let dmc = {
                     initialDmcState with
                         isLoop = false
                         irqEnabled = true
-                        bytesRemaining = 0us  // すでに終わってる状態
-                        buffer = None         // 読み込むサンプルが無い
-                        bitsRemaining = 0     // シフトも終わってる
-                        timer = 0us           // tick で処理が入る
+                        buffer = None
+                        currentAddress = 0xC000us
+                        bytesRemaining = 1us  // 最後の1バイトが残っている
                 }
 
-                let dmc', _, _ = Dmc.tick dmc
+                // 最後のバイトを読み込む
+                let dmc' = Dmc.applySampleRead 0xAAuy dmc
 
-                Expect.isTrue dmc'.irqRequested "IRQ should be requested at end of sample"
+                Expect.isTrue dmc'.irqRequested "IRQ should be requested when last byte is read"
+                Expect.equal dmc'.bytesRemaining 0us "bytesRemaining should be 0"
+                Expect.equal dmc'.buffer (Some 0xAAuy) "Buffer should contain the read value"
+            }
+
+            test "DMC does not request IRQ when loop is enabled" {
+                let dmc = {
+                    initialDmcState with
+                        isLoop = true
+                        irqEnabled = true
+                        startAddress = 0x10uy
+                        sampleLength = 0x01uy
+                        buffer = None
+                        currentAddress = 0xC000us
+                        bytesRemaining = 1us
+                }
+
+                let dmc' = Dmc.applySampleRead 0xBBuy dmc
+
+                Expect.isFalse dmc'.irqRequested "IRQ should not be requested when loop is enabled"
+                Expect.isTrue (dmc'.bytesRemaining > 0us) "Sample should restart when looping"
+            }
+
+            test "DMC does not request IRQ when irqEnabled is false" {
+                let dmc = {
+                    initialDmcState with
+                        isLoop = false
+                        irqEnabled = false
+                        buffer = None
+                        currentAddress = 0xC000us
+                        bytesRemaining = 1us
+                }
+
+                let dmc' = Dmc.applySampleRead 0xCCuy dmc
+
+                Expect.isFalse dmc'.irqRequested "IRQ should not be requested when irqEnabled is false"
             }
 
             test "applySampleRead clears irqRequested flag" {
