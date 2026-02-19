@@ -6,6 +6,9 @@
     <GenerateProgramFile>false</GenerateProgramFile>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="CpuTests.fs" />
+    <Compile Include="ApuTests.fs" />
+    <Compile Include="PpuTests.fs" />
     <Compile Include="Tests.fs" />
     <Compile Include="Main.fs" />
   </ItemGroup>
