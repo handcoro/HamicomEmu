@@ -2,7 +2,7 @@ module CpuTests
 
 open Expecto
 open HamicomEmu.Bus
-open HamicomEmu.Cartridge
+open TestHelpers
 open HamicomEmu.Cpu
 open HamicomEmu.Common.BitUtils
 

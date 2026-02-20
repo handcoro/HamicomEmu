@@ -1,11 +1,10 @@
 module PpuTests
 
 open Expecto
-open HamicomEmu.Common.BitUtils
 open HamicomEmu.Bus
 open HamicomEmu.Ppu.Scroll
 open HamicomEmu.Ppu
-open HamicomEmu.Cartridge
+open TestHelpers
 
 let ppuTests =
     testList "PPU Tests" [
