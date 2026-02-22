@@ -9,11 +9,11 @@
     <Compile Include="Core/Joypad.fs" />
     <Compile Include="Core/Instructions.fs" />
     <Compile Include="Core/Mapper/MapperCommon.fs" />
-    <Compile Include="Core/Mapper/MMC1.fs" />
+    <Compile Include="Core/Mapper/Mmc1.fs" />
     <Compile Include="Core/Mapper/Mmc3.fs" />
     <Compile Include="Core/Mapper/Namco163.fs" />
     <Compile Include="Core/Mapper/Uxrom.fs" />
-    <Compile Include="Core/Mapper/VRC1.fs" />
+    <Compile Include="Core/Mapper/Vrc1.fs" />
     <Compile Include="Core/Mapper/Gxrom.fs" />
     <Compile Include="Core/Mapper/J87.fs" />
     <Compile Include="Core/Mapper/MapperTypes.fs" />

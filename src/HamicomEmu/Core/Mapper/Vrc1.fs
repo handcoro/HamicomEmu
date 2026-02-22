@@ -1,6 +1,6 @@
 namespace HamicomEmu.Mapper
 
-module VRC1 =
+module Vrc1 =
 
     open HamicomEmu.Mapper.Common
 
@@ -9,24 +9,28 @@ module VRC1 =
         prgBank1: byte
         prgBank2: byte
         mirroring: Mirroring
+        hardwiredMirroring: Mirroring
         chrBank0: byte
         chrBank1: byte
     }
 
-    let init = {
+    let init hardwiredMirroring = {
         prgBank0 = 0uy
         prgBank1 = 0uy
         prgBank2 = 0uy
-        mirroring = Horizontal
+        mirroring = hardwiredMirroring
+        hardwiredMirroring = hardwiredMirroring
         chrBank0 = 0uy
         chrBank1 = 0uy
     }
 
+    /// VRC1 のミラーリング取得
+    /// 4-screen VRAM 配線の場合はミラーリングビットを無視
     let getMirroring state =
-        match state.mirroring with
-        | Vertical -> Some Vertical
-        | Horizontal -> Some Horizontal
-        | _ -> None
+        if state.hardwiredMirroring = FourScreen then
+            FourScreen
+        else
+            state.mirroring
 
     let cpuRead addr (prg: byte[]) state =
         let bankSize = 8 * 1024 // 8 KB
@@ -64,7 +68,12 @@ module VRC1 =
 
         // ミラーリングと CHR バンク 0, 1 の上位ビット
         | 0x9000 ->
-            let mirror = if value &&& 1uy <> 0uy then Horizontal else Vertical
+            // 4-screen VRAM 配線の場合はミラーリングビットを無視
+            let mirror =
+                if state.hardwiredMirroring = FourScreen then
+                    state.mirroring
+                else
+                    if value &&& 1uy <> 0uy then Horizontal else Vertical
             let bank0Hi = (value &&& 0b0010uy) <<< 3
             let bank1Hi = (value &&& 0b0100uy) <<< 2
             let chrBank0 = (state.chrBank0 &&& 0x0Fuy) ||| bank0Hi

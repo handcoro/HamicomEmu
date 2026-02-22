@@ -226,3 +226,12 @@ module Namco163 =
             vram[res] <- value
         else
             ()
+
+    let ppuReadNametable idx (chr : byte[]) (vram : byte[]) state =
+        ppuRead (idx + 0x2000) chr vram state
+
+    let ppuWriteNametable idx value (chr : byte[]) (vram : byte[]) state =
+        ppuWrite (idx + 0x2000) value chr vram state
+
+    let getMirroring state =
+        FourScreen // マッパーが 4 画面分割り当てる仕様

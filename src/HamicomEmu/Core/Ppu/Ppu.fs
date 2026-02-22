@@ -138,7 +138,7 @@ module Ppu =
 
         | addr when addr <= 0x3EFF ->
             let result = ppu'.buffer
-            let nt = Mapper.ppuReadNameTable mirrored ppu'.vram ppu'.cartridge
+            let nt = Mapper.ppuReadNametable mirrored ppu'.vram ppu'.cartridge
 
             result, { ppu' with buffer = nt }
 
@@ -163,7 +163,7 @@ module Ppu =
             { ppu' with cartridge = cart }
 
         | addr when addr <= 0x3EFF ->
-            let cart = Mapper.ppuWriteNameTable mirrored value ppu'.vram ppu'.cartridge
+            let cart = Mapper.ppuWriteNametable mirrored value ppu'.vram ppu'.cartridge
             { ppu' with cartridge = cart }
 
         | addr when addr <= 0x3FFF ->

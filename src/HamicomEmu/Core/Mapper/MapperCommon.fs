@@ -7,6 +7,8 @@ module Common =
         | Horizontal
         | Vertical
         | FourScreen
+        | OneScreenA  // $2000-$23FF のみ
+        | OneScreenB  // $2400-$27FF のみ
 
     let inline getOffset bankSelect bankSize baseAddr = bankSelect * bankSize - baseAddr
 

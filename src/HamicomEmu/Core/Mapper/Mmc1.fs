@@ -1,14 +1,8 @@
 namespace HamicomEmu.Mapper
 
-module MMC1 =
+module Mmc1 =
 
     open HamicomEmu.Mapper.Common
-
-    type NametableArrangement =
-    | OneScreenLower // 0: $000
-    | OneScreenUpper // 1: $400
-    | Vertical // 2
-    | Horizontal // 3
 
     type PrgBankMode =
     | Mode32K // 0-1
@@ -27,7 +21,7 @@ module MMC1 =
     type State = {
         shiftReg: byte
         shiftCount: int
-        nametableSwitch: NametableArrangement
+        nametableSwitch: Mirroring
         prgBankMode: PrgBankMode
         chrBankMode: ChrBankMode
         chrBank0: byte
@@ -41,7 +35,7 @@ module MMC1 =
     let init = {
         shiftReg = 0x10uy
         shiftCount = 0
-        nametableSwitch = OneScreenLower
+        nametableSwitch = OneScreenA
         prgBankMode = FixLastBank
         chrBankMode = Mode8K
         chrBank0 = 0uy
@@ -67,16 +61,12 @@ module MMC1 =
 
     let parseNametableSwitch v =
         match int v &&& 0b0_0011 with
-        | 0 -> OneScreenLower
-        | 1 -> OneScreenUpper
+        | 0 -> OneScreenA
+        | 1 -> OneScreenB
         | 2 -> Vertical
         | _ -> Horizontal
 
-    let getMirroring state =
-        match state.nametableSwitch with
-        | Vertical -> Some Mirroring.Vertical
-        | Horizontal -> Some Mirroring.Horizontal
-        | _ -> None // とりあえずの処置
+    let getMirroring state = state.nametableSwitch
 
     let basePrgAddr = 0x8000
     let prgBankSize mode =
@@ -156,7 +146,6 @@ module MMC1 =
                 let offset = getOffset (bank % totalBanks) bankSize 0
                 chr[addr + offset]
             | 0x1000 ->
-                let bank = int state.chrBank1 &&& 0x1F
                 let offset = getOffset (totalBanks - 1) bankSize 0x1000
                 chr[addr + offset]
             | _ ->

@@ -6,6 +6,7 @@ module Mmc3 =
 
     type State = {
         mutable mirroring: Mirroring
+        hardwiredMirroring: Mirroring
 
         // バンク選択
         mutable bankSelect: byte
@@ -161,9 +162,10 @@ module Mmc3 =
             s.prgOffsets[2] <- prgOffset prg r6
             s.prgOffsets[3] <- prgOffset prg lastBank
 
-    let init (prg : byte[]) (chr : byte[]) =
+    let init (prg : byte[]) (chr : byte[]) hardwiredMirroring =
         let s = {
-            mirroring = Vertical
+            mirroring = hardwiredMirroring
+            hardwiredMirroring = hardwiredMirroring
             bankSelect = 0uy
             bankRegs = Array.zeroCreate<byte> 8
             prgOffsets = Array.zeroCreate<int> 4
@@ -209,7 +211,12 @@ module Mmc3 =
             s.bankRegs[target] <- value
             calcBanks prg chr s
         | 0xA000 ->
-            s.mirroring <- if value &&& 1uy = 0uy then Vertical else Horizontal
+            // 4-screen VRAM 配線の場合はミラーリングビットを無視
+            s.mirroring <-
+                if s.hardwiredMirroring = FourScreen then
+                    s.mirroring
+                else
+                    if value &&& 1uy <> 0uy then Horizontal else Vertical
         | 0xA001 ->
             () // PRG RAM の保護機能
         | 0xC000 ->

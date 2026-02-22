@@ -22,7 +22,7 @@ module Background =
             |> int
             |> mirrorVramAddr ppu.cartridge.screenMirroring ppu.cartridge.mapper
         Mapper.onPpuFetch addr ppu.cartridge.mapper
-        ppu.latches.tile <- Mapper.ppuReadNameTable addr ppu.vram ppu.cartridge
+        ppu.latches.tile <- Mapper.ppuReadNametable addr ppu.vram ppu.cartridge
 
     /// 属性テーブルのフェッチ
     let fetchAttrLatch ppu =
@@ -32,7 +32,7 @@ module Background =
             |> int
             |> mirrorVramAddr ppu.cartridge.screenMirroring ppu.cartridge.mapper
 
-        let attrByte = Mapper.ppuReadNameTable addr ppu.vram ppu.cartridge
+        let attrByte = Mapper.ppuReadNametable addr ppu.vram ppu.cartridge
         let v = int v
         // 該当シフト量 0: 左上タイル 2: 右上タイル 4: 左下タイル 6: 右下タイル
         let shift = ((v >>> 4) &&& 0b100) ||| (v &&& 0b10)

@@ -24,6 +24,6 @@ let testCartridge program =
         prgRom = prgRom
         chrRom = chrRom
         chrRam = [||]
-        mapper = Factory.create 3 prgRom chrRom
+        mapper = Factory.create 3 prgRom chrRom None
         screenMirroring = Vertical
     }

@@ -14,6 +14,15 @@ module Common =
         | 0x1C -> index - 0x10
         | _ -> index
 
+    let getMirroring defaultMirroring mapper =
+        match defaultMirroring with
+        | FourScreen ->
+            defaultMirroring
+        | _ -> 
+            match Mapper.getMirroring mapper with
+            | Some mirroring -> mirroring
+            | None -> defaultMirroring
+
     // Horizontal:
     //   [ A ] [ a ]
     //   [ B ] [ b ]
@@ -27,7 +36,7 @@ module Common =
         let nameTable = vramIndex / 0x400
 
         // VRC1 などのマッパーミラーリングも取得
-        let mirror = Mapper.getMirroring mirror mapper
+        let mirror = getMirroring mirror mapper
 
         match mirror, nameTable with
         | Vertical, 2
@@ -35,6 +44,8 @@ module Common =
         | Horizontal, 2 -> vramIndex - 0x400 // B -> B
         | Horizontal, 1 -> vramIndex - 0x400 // a -> A
         | Horizontal, 3 -> vramIndex - 0x800 // b -> B
+        | OneScreenA, _ -> vramIndex % 0x400  // 常に $2000-$23FF
+        | OneScreenB, _ -> vramIndex % 0x400 ||| 0x400  // 常に $2400-$27FF (オフセット計算)
         | _ -> vramIndex // それ以外はそのまま
 
     let inline idx x y = y * width + x

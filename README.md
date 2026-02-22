@@ -73,13 +73,19 @@ F# でのんびり作られるファミコンエミュレータです。
 
 ### とりあえず実行してみる
 
-```pwsh
+```bash
 dotnet run --project ./src/HamicomEmu/HamicomEmu.fsproj
+```
+
+### テスト
+
+```bash
+dotnet test
 ```
 
 ### ビルド
 
-```pwsh
+```bash
 dotnet build --project ./src/HamicomEmu/HamicomEmu.fsproj
 ```
 
