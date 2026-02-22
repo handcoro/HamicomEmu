@@ -51,6 +51,9 @@ let keyMap2 = [
     Keys.L, Joypad.Button.a
 ]
 
+/// 2コンのマイク入力（Mキー）
+let microphoneKey = Keys.M
+
 /// XBox Gamepad 前提の設定
 let padMap = [
     Buttons.DPadRight, Joypad.Button.right
@@ -219,16 +222,24 @@ type basicNesGame(raw, cartridgePath, traceFn) as this =
         // リセット機能など
         emu <- handleFunctionKeyInput (Keyboard ks) emu
 
-        let keyJoy1 = Joypad.init |> handleJoypadInput (Keyboard ks) 1
-        let padJoy = Joypad.init |> handleJoypadInput (Gamepad gs) 1
-        let keyJoy2 = Joypad.init |> handleJoypadInput (Keyboard ks) 2
-        let joy1 = Joypad.mergeStates keyJoy1 padJoy
-        let joy2 = keyJoy2
+        // マイク入力
+        let isMicActive = isKeyPressed ks microphoneKey
+        let joy1 =
+            Joypad.mergeStates
+                (
+                    Joypad.init
+                    |> handleJoypadInput (Keyboard ks) 1
+                    |> Joypad.setMicrophone isMicActive
+                )
+                (Joypad.init |> handleJoypadInput (Gamepad gs) 1)
+
+        let joy2 = Joypad.init |> handleJoypadInput (Keyboard ks) 2
 
         emu <- {
             emu with
                 bus.joy1.buttonStatus = joy1.buttonStatus
                 bus.joy2.buttonStatus = joy2.buttonStatus
+                bus.joy1.microphone = joy1.microphone
         }
 
         let cpuClock = Constants.cpuClockNTSC

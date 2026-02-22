@@ -53,7 +53,7 @@ module EmulatorCore =
             let cpu, bus, consumed =
                 match Bus.pollNmiStatus emu.bus, irq && not interruptDisabled && not suppressIrq with
                 | (b, Some _), _ -> // NMI
-                    Cpu.interruptNmi emu.cpu b
+                    Cpu.nmi emu.cpu b
                 | (b, None), true -> // IRQ
                     Cpu.irq emu.cpu b
                 | (b, None), false -> // 通常進行

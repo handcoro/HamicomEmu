@@ -7,14 +7,23 @@ module Cpu =
     open HamicomEmu.Common.BitUtils
 
     module Flags =
-        let C = 0b0000_0001uy // Carry
-        let Z = 0b0000_0010uy // Zero
-        let I = 0b0000_0100uy // Interrupt Disable
-        let D = 0b0000_1000uy // Decimal Mode
-        let B = 0b0001_0000uy // Break
-        let U = 0b0010_0000uy // Unused (常にセットされることが多い)
-        let V = 0b0100_0000uy // Overflow
-        let N = 0b1000_0000uy // Negative
+        let c = 0b0000_0001uy // Carry
+        let z = 0b0000_0010uy // Zero
+        let i = 0b0000_0100uy // Interrupt Disable
+        let d = 0b0000_1000uy // Decimal Mode
+        let b = 0b0001_0000uy // Break
+        let u = 0b0010_0000uy // Unused (常にセットされることが多い)
+        let v = 0b0100_0000uy // Overflow
+        let n = 0b1000_0000uy // Negative
+
+    /// 割り込みベクタアドレス
+    module InterruptVectors =
+        /// IRQ/BRK割り込みベクタ
+        let irq = 0xFFFEus
+        /// NMI割り込みベクタ
+        let nmi = 0xFFFAus
+        /// リセットベクタ
+        let reset = 0xFFFCus
 
     // pc: program counter
     // sp: stack pointer
@@ -38,7 +47,7 @@ module Cpu =
         y = 0uy
         pc = 0us
         sp = 0xFDuy
-        p = Flags.I ||| Flags.U
+        p = Flags.i ||| Flags.u
         cyclePenalty = 0u
         suppressIrq = false
     }
@@ -92,14 +101,12 @@ module Cpu =
             let addr = int baseAddr + (offset |> int8 |> int)
             uint16 addr
         | Implied -> pc
-    // | NoneAddressing ->
-    //   failwithf "Unsupported mode: %A" mode
 
     /// 値によってZNフラグをセットする
     let setZeroNegativeFlags value p =
         p
-        |> updateFlag Flags.Z (value = 0uy)
-        |> updateFlag Flags.N (value &&& 0b1000_0000uy <> 0uy)
+        |> updateFlag Flags.z (value = 0uy)
+        |> updateFlag Flags.n (value &&& 0b1000_0000uy <> 0uy)
 
     /// プログラムカウンタを進める
     let advancePC offset cpu bus = { cpu with pc = cpu.pc + offset }, bus
@@ -119,50 +126,37 @@ module Cpu =
         let p = cpu.p |> setZeroNegativeFlags a
         { cpu with a = a; p = p }, bus'
 
-    /// 加算
-    let adc mode cpu bus = // Add with Carry
+    /// キャリー付き算術演算の共通処理
+    let carryArithmetic valueTransform overflowCheck mode cpu bus =
         let addr = mode |> getOperandAddress cpu bus (cpu.pc + 1us)
         let value, bus' = Bus.memRead addr bus
-        let carry = if hasFlag Flags.C cpu.p then 1 else 0
-        let sum = int cpu.a + int value + carry
+        let carry = if hasFlag Flags.c cpu.p then 1 else 0
+        let sum = int cpu.a + int (valueTransform value) + carry
         let result = byte sum
         let isCarry = sum > 0xFF
-
-        let isOverflow =
-            // オーバーフローが発生する条件:
-            // 1. A と value の符号が同じ
-            // 2. 結果の符号が A と異なる
-            cpu.a ^^^ value &&& 0x80uy = 0uy && cpu.a ^^^ result &&& 0x80uy <> 0uy
+        let isOverflow = overflowCheck cpu.a value result
 
         let p =
             cpu.p
-            |> updateFlag Flags.C isCarry
-            |> updateFlag Flags.V isOverflow
+            |> updateFlag Flags.c isCarry
+            |> updateFlag Flags.v isOverflow
             |> setZeroNegativeFlags result
 
         { cpu with a = result; p = p }, bus'
+
+    /// 加算
+    let adc mode cpu bus = // Add with Carry
+        // オーバーフローが発生する条件:
+        // 1. A と value の符号が同じ
+        // 2. 結果の符号が A と異なる
+        let overflowAdc a v r = a ^^^ v &&& 0x80uy = 0uy && a ^^^ r &&& 0x80uy <> 0uy
+        (cpu, bus) ||> carryArithmetic id overflowAdc mode
 
     /// 減算
     let sbc mode cpu bus = // Subtract with Carry
-        let addr = mode |> getOperandAddress cpu bus (cpu.pc + 1us)
-        let value, bus' = Bus.memRead addr bus
-        let carry = if hasFlag Flags.C cpu.p then 1 else 0
-        let valueInverted = ~~~value
-        let sum = int cpu.a + int valueInverted + carry
-        let result = byte sum
-        let isCarry = sum > 0xFF
-
-        let isOverflow =
-            // ADC とオーバーフローの条件が違うので注意
-            cpu.a ^^^ value &&& 0x80uy <> 0uy && cpu.a ^^^ result &&& 0x80uy <> 0uy
-
-        let p =
-            cpu.p
-            |> updateFlag Flags.C isCarry
-            |> updateFlag Flags.V isOverflow
-            |> setZeroNegativeFlags result
-
-        { cpu with a = result; p = p }, bus'
+        // ADC とオーバーフローの条件が違うので注意
+        let overflowSbc a v r = a ^^^ v &&& 0x80uy <> 0uy && a ^^^ r &&& 0x80uy <> 0uy
+        (cpu, bus) ||> carryArithmetic (~~~) overflowSbc mode
 
     let ld setReg mode cpu bus =
         let addr = mode |> getOperandAddress cpu bus (cpu.pc + 1us)
@@ -237,20 +231,20 @@ module Cpu =
     let shiftLeftAndUpdate value status =
         let carry = value &&& 0b1000_0000uy > 0uy
         let result = value <<< 1
-        let p = status |> updateFlag Flags.C carry
+        let p = status |> updateFlag Flags.c carry
         result, p
 
     /// 右シフトしてキャリーフラグ設定
     let shiftRightAndUpdate value status =
         let carry = value &&& 0b0000_0001uy > 0uy
         let result = value >>> 1
-        let p = status |> updateFlag Flags.C carry
+        let p = status |> updateFlag Flags.c carry
         result, p
 
     /// シフト演算
     /// carryInFn はすでに立ってるキャリーフラグを演算結果に含める関数
     let modifyWithShift mode shiftFn carryInFn cpu bus =
-        let cIn = hasFlag Flags.C cpu.p
+        let cIn = hasFlag Flags.c cpu.p
 
         let value, writeBack =
             match mode with
@@ -302,65 +296,65 @@ module Cpu =
 
     /// BCC - Branch if Carry Clear
     let bcc mode cpu bus =
-        (cpu, bus) ||> branch mode Flags.C false
+        (cpu, bus) ||> branch mode Flags.c false
 
     /// BCS - Branch if Carry Set
-    let bcs mode cpu bus = (cpu, bus) ||> branch mode Flags.C true
+    let bcs mode cpu bus = (cpu, bus) ||> branch mode Flags.c true
 
     /// BEQ - Branch if Equal
-    let beq mode cpu bus = (cpu, bus) ||> branch mode Flags.Z true
+    let beq mode cpu bus = (cpu, bus) ||> branch mode Flags.z true
 
     /// BNE - Branch if Not Equal
     let bne mode cpu bus =
-        (cpu, bus) ||> branch mode Flags.Z false
+        (cpu, bus) ||> branch mode Flags.z false
 
     /// Branch if Minus
-    let bmi mode cpu bus = (cpu, bus) ||> branch mode Flags.N true
+    let bmi mode cpu bus = (cpu, bus) ||> branch mode Flags.n true
 
     /// Branch if Positive
     let bpl mode cpu bus =
-        (cpu, bus) ||> branch mode Flags.N false
+        (cpu, bus) ||> branch mode Flags.n false
 
     /// Branch if Overflow Clear
     let bvc mode cpu bus =
-        (cpu, bus) ||> branch mode Flags.V false
+        (cpu, bus) ||> branch mode Flags.v false
 
     /// Branch if Overflow Set
-    let bvs mode cpu bus = (cpu, bus) ||> branch mode Flags.V true
+    let bvs mode cpu bus = (cpu, bus) ||> branch mode Flags.v true
 
     /// Clear Carry Flag
     let clc _ cpu bus =
-        let p = clearFlag Flags.C cpu.p
+        let p = clearFlag Flags.c cpu.p
         { cpu with p = p }, bus
 
     /// Set Carry Flag
     let sec _ cpu bus =
-        let p = setFlag Flags.C cpu.p
+        let p = setFlag Flags.c cpu.p
         { cpu with p = p }, bus
 
     /// Clear Decimal Mode
     let cld _ cpu bus =
-        let p = clearFlag Flags.D cpu.p
+        let p = clearFlag Flags.d cpu.p
         { cpu with p = p }, bus
 
     /// Set Decimal Flag
     let sed _ cpu bus =
-        let p = setFlag Flags.D cpu.p
+        let p = setFlag Flags.d cpu.p
         { cpu with p = p }, bus
 
     /// Clear Interrupt Disable
     let cli _ cpu bus =
-        let p = clearFlag Flags.I cpu.p
+        let p = clearFlag Flags.i cpu.p
         { cpu with p = p; suppressIrq = true }, bus
 
     /// Set Interrupt Disable
     let sei _ cpu bus =
-        let p = setFlag Flags.I cpu.p
+        let p = setFlag Flags.i cpu.p
         { cpu with p = p; suppressIrq = true }, bus
 
     /// Clear Overflow Flag
     let clv _ cpu bus =
-        let p = clearFlag Flags.V cpu.p
+        let p = clearFlag Flags.v cpu.p
         { cpu with p = p }, bus
 
     /// BIT - Bit Test
@@ -370,9 +364,9 @@ module Cpu =
 
         let p =
             cpu.p
-            |> updateFlag Flags.Z (cpu.a &&& value = 0uy)
-            |> updateFlag Flags.N (value &&& Flags.N <> 0uy)
-            |> updateFlag Flags.V (value &&& Flags.V <> 0uy)
+            |> updateFlag Flags.z (cpu.a &&& value = 0uy)
+            |> updateFlag Flags.n (value &&& Flags.n <> 0uy)
+            |> updateFlag Flags.v (value &&& Flags.v <> 0uy)
 
         { cpu with p = p }, bus'
 
@@ -381,7 +375,7 @@ module Cpu =
         let addr = mode |> getOperandAddress cpu bus (cpu.pc + 1us)
         let value, bus' = Bus.memRead addr bus
         let result = lhs - value
-        let p = cpu.p |> updateFlag Flags.C (lhs >= value) |> setZeroNegativeFlags result
+        let p = cpu.p |> updateFlag Flags.c (lhs >= value) |> setZeroNegativeFlags result
 
         { cpu with p = p }, bus'
 
@@ -509,13 +503,13 @@ module Cpu =
 
     /// Push Processor Status
     let php _ cpu bus =
-        let p = cpu.p |> setFlag (Flags.B ||| Flags.U)
+        let p = cpu.p |> setFlag (Flags.b ||| Flags.u)
         (cpu, bus) ||> push p
 
     /// Pull Processor Status
     let plp _ cpu bus =
         let p, cpu', bus' = pull cpu bus
-        let p' = p |> clearFlag Flags.B |> setFlag Flags.U
+        let p' = p |> clearFlag Flags.b |> setFlag Flags.u
         { cpu' with p = p'; suppressIrq = true }, bus'
 
     /// Pull Accumulator
@@ -526,13 +520,13 @@ module Cpu =
 
     /// BRK - Force Break
     let brk _ cpu bus =
-        if hasFlag Flags.B cpu.p then
+        if hasFlag Flags.b cpu.p then
             cpu, bus
         else
             let cpu, bus = (cpu, bus) ||> push16 (cpu.pc + 2us) ||> push cpu.p
 
-            let pc, bus' = Bus.memRead16 0xFFFEus bus // BRK の場合は 0xFFFE に飛ぶ
-            let p = cpu.p |> setFlag Flags.I
+            let pc, bus' = Bus.memRead16 InterruptVectors.irq bus // BRK は IRQ と同じベクタを使用
+            let p = cpu.p |> setFlag Flags.i
 
             { cpu with p = p; pc = pc }, bus'
 
@@ -540,7 +534,7 @@ module Cpu =
     let rti _ cpu bus =
         let p, cpu', bus' = pull cpu bus
         let pc, cpu'', bus'' = pull16 cpu' bus'
-        let p' = p |> clearFlag Flags.B |> setFlag Flags.U
+        let p' = p |> clearFlag Flags.b |> setFlag Flags.u
         { cpu'' with p = p'; pc = pc }, bus''
 
     /// No Operation
@@ -595,7 +589,7 @@ module Cpu =
         let result = byte sum
         let isCarry = sum > 0xFF
 
-        let p = cpu.p |> updateFlag Flags.C isCarry |> setZeroNegativeFlags result
+        let p = cpu.p |> updateFlag Flags.c isCarry |> setZeroNegativeFlags result
 
         { cpu with x = result; p = p }, bus'
 
@@ -604,35 +598,38 @@ module Cpu =
     let alr mode cpu bus =
         (cpu, bus) ||> logicalInstr AND mode ||> lsrInstr mode
 
-    let interruptDisabled cpu = hasFlag Flags.I cpu.p
+    let interruptDisabled cpu = hasFlag Flags.i cpu.p
+
+    /// 割り込み処理の共通ロジック
+    /// vectorAddr: 割り込みベクタアドレス
+    /// modifyP: P フラグ変更関数
+    /// 消費サイクル数: 7 サイクル
+    let handleInterrupt vectorAddr modifyP cpu bus =
+        let cpu, bus =
+            (cpu, bus)
+            ||> push16 cpu.pc
+            ||> push (modifyP cpu.p)
+
+        let pc, bus' = Bus.memRead16 vectorAddr bus
+        let p = cpu.p |> setFlag Flags.i
+
+        { cpu with p = p; pc = pc }, bus', 7u
+
+    /// 割り込み用 P フラグ前処理（B フラグクリア、U フラグセット）
+    let prepareInterruptFlags p = p |> clearFlag Flags.b |> setFlag Flags.u
 
     /// 主に APU からの割り込み要求
     /// 消費サイクル数も返す
     /// NOTE: 7 サイクル消費らしい
     /// NOTE: 割り込み禁止フラグの判定は呼び出し前にやる
     let irq cpu bus =
-
-        let cpu, bus =
-            (cpu, bus)
-            ||> push16 cpu.pc
-            ||> push (cpu.p |> clearFlag Flags.B |> setFlag Flags.U)
-
-        let pc, bus' = Bus.memRead16 0xFFFEus bus // IRQ は 0xFFFE に飛ぶ
-        let p = cpu.p |> setFlag Flags.I
-
-        { cpu with p = p; pc = pc }, bus', 7u
+        (cpu, bus) ||> handleInterrupt InterruptVectors.irq prepareInterruptFlags
 
     /// NMI 発生処理
     /// 消費サイクル数も返す
     /// NOTE: 7 サイクル消費らしい
-    let interruptNmi cpu bus =
-        let cpu', bus' = push16 cpu.pc cpu bus
-        let p = cpu.p |> clearFlag Flags.B |> setFlag Flags.U
-
-        let cpu2, bus2 = push p cpu' bus'
-        let p' = p |> setFlag Flags.I
-        let pc, busF = Bus.memRead16 0xFFFAus bus2
-        { cpu2 with p = p'; pc = pc }, busF, 7u
+    let nmi cpu bus =
+        (cpu, bus) ||> handleInterrupt InterruptVectors.nmi prepareInterruptFlags
 
     let clearSuppressIrq cpu = { cpu with suppressIrq = false }
 
@@ -641,11 +638,11 @@ module Cpu =
     let powerOn cart =
         let cpu = init
         let bus = Bus.init cart
-        let pc, bus = Bus.memRead16 0xFFFCus bus // リセットベクタを読み込む
+        let pc, bus = Bus.memRead16 InterruptVectors.reset bus // リセットベクタを読み込む
         { cpu with pc = pc}, bus
 
     let reset cpu bus =
-        let pc, bus = Bus.memRead16 0xFFFCus bus // リセットベクタを読み込む
+        let pc, bus = Bus.memRead16 InterruptVectors.reset bus // リセットベクタを読み込む
         let bus = Bus.memWrite 0x4015us 0uy bus // APU の全てのチャンネルを無効化
         let triPhase = 0
         let dmcDirectLoad = bus.apu.dmc.outputLevel &&& 1uy
@@ -655,7 +652,7 @@ module Cpu =
                 a = 0uy
                 x = 0uy
                 y = 0uy
-                p = Flags.I ||| Flags.U
+                p = Flags.i ||| Flags.u
                 pc = pc
                 sp = cpu.sp - 3uy
         },

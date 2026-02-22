@@ -75,8 +75,8 @@ let cpuTests =
             let result = initState program |> run
 
             Expect.equal result.cpu.a 0x05uy "Accumulator should be 5"
-            Expect.isFalse (result.cpu.p &&& Flags.Z <> 0b00uy) "Zero flag should be false"
-            Expect.isFalse (result.cpu.p &&& Flags.N <> 0uy) "Negative flag should be false"
+            Expect.isFalse (result.cpu.p &&& Flags.z <> 0b00uy) "Zero flag should be false"
+            Expect.isFalse (result.cpu.p &&& Flags.n <> 0uy) "Negative flag should be false"
         }
 
         test "LDA zero flag" {
@@ -84,8 +84,8 @@ let cpuTests =
             let result = runWith program <| withCpu (fun c -> { c with a = 0xFFuy })
 
             Expect.equal result.cpu.a 0x00uy "A should be 0"
-            Expect.isTrue (result.cpu.p &&& Flags.Z <> 0uy) "Z flag should be true"
-            Expect.isFalse (result.cpu.p &&& Flags.N <> 0uy) "N flag should be false"
+            Expect.isTrue (result.cpu.p &&& Flags.z <> 0uy) "Z flag should be true"
+            Expect.isFalse (result.cpu.p &&& Flags.n <> 0uy) "N flag should be false"
         }
 
         test "LDA negative flag" {
@@ -93,8 +93,8 @@ let cpuTests =
             let result = initState program |> run
 
             Expect.equal result.cpu.a 0x80uy "Accumulator A should be 0x80"
-            Expect.isFalse (result.cpu.p &&& Flags.Z <> 0b00uy) "Zero flag should be false"
-            Expect.isTrue (result.cpu.p &&& Flags.N <> 0uy) "Negative flag should be true"
+            Expect.isFalse (result.cpu.p &&& Flags.z <> 0b00uy) "Zero flag should be false"
+            Expect.isTrue (result.cpu.p &&& Flags.n <> 0uy) "Negative flag should be true"
         }
 
         test "TAX move A to X" {
@@ -200,7 +200,7 @@ let cpuTests =
             let result = runWith program <| withCpu (fun c -> { c with a = 0x0Auy })
 
             Expect.equal result.cpu.a 0x1Auy "A should be 0x1A"
-            Expect.equal (result.cpu.p &&& Flags.C) 0uy "Carry bit should be 0"
+            Expect.equal (result.cpu.p &&& Flags.c) 0uy "Carry bit should be 0"
         }
 
         test "ADC has carry" {
@@ -208,7 +208,7 @@ let cpuTests =
             let result = runWith program <| withCpu (fun c -> { c with a = 0x0Auy; p = 0x01uy })
 
             Expect.equal result.cpu.a 0x1Buy "A should be 0x1B"
-            Expect.equal (result.cpu.p &&& Flags.C) 0uy "Carry bit should be 0"
+            Expect.equal (result.cpu.p &&& Flags.c) 0uy "Carry bit should be 0"
         }
 
         test "ADC occur carry" {
@@ -216,7 +216,7 @@ let cpuTests =
             let result = runWith program <| withCpu (fun c -> { c with a = 0xFFuy })
 
             Expect.equal result.cpu.a 0x01uy "A should be 0x01"
-            Expect.equal (result.cpu.p &&& Flags.C) 1uy "Carry bit should be 1"
+            Expect.equal (result.cpu.p &&& Flags.c) 1uy "Carry bit should be 1"
         }
 
         test "ADC occur carry and zero" {
@@ -224,8 +224,8 @@ let cpuTests =
             let result = runWith program <| withCpu (fun c -> { c with a = 0xFFuy })
 
             Expect.equal result.cpu.a 0x00uy "A should be 0x00"
-            Expect.equal (result.cpu.p &&& Flags.C > 0uy) true "Carry flag should be true"
-            Expect.equal (result.cpu.p &&& Flags.Z > 0uy) true "Zero flag should be true"
+            Expect.equal (result.cpu.p &&& Flags.c > 0uy) true "Carry flag should be true"
+            Expect.equal (result.cpu.p &&& Flags.z > 0uy) true "Zero flag should be true"
         }
 
         test "ADC occur overflow plus" {
@@ -233,8 +233,8 @@ let cpuTests =
             let result = runWith program <| withCpu (fun c -> { c with a = 0x7Fuy })
 
             Expect.equal result.cpu.a 0x8Fuy "A should be 0x8F"
-            Expect.equal (result.cpu.p &&& Flags.V > 0uy) true "Overflow flag should be true"
-            Expect.equal (result.cpu.p &&& Flags.N > 0uy) true "Negative flag should be true"
+            Expect.equal (result.cpu.p &&& Flags.v > 0uy) true "Overflow flag should be true"
+            Expect.equal (result.cpu.p &&& Flags.n > 0uy) true "Negative flag should be true"
         }
 
         test "ADC occur overflow plus with carry" {
@@ -242,9 +242,9 @@ let cpuTests =
             let result = runWith program <| withCpu (fun c -> { c with a = 0x6Fuy; p = 0x01uy })
 
             Expect.equal result.cpu.a 0x80uy "A should be 0x80"
-            Expect.equal (result.cpu.p &&& Flags.C > 0uy) false "Carry flag should be false"
-            Expect.equal (result.cpu.p &&& Flags.V > 0uy) true "Overflow flag should be true"
-            Expect.equal (result.cpu.p &&& Flags.N > 0uy) true "Negative flag should be true"
+            Expect.equal (result.cpu.p &&& Flags.c > 0uy) false "Carry flag should be false"
+            Expect.equal (result.cpu.p &&& Flags.v > 0uy) true "Overflow flag should be true"
+            Expect.equal (result.cpu.p &&& Flags.n > 0uy) true "Negative flag should be true"
         }
 
         test "ADC occur overflow minus" {
@@ -252,8 +252,8 @@ let cpuTests =
             let result = runWith program <| withCpu (fun c -> { c with a = 0x81uy })
 
             Expect.equal result.cpu.a 0x02uy "A should be 0x02"
-            Expect.equal (result.cpu.p &&& Flags.C > 0uy) true "Carry flag should be true"
-            Expect.equal (result.cpu.p &&& Flags.V > 0uy) true "Overflow flag should be true"
+            Expect.equal (result.cpu.p &&& Flags.c > 0uy) true "Carry flag should be true"
+            Expect.equal (result.cpu.p &&& Flags.v > 0uy) true "Overflow flag should be true"
         }
 
         test "ADC overflow minul with carry" {
@@ -261,16 +261,16 @@ let cpuTests =
             let result = runWith program <| withCpu (fun c -> { c with a = 0x80uy; p = 0x01uy })
 
             Expect.equal result.cpu.a 0x01uy "A should be 0x01"
-            Expect.equal (result.cpu.p &&& Flags.C > 0uy) true "Carry flag should be true"
-            Expect.equal (result.cpu.p &&& Flags.V > 0uy) true "Overflow flag should be true"
+            Expect.equal (result.cpu.p &&& Flags.c > 0uy) true "Carry flag should be true"
+            Expect.equal (result.cpu.p &&& Flags.v > 0uy) true "Overflow flag should be true"
         }
 
         test "ADC no overflow" {
             let program = [| 0x69uy; 0x7Fuy; 0x00uy |]
             let result = runWith program <| withCpu (fun c -> { c with a = 0x83uy })
 
-            Expect.equal (result.cpu.p &&& Flags.C > 0uy) true "Carry flag should be true"
-            Expect.equal (result.cpu.p &&& Flags.V > 0uy) false "Overflow flag should be false"
+            Expect.equal (result.cpu.p &&& Flags.c > 0uy) true "Carry flag should be true"
+            Expect.equal (result.cpu.p &&& Flags.v > 0uy) false "Overflow flag should be false"
         }
 
         test "SBC immediate subtract data" {
@@ -282,11 +282,11 @@ let cpuTests =
                 0x00uy
             |] // BRK
 
-            let cpu = runWith program <| withCpu (fun c -> { c with p = setFlag Flags.C c.p }) // キャリーフラグをセット（デフォルトで必要）
+            let cpu = runWith program <| withCpu (fun c -> { c with p = setFlag Flags.c c.p }) // キャリーフラグをセット（デフォルトで必要）
 
             Expect.equal cpu.cpu.a 0x0Buy "Accumulator should be 0x0B (16 - 5)"
-            Expect.isFalse (hasFlag Flags.Z cpu.cpu.p) "Zero flag should be false"
-            Expect.isFalse (hasFlag Flags.N cpu.cpu.p) "Negative flag should be false"
+            Expect.isFalse (hasFlag Flags.z cpu.cpu.p) "Zero flag should be false"
+            Expect.isFalse (hasFlag Flags.n cpu.cpu.p) "Negative flag should be false"
         }
 
         test "SBC with borrow (Carry clear)" {
@@ -309,70 +309,70 @@ let cpuTests =
             let result = runWith program setup
 
             Expect.equal result.cpu.a 0x00uy "Result should be zero"
-            Expect.isTrue (result.cpu.p &&& Flags.Z <> 0uy) "Zero flag should be set"
+            Expect.isTrue (result.cpu.p &&& Flags.z <> 0uy) "Zero flag should be set"
         }
 
         test "SBC negative result" {
             let program = [| 0xE9uy; 0x03uy; 0x00uy |]
 
             let setup state =
-                state |> withCpu (fun c -> { c with a = 0x01uy; p = Flags.C }) // 1 - 3 = -2
+                state |> withCpu (fun c -> { c with a = 0x01uy; p = Flags.c }) // 1 - 3 = -2
 
             let result = runWith program setup
 
             Expect.equal result.cpu.a 0xFEuy "A should wrap around to 0xFE"
-            Expect.isTrue (result.cpu.p &&& Flags.N <> 0uy) "Negative flag should be set"
+            Expect.isTrue (result.cpu.p &&& Flags.n <> 0uy) "Negative flag should be set"
         }
 
         test "SBC signed overflow positive to negative" {
             let program = [| 0xE9uy; 0x7Fuy; 0x00uy |] // SBC #$7F
 
             let setup state =
-                state |> withCpu (fun c -> { c with a = 0x80uy; p = Flags.C }) // 128 - 127 = 1, 符号変化あり
+                state |> withCpu (fun c -> { c with a = 0x80uy; p = Flags.c }) // 128 - 127 = 1, 符号変化あり
 
             let result = runWith program setup
 
             Expect.equal result.cpu.a 0x01uy "A should be 1"
-            Expect.isTrue (result.cpu.p &&& Flags.V <> 0uy) "Overflow flag should be set"
+            Expect.isTrue (result.cpu.p &&& Flags.v <> 0uy) "Overflow flag should be set"
         }
 
         test "SBC signed overflow negative to positive" {
             let program = [| 0xE9uy; 0x80uy; 0x00uy |] // SBC #$80
 
             let setup state =
-                state |> withCpu (fun c -> { c with a = 0x7Fuy; p = Flags.C }) // 127 - 128 = -1 (→ 0xFF)
+                state |> withCpu (fun c -> { c with a = 0x7Fuy; p = Flags.c }) // 127 - 128 = -1 (→ 0xFF)
 
             let result = runWith program setup
 
             Expect.equal result.cpu.a 0xFFuy "A should be 0xFF (i.e., -1)"
-            Expect.isTrue (result.cpu.p &&& Flags.V <> 0uy) "Overflow flag should be set"
-            Expect.isTrue (result.cpu.p &&& Flags.N <> 0uy) "Negative flag should be set"
+            Expect.isTrue (result.cpu.p &&& Flags.v <> 0uy) "Overflow flag should be set"
+            Expect.isTrue (result.cpu.p &&& Flags.n <> 0uy) "Negative flag should be set"
         }
 
         test "SBC no borrow, carry remains set" {
             let program = [| 0xE9uy; 0x01uy; 0x00uy |] // SBC #$01
 
             let setup state =
-                state |> withCpu (fun c -> { c with a = 0x03uy; p = Flags.C }) // 3 - 1 = 2
+                state |> withCpu (fun c -> { c with a = 0x03uy; p = Flags.c }) // 3 - 1 = 2
 
             let result = runWith program setup
 
             Expect.equal result.cpu.a 0x02uy "A should be 2"
-            Expect.isTrue (result.cpu.p &&& Flags.C <> 0uy) "Carry should remain set (no borrow)"
-            Expect.isFalse (result.cpu.p &&& Flags.Z <> 0uy) "Zero should not be set"
+            Expect.isTrue (result.cpu.p &&& Flags.c <> 0uy) "Carry should remain set (no borrow)"
+            Expect.isFalse (result.cpu.p &&& Flags.z <> 0uy) "Zero should not be set"
         }
 
         test "SBC borrow occurs, carry cleared" {
             let program = [| 0xE9uy; 0x04uy; 0x00uy |] // SBC #$04
 
             let setup state =
-                state |> withCpu (fun c -> { c with a = 0x03uy; p = Flags.C }) // 3 - 4 = -1 → 255, borrow
+                state |> withCpu (fun c -> { c with a = 0x03uy; p = Flags.c }) // 3 - 4 = -1 → 255, borrow
 
             let result = runWith program setup
 
             Expect.equal result.cpu.a 0xFFuy "A should be 0xFF (-1)"
-            Expect.isFalse (result.cpu.p &&& Flags.C <> 0uy) "Carry should be cleared (borrow occurred)"
-            Expect.isTrue (result.cpu.p &&& Flags.N <> 0uy) "Negative flag should be set"
+            Expect.isFalse (result.cpu.p &&& Flags.c <> 0uy) "Carry should be cleared (borrow occurred)"
+            Expect.isTrue (result.cpu.p &&& Flags.n <> 0uy) "Negative flag should be set"
         }
 
         test "SBC with carry clear subtracts extra one" {
@@ -384,7 +384,7 @@ let cpuTests =
             let result = runWith program setup
 
             Expect.equal result.cpu.a 0x01uy "A should be 1 due to extra borrow"
-            Expect.isTrue (result.cpu.p &&& Flags.C <> 0uy) "Carry should be set (no final borrow)"
+            Expect.isTrue (result.cpu.p &&& Flags.c <> 0uy) "Carry should be set (no final borrow)"
         }
 
         test "SBC result zero with carry set" {
@@ -396,8 +396,8 @@ let cpuTests =
             let result = runWith program setup
 
             Expect.equal result.cpu.a 0x00uy "A should be 0"
-            Expect.isTrue (result.cpu.p &&& Flags.Z <> 0uy) "Zero flag should be set"
-            Expect.isTrue (result.cpu.p &&& Flags.C <> 0uy) "Carry should be set (no final borrow)"
+            Expect.isTrue (result.cpu.p &&& Flags.z <> 0uy) "Zero flag should be set"
+            Expect.isTrue (result.cpu.p &&& Flags.c <> 0uy) "Carry should be set (no final borrow)"
         }
 
         test "AND immediate" {
@@ -469,9 +469,9 @@ let cpuTests =
             let cpu = runWith program <| memWrite 0x03us 0b1000_0010uy
 
             Expect.equal (memRead cpu 0x03us) 0b0100_0001uy "Memory at $03 should be 0b0100_0001"
-            Expect.equal (cpu.cpu.p &&& Flags.C) 0uy "Carry should be cleared"
-            Expect.equal (cpu.cpu.p &&& Flags.Z) 0uy "Zero flag should not be set"
-            Expect.equal (cpu.cpu.p &&& Flags.N) 0uy "Negative flag should not be set"
+            Expect.equal (cpu.cpu.p &&& Flags.c) 0uy "Carry should be cleared"
+            Expect.equal (cpu.cpu.p &&& Flags.z) 0uy "Zero flag should not be set"
+            Expect.equal (cpu.cpu.p &&& Flags.n) 0uy "Negative flag should not be set"
         }
 
         test "LSR accumulator" {
@@ -483,9 +483,9 @@ let cpuTests =
             let cpu = runWith program <| withCpu (fun c -> { c with a = 0b0000_0011uy })
 
             Expect.equal cpu.cpu.a 0b0000_0001uy "Accumulator should be 0b0000_0001"
-            Expect.equal (cpu.cpu.p &&& Flags.C) Flags.C "Carry should be set (bit 0 was 1)"
-            Expect.equal (cpu.cpu.p &&& Flags.Z) 0uy "Zero flag should not be set"
-            Expect.equal (cpu.cpu.p &&& Flags.N) 0uy "Negative flag should not be set"
+            Expect.equal (cpu.cpu.p &&& Flags.c) Flags.c "Carry should be set (bit 0 was 1)"
+            Expect.equal (cpu.cpu.p &&& Flags.z) 0uy "Zero flag should not be set"
+            Expect.equal (cpu.cpu.p &&& Flags.n) 0uy "Negative flag should not be set"
         }
 
         test "ASL accumulator sets carry when MSB is 1" {
@@ -497,9 +497,9 @@ let cpuTests =
             let cpu = runWith program <| withCpu (fun c -> { c with a = 0b1000_0000uy })
 
             Expect.equal cpu.cpu.a 0b0000_0000uy "Accumulator should be 0 after shift"
-            Expect.equal (cpu.cpu.p &&& Flags.C) Flags.C "Carry should be set"
-            Expect.equal (cpu.cpu.p &&& Flags.Z) Flags.Z "Zero flag should be set"
-            Expect.equal (cpu.cpu.p &&& Flags.N) 0uy "Negative flag should not be set"
+            Expect.equal (cpu.cpu.p &&& Flags.c) Flags.c "Carry should be set"
+            Expect.equal (cpu.cpu.p &&& Flags.z) Flags.z "Zero flag should be set"
+            Expect.equal (cpu.cpu.p &&& Flags.n) 0uy "Negative flag should not be set"
         }
 
         test "LSR accumulator clears carry when LSB is 0" {
@@ -511,9 +511,9 @@ let cpuTests =
             let cpu = runWith program <| withCpu (fun c -> { c with a = 0b0000_0010uy })
 
             Expect.equal cpu.cpu.a 0b0000_0001uy "Accumulator should be 0b0000_0001"
-            Expect.equal (cpu.cpu.p &&& Flags.C) 0uy "Carry should be cleared"
-            Expect.equal (cpu.cpu.p &&& Flags.Z) 0uy "Zero flag should not be set"
-            Expect.equal (cpu.cpu.p &&& Flags.N) 0uy "Negative flag should not be set"
+            Expect.equal (cpu.cpu.p &&& Flags.c) 0uy "Carry should be cleared"
+            Expect.equal (cpu.cpu.p &&& Flags.z) 0uy "Zero flag should not be set"
+            Expect.equal (cpu.cpu.p &&& Flags.n) 0uy "Negative flag should not be set"
         }
 
         test "ROL accumulator with no carry" {
@@ -525,9 +525,9 @@ let cpuTests =
             let cpu = runWith program <| withCpu (fun c -> { c with a = 0b0100_0011uy })
 
             Expect.equal cpu.cpu.a 0b1000_0110uy "Accumulator should be 0b1000_0110"
-            Expect.equal (cpu.cpu.p &&& Flags.C) 0uy "Carry should be cleared"
-            Expect.equal (cpu.cpu.p &&& Flags.Z) 0uy "Zero flag should not be set"
-            Expect.isTrue (hasFlag Flags.N cpu.cpu.p) "Negative flag should be set"
+            Expect.equal (cpu.cpu.p &&& Flags.c) 0uy "Carry should be cleared"
+            Expect.equal (cpu.cpu.p &&& Flags.z) 0uy "Zero flag should not be set"
+            Expect.isTrue (hasFlag Flags.n cpu.cpu.p) "Negative flag should be set"
         }
         test "ROL accumulator with carry" {
             let program = [|
@@ -540,13 +540,13 @@ let cpuTests =
                 <| withCpu (fun c -> {
                     c with
                         a = 0b0100_0011uy
-                        p = Flags.C
+                        p = Flags.c
                 })
 
             Expect.equal cpu.cpu.a 0b1000_0111uy "Accumulator should be 0b1000_0111"
-            Expect.equal (cpu.cpu.p &&& Flags.C) 0uy "Carry should be cleared"
-            Expect.equal (cpu.cpu.p &&& Flags.Z) 0uy "Zero flag should not be set"
-            Expect.isTrue (hasFlag cpu.cpu.p Flags.N) "Negative flag should be set"
+            Expect.equal (cpu.cpu.p &&& Flags.c) 0uy "Carry should be cleared"
+            Expect.equal (cpu.cpu.p &&& Flags.z) 0uy "Zero flag should not be set"
+            Expect.isTrue (hasFlag cpu.cpu.p Flags.n) "Negative flag should be set"
         }
         test "ROL accumulator occur carry" {
             let program = [|
@@ -556,9 +556,9 @@ let cpuTests =
 
             let cpu = runWith program <| withCpu (fun c -> { c with a = 0b1100_0011uy })
             Expect.equal cpu.cpu.a 0b1000_0110uy "Accumulator should be 0b1000_0110"
-            Expect.isTrue (hasFlag cpu.cpu.p Flags.C) "Carry should be set"
-            Expect.equal (cpu.cpu.p &&& Flags.Z) 0uy "Zero flag should not be set"
-            Expect.isTrue (hasFlag cpu.cpu.p Flags.N) "Negative flag should be set"
+            Expect.isTrue (hasFlag cpu.cpu.p Flags.c) "Carry should be set"
+            Expect.equal (cpu.cpu.p &&& Flags.z) 0uy "Zero flag should not be set"
+            Expect.isTrue (hasFlag cpu.cpu.p Flags.n) "Negative flag should be set"
         }
         test "ROL zeropage occur carry" {
             let program = [|
@@ -569,9 +569,9 @@ let cpuTests =
 
             let cpu = runWith program <| memWrite 0x04us 0b1000_0010uy
             Expect.equal (memRead cpu 0x04us) 0b0000_0100uy "Memory at $04 should be 0b0000_0100"
-            Expect.isTrue (hasFlag cpu.cpu.p Flags.C) "Carry should be set"
-            Expect.equal (cpu.cpu.p &&& Flags.Z) 0uy "Zero flag should not be set"
-            Expect.isFalse (hasFlag Flags.N cpu.cpu.p) "Negative flag should not be set"
+            Expect.isTrue (hasFlag cpu.cpu.p Flags.c) "Carry should be set"
+            Expect.equal (cpu.cpu.p &&& Flags.z) 0uy "Zero flag should not be set"
+            Expect.isFalse (hasFlag Flags.n cpu.cpu.p) "Negative flag should not be set"
         }
         test "ROL accumulator zero flag" {
             let program = [|
@@ -582,9 +582,9 @@ let cpuTests =
             let cpu = runWith program <| withCpu (fun c -> { c with a = 0uy })
 
             Expect.equal cpu.cpu.a 0uy "Accumulator should be 0"
-            Expect.equal (cpu.cpu.p &&& Flags.C) 0uy "Carry should be cleared"
-            Expect.isTrue (hasFlag cpu.cpu.p Flags.Z) "Zero flag should be set"
-            Expect.isFalse (hasFlag cpu.cpu.p Flags.N) "Negative flag should not be set"
+            Expect.equal (cpu.cpu.p &&& Flags.c) 0uy "Carry should be cleared"
+            Expect.isTrue (hasFlag cpu.cpu.p Flags.z) "Zero flag should be set"
+            Expect.isFalse (hasFlag cpu.cpu.p Flags.n) "Negative flag should not be set"
         }
         test "ROR accumulator with carry" {
             let program = [|
@@ -597,13 +597,13 @@ let cpuTests =
                 <| withCpu (fun c -> {
                     c with
                         a = 0b0100_0010uy
-                        p = Flags.C
+                        p = Flags.c
                 })
 
             Expect.equal cpu.cpu.a 0b1010_0001uy "Accumulator should be 0b1010_0001"
-            Expect.equal (cpu.cpu.p &&& Flags.C) 0uy "Carry should be cleared"
-            Expect.equal (cpu.cpu.p &&& Flags.Z) 0uy "Zero flag should not be set"
-            Expect.isTrue (hasFlag Flags.N cpu.cpu.p) "Negative flag should be set"
+            Expect.equal (cpu.cpu.p &&& Flags.c) 0uy "Carry should be cleared"
+            Expect.equal (cpu.cpu.p &&& Flags.z) 0uy "Zero flag should not be set"
+            Expect.isTrue (hasFlag Flags.n cpu.cpu.p) "Negative flag should be set"
         }
         test "ROR zeropage occur carry" {
             let program = [|
@@ -614,9 +614,9 @@ let cpuTests =
 
             let cpu = runWith program <| memWrite 0x1Aus 0b1000_0011uy
             Expect.equal (memRead cpu 0x1Aus) 0b0100_0001uy "Memory at $1A should be 0b0100_0001"
-            Expect.isTrue (hasFlag Flags.C cpu.cpu.p) "Carry should be set"
-            Expect.equal (cpu.cpu.p &&& Flags.Z) 0uy "Zero flag should not be set"
-            Expect.isFalse (hasFlag Flags.N cpu.cpu.p) "Negative flag should not be set"
+            Expect.isTrue (hasFlag Flags.c cpu.cpu.p) "Carry should be set"
+            Expect.equal (cpu.cpu.p &&& Flags.z) 0uy "Zero flag should not be set"
+            Expect.isFalse (hasFlag Flags.n cpu.cpu.p) "Negative flag should not be set"
         }
         test "BCC with no carry" {
             let program = [|
@@ -642,9 +642,9 @@ let cpuTests =
                 0x00uy
             |] // INX BRK
 
-            let cpu = runWith program <| withCpu (fun c -> { c with p = setFlag Flags.C c.p })
+            let cpu = runWith program <| withCpu (fun c -> { c with p = setFlag Flags.c c.p })
             Expect.equal cpu.cpu.x 0x00uy "X should be 0"
-            Expect.isTrue (hasFlag Flags.C cpu.cpu.p) "Carry flag should be set"
+            Expect.isTrue (hasFlag Flags.c cpu.cpu.p) "Carry flag should be set"
             Expect.equal cpu.cpu.pc 0x8003us "Program counter should be 0x8003"
         }
         test "BCS with no carry" {
@@ -671,9 +671,9 @@ let cpuTests =
                 0x00uy
             |] // INX BRK
 
-            let cpu = runWith program <| withCpu (fun c -> { c with p = setFlag Flags.C c.p })
+            let cpu = runWith program <| withCpu (fun c -> { c with p = setFlag Flags.c c.p })
             Expect.equal cpu.cpu.x 0x01uy "X should be 1"
-            Expect.isTrue (hasFlag Flags.C cpu.cpu.p) "Carry flag should be set"
+            Expect.isTrue (hasFlag Flags.c cpu.cpu.p) "Carry flag should be set"
             Expect.equal cpu.cpu.pc 0x8006us "Program counter should be 0x8006"
         }
         test "BCC negative offset" {
@@ -702,9 +702,9 @@ let cpuTests =
                 0x00uy
             |] // INX BRK
 
-            let cpu = runWith program <| withCpu (fun c -> { c with p = setFlag Flags.Z c.p })
+            let cpu = runWith program <| withCpu (fun c -> { c with p = setFlag Flags.z c.p })
             Expect.equal cpu.cpu.x 0x01uy "X should be 1"
-            Expect.isFalse (hasFlag Flags.Z cpu.cpu.p) "Zero flag should be cleared"
+            Expect.isFalse (hasFlag Flags.z cpu.cpu.p) "Zero flag should be cleared"
             Expect.equal cpu.cpu.pc 0x8006us "Program counter should be 0x8006"
         }
         test "BNE with zero flag" {
@@ -717,9 +717,9 @@ let cpuTests =
                 0x00uy
             |] // INX BRK
 
-            let cpu = runWith program <| withCpu (fun c -> { c with p = setFlag Flags.Z c.p })
+            let cpu = runWith program <| withCpu (fun c -> { c with p = setFlag Flags.z c.p })
             Expect.equal cpu.cpu.x 0x00uy "X should be 0"
-            Expect.isTrue (hasFlag Flags.Z cpu.cpu.p) "Zero flag should be set"
+            Expect.isTrue (hasFlag Flags.z cpu.cpu.p) "Zero flag should be set"
             Expect.equal cpu.cpu.pc 0x8003us "Program counter should be 0x8003"
         }
         test "BIT absolute all zero" {
@@ -730,9 +730,9 @@ let cpuTests =
             |] // BRK
 
             let cpu = runWith program <| withCpu (fun c -> { c with a = 0uy })
-            Expect.isTrue (hasFlag Flags.Z cpu.cpu.p) "Zero flag should be set"
-            Expect.isFalse (hasFlag Flags.V cpu.cpu.p) "Overflow flag should be cleared"
-            Expect.isFalse (hasFlag Flags.N cpu.cpu.p) "Negative flag should be cleared"
+            Expect.isTrue (hasFlag Flags.z cpu.cpu.p) "Zero flag should be set"
+            Expect.isFalse (hasFlag Flags.v cpu.cpu.p) "Overflow flag should be cleared"
+            Expect.isFalse (hasFlag Flags.n cpu.cpu.p) "Negative flag should be cleared"
         }
         test "BIT absolute occur VN" {
             let program = [|
@@ -745,9 +745,9 @@ let cpuTests =
                 runWith program
                 <| (memWrite 0x0000us 0xFFuy >> withCpu (fun c -> { c with a = 0xFFuy }))
 
-            Expect.isFalse (hasFlag Flags.Z cpu.cpu.p) "Zero flag should be cleared"
-            Expect.isTrue (hasFlag Flags.V cpu.cpu.p) "Overflow flag should be set"
-            Expect.isTrue (hasFlag Flags.N cpu.cpu.p) "Negative flag should be set"
+            Expect.isFalse (hasFlag Flags.z cpu.cpu.p) "Zero flag should be cleared"
+            Expect.isTrue (hasFlag Flags.v cpu.cpu.p) "Overflow flag should be set"
+            Expect.isTrue (hasFlag Flags.n cpu.cpu.p) "Negative flag should be set"
         }
         test "BIT zeropage all zero" {
             let program = [|
@@ -757,79 +757,79 @@ let cpuTests =
             |] // BRK
 
             let cpu = runWith program <| withCpu (fun c -> { c with a = 0uy })
-            Expect.isTrue (hasFlag Flags.Z cpu.cpu.p) "Zero flag should be set"
-            Expect.isFalse (hasFlag Flags.V cpu.cpu.p) "Overflow flag should be cleared"
-            Expect.isFalse (hasFlag Flags.N cpu.cpu.p) "Negative flag should be cleared"
+            Expect.isTrue (hasFlag Flags.z cpu.cpu.p) "Zero flag should be set"
+            Expect.isFalse (hasFlag Flags.v cpu.cpu.p) "Overflow flag should be cleared"
+            Expect.isFalse (hasFlag Flags.n cpu.cpu.p) "Negative flag should be cleared"
         }
         test "CLC" {
             let program = [| 0x18uy; 0x00uy |]
-            let cpu = runWith program <| withCpu (fun c -> { c with p = Flags.C ||| Flags.N })
-            Expect.isFalse (hasFlag Flags.C cpu.cpu.p) "Carry flag should be cleared"
-            Expect.isTrue (hasFlag Flags.N cpu.cpu.p) "Negative flag should be set"
+            let cpu = runWith program <| withCpu (fun c -> { c with p = Flags.c ||| Flags.n })
+            Expect.isFalse (hasFlag Flags.c cpu.cpu.p) "Carry flag should be cleared"
+            Expect.isTrue (hasFlag Flags.n cpu.cpu.p) "Negative flag should be set"
         }
         test "SEC" {
             let program = [| 0x38uy; 0x00uy |]
-            let cpu = runWith program <| withCpu (fun c -> { c with p = Flags.N })
-            Expect.isTrue (hasFlag Flags.C cpu.cpu.p) "Carry flag should be set"
-            Expect.isTrue (hasFlag Flags.N cpu.cpu.p) "Negative flag should be set"
+            let cpu = runWith program <| withCpu (fun c -> { c with p = Flags.n })
+            Expect.isTrue (hasFlag Flags.c cpu.cpu.p) "Carry flag should be set"
+            Expect.isTrue (hasFlag Flags.n cpu.cpu.p) "Negative flag should be set"
         }
         test "CLD" {
             let program = [| 0xD8uy; 0x00uy |]
-            let cpu = runWith program <| withCpu (fun c -> { c with p = Flags.D ||| Flags.N })
-            Expect.isFalse (hasFlag Flags.D cpu.cpu.p) "Decimal Mode flag should be cleared"
-            Expect.isTrue (hasFlag Flags.N cpu.cpu.p) "Negative flag should be set"
+            let cpu = runWith program <| withCpu (fun c -> { c with p = Flags.d ||| Flags.n })
+            Expect.isFalse (hasFlag Flags.d cpu.cpu.p) "Decimal Mode flag should be cleared"
+            Expect.isTrue (hasFlag Flags.n cpu.cpu.p) "Negative flag should be set"
         }
         test "SED" {
             let program = [| 0xF8uy; 0x00uy |]
-            let cpu = runWith program <| withCpu (fun c -> { c with p = Flags.N })
-            Expect.isTrue (hasFlag Flags.D cpu.cpu.p) "Decimal Mode flag should be set"
-            Expect.isTrue (hasFlag Flags.N cpu.cpu.p) "Negative flag should be set"
+            let cpu = runWith program <| withCpu (fun c -> { c with p = Flags.n })
+            Expect.isTrue (hasFlag Flags.d cpu.cpu.p) "Decimal Mode flag should be set"
+            Expect.isTrue (hasFlag Flags.n cpu.cpu.p) "Negative flag should be set"
         }
         test "CLI" {
             let program = [| 0x58uy; 0x00uy |]
-            let cpu = runWith program <| withCpu (fun c -> { c with p = Flags.I ||| Flags.N })
-            Expect.isFalse (hasFlag Flags.I cpu.cpu.p) "Interrupt Disable flag should be cleared"
-            Expect.isTrue (hasFlag Flags.N cpu.cpu.p) "Negative flag should be set"
+            let cpu = runWith program <| withCpu (fun c -> { c with p = Flags.i ||| Flags.n })
+            Expect.isFalse (hasFlag Flags.i cpu.cpu.p) "Interrupt Disable flag should be cleared"
+            Expect.isTrue (hasFlag Flags.n cpu.cpu.p) "Negative flag should be set"
         }
         test "SEI" {
             let program = [| 0x78uy; 0x00uy |]
-            let cpu = runWith program <| withCpu (fun c -> { c with p = Flags.N })
-            Expect.isTrue (hasFlag Flags.I cpu.cpu.p) "Interrupt Disable flag should be set"
-            Expect.isTrue (hasFlag Flags.N cpu.cpu.p) "Negative flag should be set"
+            let cpu = runWith program <| withCpu (fun c -> { c with p = Flags.n })
+            Expect.isTrue (hasFlag Flags.i cpu.cpu.p) "Interrupt Disable flag should be set"
+            Expect.isTrue (hasFlag Flags.n cpu.cpu.p) "Negative flag should be set"
         }
         test "CLV" {
             let program = [| 0xB8uy; 0x00uy |]
-            let cpu = runWith program <| withCpu (fun c -> { c with p = Flags.V ||| Flags.N })
-            Expect.isFalse (hasFlag Flags.V cpu.cpu.p) "Overflow flag should be cleared"
-            Expect.isTrue (hasFlag Flags.N cpu.cpu.p) "Negative flag should be set"
+            let cpu = runWith program <| withCpu (fun c -> { c with p = Flags.v ||| Flags.n })
+            Expect.isFalse (hasFlag Flags.v cpu.cpu.p) "Overflow flag should be cleared"
+            Expect.isTrue (hasFlag Flags.n cpu.cpu.p) "Negative flag should be set"
         }
         test "CMP" {
             let program = [| 0xC9uy; 0x01uy |]
             let cpu = runWith program <| withCpu (fun c -> { c with a = 0x02uy })
-            Expect.isTrue (hasFlag Flags.C cpu.cpu.p) "Carry flag should be set"
+            Expect.isTrue (hasFlag Flags.c cpu.cpu.p) "Carry flag should be set"
         }
         test "CMP Equal" {
             let program = [| 0xC9uy; 0x02uy |]
             let cpu = runWith program <| withCpu (fun c -> { c with a = 0x02uy })
-            Expect.isTrue (hasFlag Flags.C cpu.cpu.p) "Carry flag should be set"
-            Expect.isTrue (hasFlag Flags.Z cpu.cpu.p) "Zero flag should be set"
+            Expect.isTrue (hasFlag Flags.c cpu.cpu.p) "Carry flag should be set"
+            Expect.isTrue (hasFlag Flags.z cpu.cpu.p) "Zero flag should be set"
         }
         test "CMP Negative" {
             let program = [| 0xC9uy; 0x03uy |]
             let cpu = runWith program <| withCpu (fun c -> { c with a = 0x02uy })
-            Expect.isFalse (hasFlag Flags.C cpu.cpu.p) "Carry flag should be cleared"
-            Expect.isFalse (hasFlag Flags.Z cpu.cpu.p) "Zero flag should be cleared"
-            Expect.isTrue (hasFlag Flags.N cpu.cpu.p) "Negative flag should be set"
+            Expect.isFalse (hasFlag Flags.c cpu.cpu.p) "Carry flag should be cleared"
+            Expect.isFalse (hasFlag Flags.z cpu.cpu.p) "Zero flag should be cleared"
+            Expect.isTrue (hasFlag Flags.n cpu.cpu.p) "Negative flag should be set"
         }
         test "CPX" {
             let program = [| 0xE0uy; 0x01uy; 0x00uy |]
             let cpu = runWith program <| withCpu (fun c -> { c with x = 0x02uy })
-            Expect.isTrue (hasFlag Flags.C cpu.cpu.p) "Carry flag should be set"
+            Expect.isTrue (hasFlag Flags.c cpu.cpu.p) "Carry flag should be set"
         }
         test "CPY" {
             let program = [| 0xC0uy; 0x01uy; 0x00uy |]
             let cpu = runWith program <| withCpu (fun c -> { c with y = 0x02uy })
-            Expect.isTrue (hasFlag Flags.C cpu.cpu.p) "Carry flag should be set"
+            Expect.isTrue (hasFlag Flags.c cpu.cpu.p) "Carry flag should be set"
         }
         test "DEC zeropage" {
             let program = [| 0xC6uy; 0x01uy; 0x00uy |]
@@ -840,7 +840,7 @@ let cpuTests =
             let program = [| 0xC6uy; 0x01uy; 0x00uy |]
             let cpu = runWith program <| memWrite 0x0001us 0x00uy
             Expect.equal (0x0001us |> memRead cpu) 0xFFuy "Address 0x0001 value should be 0xFF"
-            Expect.isTrue (hasFlag Flags.N cpu.cpu.p) "Negative flag should be set"
+            Expect.isTrue (hasFlag Flags.n cpu.cpu.p) "Negative flag should be set"
         }
         test "DEX" {
             let program = [| 0xCAuy; 0x00uy |]
@@ -851,7 +851,7 @@ let cpuTests =
             let program = [| 0xCAuy; 0x00uy |]
             let cpu = runWith program <| withCpu (fun c -> { c with x = 0x00uy })
             Expect.equal cpu.cpu.x 0xFFuy "Register X value should be 0xFF"
-            Expect.isTrue (hasFlag Flags.N cpu.cpu.p) "Negative flag should be set"
+            Expect.isTrue (hasFlag Flags.n cpu.cpu.p) "Negative flag should be set"
         }
         test "DEY" {
             let program = [| 0x88uy; 0x00uy |]
@@ -862,7 +862,7 @@ let cpuTests =
             let program = [| 0x88uy; 0x00uy |]
             let cpu = runWith program <| withCpu (fun c -> { c with y = 0x00uy })
             Expect.equal cpu.cpu.y 0xFFuy "Register Y value should be 0xFF"
-            Expect.isTrue (hasFlag Flags.N cpu.cpu.p) "Negative flag should be set"
+            Expect.isTrue (hasFlag Flags.n cpu.cpu.p) "Negative flag should be set"
         }
         test "INC zeropage" {
             let program = [| 0xE6uy; 0x01uy; 0x00uy |]
@@ -873,7 +873,7 @@ let cpuTests =
             let program = [| 0xE6uy; 0x01uy; 0x00uy |]
             let cpu = runWith program <| memWrite 0x0001us 0xFFuy
             Expect.equal (0x0001us |> memRead cpu) 0x00uy "Address 0x0001 value should be 0x00"
-            Expect.isTrue (hasFlag Flags.Z cpu.cpu.p) "Zero flag should be set"
+            Expect.isTrue (hasFlag Flags.z cpu.cpu.p) "Zero flag should be set"
         }
         test "INY" {
             let program = [| 0xC8uy; 0x00uy |]
@@ -884,7 +884,7 @@ let cpuTests =
             let program = [| 0xC8uy; 0x00uy |]
             let cpu = runWith program <| withCpu (fun c -> { c with y = 0xFFuy })
             Expect.equal cpu.cpu.y 0x00uy "Register Y value should be 0x00"
-            Expect.isTrue (hasFlag Flags.Z cpu.cpu.p) "Zero flag should be set"
+            Expect.isTrue (hasFlag Flags.z cpu.cpu.p) "Zero flag should be set"
         }
         test "JMP Absolute" {
             let program = [| 0x4Cuy; 0x50uy; 0x10uy; 0x00uy |]
@@ -947,15 +947,15 @@ let cpuTests =
             let program = [| 0xA2uy; 0x07uy; 0x00uy |] // LDX
             let cpu = runWith program id
             Expect.equal cpu.cpu.x 0x07uy "X register should be 7"
-            Expect.isFalse (hasFlag Flags.Z cpu.cpu.p) "Zero flag should be false"
-            Expect.isFalse (hasFlag Flags.N cpu.cpu.p) "Negative flag should be false"
+            Expect.isFalse (hasFlag Flags.z cpu.cpu.p) "Zero flag should be false"
+            Expect.isFalse (hasFlag Flags.n cpu.cpu.p) "Negative flag should be false"
         }
         test "LDY immediate load data" {
             let program = [| 0xA0uy; 0x25uy; 0x00uy |] // LDY
             let cpu = runWith program id
             Expect.equal cpu.cpu.y 0x25uy "Y register should be 0x25"
-            Expect.isFalse (hasFlag Flags.Z cpu.cpu.p) "Zero flag should be false"
-            Expect.isFalse (hasFlag Flags.N cpu.cpu.p) "Negative flag should be false"
+            Expect.isFalse (hasFlag Flags.z cpu.cpu.p) "Zero flag should be false"
+            Expect.isFalse (hasFlag Flags.n cpu.cpu.p) "Negative flag should be false"
         }
         test "NOP" {
             let program = [| 0xEAuy; 0x00uy |]
@@ -978,8 +978,8 @@ let cpuTests =
 
             Expect.equal cpu.cpu.a 0x66uy "Accumulator should be 0x66"
             Expect.equal cpu.cpu.sp 0xFFuy "Stack Pointer should be 0xFF"
-            Expect.isFalse (cpu.cpu.p |> hasFlag Flags.Z) "Zero flag should be cleared"
-            Expect.isFalse (cpu.cpu.p |> hasFlag Flags.N) "Negative flag should be cleared"
+            Expect.isFalse (cpu.cpu.p |> hasFlag Flags.z) "Zero flag should be cleared"
+            Expect.isFalse (cpu.cpu.p |> hasFlag Flags.n) "Negative flag should be cleared"
         }
         test "PLA zero" {
             let program = [| 0x68uy; 0x00uy |]
@@ -990,8 +990,8 @@ let cpuTests =
 
             Expect.equal cpu.cpu.a 0x00uy "Accumulator should be 0x00"
             Expect.equal cpu.cpu.sp 0xFFuy "Stack Pointer should be 0xFF"
-            Expect.isTrue (cpu.cpu.p |> hasFlag Flags.Z) "Zero flag should be set"
-            Expect.isFalse (cpu.cpu.p |> hasFlag Flags.N) "Negative flag should be cleared"
+            Expect.isTrue (cpu.cpu.p |> hasFlag Flags.z) "Zero flag should be set"
+            Expect.isFalse (cpu.cpu.p |> hasFlag Flags.n) "Negative flag should be cleared"
         }
         test "PHA and PLA" {
             let program = [|
@@ -1005,28 +1005,28 @@ let cpuTests =
             let cpu = runWith program <| withCpu (fun c -> { c with a = 0x98uy })
             Expect.equal cpu.cpu.a 0x98uy "Accumulator should be 0x98"
             Expect.equal cpu.cpu.sp 0xFAuy "Stack Pointer should be 0xFA"
-            Expect.isFalse (cpu.cpu.p |> hasFlag Flags.Z) "Zero flag should be cleared"
-            Expect.isTrue (cpu.cpu.p |> hasFlag Flags.N) "Negative flag should be set"
+            Expect.isFalse (cpu.cpu.p |> hasFlag Flags.z) "Zero flag should be cleared"
+            Expect.isTrue (cpu.cpu.p |> hasFlag Flags.n) "Negative flag should be set"
             Expect.equal cpu.cpu.pc 0x8005us "Program counter should be 0x8005"
         }
         test "PHP" {
             let program = [| 0x08uy; 0x00uy |]
-            let cpu = runWith program <| withCpu (fun c -> { c with p = Flags.C ||| Flags.V })
+            let cpu = runWith program <| withCpu (fun c -> { c with p = Flags.c ||| Flags.v })
             Expect.equal cpu.cpu.sp 0xF9uy "Stack Pointer should be 0xF9"
-            Expect.isTrue (0x01FAus |> memRead cpu |> hasFlag Flags.C) "Carry flag should be set"
-            Expect.isTrue (0x01FAus |> memRead cpu |> hasFlag Flags.V) "Overflow flag should be set"
+            Expect.isTrue (0x01FAus |> memRead cpu |> hasFlag Flags.c) "Carry flag should be set"
+            Expect.isTrue (0x01FAus |> memRead cpu |> hasFlag Flags.v) "Overflow flag should be set"
         }
         test "PLP" {
             let program = [| 0x28uy; 0x00uy |]
 
             let cpu =
                 runWith program
-                <| (memWrite 0x01FFus (Flags.N ||| Flags.Z)
+                <| (memWrite 0x01FFus (Flags.n ||| Flags.z)
                     >> withCpu (fun c -> { c with sp = 0xFEuy }))
 
             Expect.equal cpu.cpu.sp 0xFFuy "Stack Pointer should be 0xFF"
-            Expect.isTrue (cpu.cpu.p |> hasFlag Flags.Z) "Zero flag should be set"
-            Expect.isTrue (cpu.cpu.p |> hasFlag Flags.N) "Negative flag should be set"
+            Expect.isTrue (cpu.cpu.p |> hasFlag Flags.z) "Zero flag should be set"
+            Expect.isTrue (cpu.cpu.p |> hasFlag Flags.n) "Negative flag should be set"
         }
         test "PHP and PLP" {
             let program = [|
@@ -1037,11 +1037,11 @@ let cpuTests =
                 0x00uy // BRK
             |]
 
-            let cpu = runWith program <| withCpu (fun c -> { c with p = Flags.V ||| Flags.Z })
+            let cpu = runWith program <| withCpu (fun c -> { c with p = Flags.v ||| Flags.z })
             Expect.equal cpu.cpu.a 0x21uy "Accumulator should be 0x21"
             Expect.equal cpu.cpu.sp 0xFAuy "Stack Pointer should be 0xFA"
-            Expect.isTrue (cpu.cpu.p |> hasFlag Flags.Z) "Zero flag should be set"
-            Expect.isTrue (cpu.cpu.p |> hasFlag Flags.V) "Overflow flag should be set"
+            Expect.isTrue (cpu.cpu.p |> hasFlag Flags.z) "Zero flag should be set"
+            Expect.isTrue (cpu.cpu.p |> hasFlag Flags.v) "Overflow flag should be set"
             Expect.equal cpu.cpu.pc 0x8005us "Program counter should be 0x8005"
         }
         test "STX to memory zero page" {
@@ -1079,7 +1079,7 @@ let cpuTests =
             let cpu = runWith program <| withCpu (fun c -> { c with sp = 0xE1uy })
 
             Expect.equal cpu.cpu.x 0xE1uy "X Register should be 0xE1"
-            Expect.isTrue (hasFlag Flags.N cpu.cpu.p) "Negative flag should be set"
+            Expect.isTrue (hasFlag Flags.n cpu.cpu.p) "Negative flag should be set"
         }
         test "TXS" {
             let program = [| 0x9Auy; 0x10uy; 0x00uy |]
@@ -1099,7 +1099,7 @@ let cpuTests =
                 0x00uy // BRK
             |]
 
-            let cpu = runWith program <| withCpu (fun c -> { c with p = setFlag Flags.N c.p })
+            let cpu = runWith program <| withCpu (fun c -> { c with p = setFlag Flags.n c.p })
             Expect.equal cpu.cpu.x 0x01uy "X should be 1 (branch taken)"
             Expect.equal cpu.cpu.pc 0x8006us "Program counter should be 0x8006"
         }
@@ -1144,7 +1144,7 @@ let cpuTests =
                 0x00uy // BRK
             |]
 
-            let cpu = runWith program <| withCpu (fun c -> { c with p = setFlag Flags.N c.p })
+            let cpu = runWith program <| withCpu (fun c -> { c with p = setFlag Flags.n c.p })
             Expect.equal cpu.cpu.x 0x00uy "X should be 0 (branch not taken)"
             Expect.equal cpu.cpu.pc 0x8003us "Program counter should be 0x8003"
         }
@@ -1174,7 +1174,7 @@ let cpuTests =
                 0x00uy // BRK
             |]
 
-            let cpu = runWith program <| withCpu (fun c -> { c with p = setFlag Flags.V c.p })
+            let cpu = runWith program <| withCpu (fun c -> { c with p = setFlag Flags.v c.p })
             Expect.equal cpu.cpu.x 0x00uy "X should be 0 (branch not taken)"
             Expect.equal cpu.cpu.pc 0x8003us "Program counter should be 0x8003"
         }
@@ -1189,7 +1189,7 @@ let cpuTests =
                 0x00uy // BRK
             |]
 
-            let cpu = runWith program <| withCpu (fun c -> { c with p = setFlag Flags.V c.p })
+            let cpu = runWith program <| withCpu (fun c -> { c with p = setFlag Flags.v c.p })
             Expect.equal cpu.cpu.x 0x01uy "X should be 1 (branch taken)"
             Expect.equal cpu.cpu.pc 0x8006us "Program counter should be 0x8006"
         }
@@ -1215,8 +1215,8 @@ let cpuTests =
             let cpu = runWith program <| withCpu (fun c -> { c with a = 0x00uy })
 
             Expect.equal cpu.cpu.x 0x00uy "X should be 0"
-            Expect.isTrue (hasFlag Flags.Z cpu.cpu.p) "Zero flag should be set"
-            Expect.isFalse (hasFlag Flags.N cpu.cpu.p) "Negative flag should be clear"
+            Expect.isTrue (hasFlag Flags.z cpu.cpu.p) "Zero flag should be set"
+            Expect.isFalse (hasFlag Flags.n cpu.cpu.p) "Negative flag should be clear"
         }
 
         test "TAX sets negative flag" {
@@ -1224,8 +1224,8 @@ let cpuTests =
             let cpu = runWith program <| withCpu (fun c -> { c with a = 0x80uy })
 
             Expect.equal cpu.cpu.x 0x80uy "X should be 0x80"
-            Expect.isFalse (hasFlag Flags.Z cpu.cpu.p) "Zero flag should be clear"
-            Expect.isTrue (hasFlag Flags.N cpu.cpu.p) "Negative flag should be set"
+            Expect.isFalse (hasFlag Flags.z cpu.cpu.p) "Zero flag should be clear"
+            Expect.isTrue (hasFlag Flags.n cpu.cpu.p) "Negative flag should be set"
         }
 
         test "TAY sets zero flag" {
@@ -1233,7 +1233,7 @@ let cpuTests =
             let cpu = runWith program <| withCpu (fun c -> { c with a = 0x00uy })
 
             Expect.equal cpu.cpu.y 0x00uy "Y should be 0"
-            Expect.isTrue (hasFlag Flags.Z cpu.cpu.p) "Zero flag should be set"
+            Expect.isTrue (hasFlag Flags.z cpu.cpu.p) "Zero flag should be set"
         }
 
         test "TAY sets negative flag" {
@@ -1241,7 +1241,7 @@ let cpuTests =
             let cpu = runWith program <| withCpu (fun c -> { c with a = 0xFFuy })
 
             Expect.equal cpu.cpu.y 0xFFuy "Y should be 0xFF"
-            Expect.isTrue (hasFlag Flags.N cpu.cpu.p) "Negative flag should be set"
+            Expect.isTrue (hasFlag Flags.n cpu.cpu.p) "Negative flag should be set"
         }
 
         test "TXA sets zero flag" {
@@ -1249,7 +1249,7 @@ let cpuTests =
             let cpu = runWith program <| withCpu (fun c -> { c with x = 0x00uy })
 
             Expect.equal cpu.cpu.a 0x00uy "A should be 0"
-            Expect.isTrue (hasFlag Flags.Z cpu.cpu.p) "Zero flag should be set"
+            Expect.isTrue (hasFlag Flags.z cpu.cpu.p) "Zero flag should be set"
         }
 
         test "TXA sets negative flag" {
@@ -1257,7 +1257,7 @@ let cpuTests =
             let cpu = runWith program <| withCpu (fun c -> { c with x = 0x90uy })
 
             Expect.equal cpu.cpu.a 0x90uy "A should be 0x90"
-            Expect.isTrue (hasFlag Flags.N cpu.cpu.p) "Negative flag should be set"
+            Expect.isTrue (hasFlag Flags.n cpu.cpu.p) "Negative flag should be set"
         }
 
         test "TYA sets zero flag" {
@@ -1265,7 +1265,7 @@ let cpuTests =
             let cpu = runWith program <| withCpu (fun c -> { c with y = 0x00uy })
 
             Expect.equal cpu.cpu.a 0x00uy "A should be 0"
-            Expect.isTrue (hasFlag Flags.Z cpu.cpu.p) "Zero flag should be set"
+            Expect.isTrue (hasFlag Flags.z cpu.cpu.p) "Zero flag should be set"
         }
 
         test "TYA sets negative flag" {
@@ -1273,7 +1273,7 @@ let cpuTests =
             let cpu = runWith program <| withCpu (fun c -> { c with y = 0xA5uy })
 
             Expect.equal cpu.cpu.a 0xA5uy "A should be 0xA5"
-            Expect.isTrue (hasFlag Flags.N cpu.cpu.p) "Negative flag should be set"
+            Expect.isTrue (hasFlag Flags.n cpu.cpu.p) "Negative flag should be set"
         }
 
         // ===== LDX/LDY のアドレッシングモード追加 =====
@@ -1480,7 +1480,7 @@ let cpuTests =
                 runWith program
                 <| (memWrite 0x10us 0x01uy >> withCpu (fun c -> { c with a = 0x02uy }))
 
-            Expect.isTrue (hasFlag Flags.C cpu.cpu.p) "Carry flag should be set"
+            Expect.isTrue (hasFlag Flags.c cpu.cpu.p) "Carry flag should be set"
         }
 
         test "CMP absolute" {
@@ -1490,8 +1490,8 @@ let cpuTests =
                 runWith program
                 <| (memWrite 0x1234us 0x02uy >> withCpu (fun c -> { c with a = 0x02uy }))
 
-            Expect.isTrue (hasFlag Flags.C cpu.cpu.p) "Carry flag should be set"
-            Expect.isTrue (hasFlag Flags.Z cpu.cpu.p) "Zero flag should be set"
+            Expect.isTrue (hasFlag Flags.c cpu.cpu.p) "Carry flag should be set"
+            Expect.isTrue (hasFlag Flags.z cpu.cpu.p) "Zero flag should be set"
         }
 
         test "CPX zero page" {
@@ -1501,7 +1501,7 @@ let cpuTests =
                 runWith program
                 <| (memWrite 0x10us 0x01uy >> withCpu (fun c -> { c with x = 0x02uy }))
 
-            Expect.isTrue (hasFlag Flags.C cpu.cpu.p) "Carry flag should be set"
+            Expect.isTrue (hasFlag Flags.c cpu.cpu.p) "Carry flag should be set"
         }
 
         test "CPX absolute" {
@@ -1511,8 +1511,8 @@ let cpuTests =
                 runWith program
                 <| (memWrite 0x1234us 0x02uy >> withCpu (fun c -> { c with x = 0x02uy }))
 
-            Expect.isTrue (hasFlag Flags.C cpu.cpu.p) "Carry flag should be set"
-            Expect.isTrue (hasFlag Flags.Z cpu.cpu.p) "Zero flag should be set"
+            Expect.isTrue (hasFlag Flags.c cpu.cpu.p) "Carry flag should be set"
+            Expect.isTrue (hasFlag Flags.z cpu.cpu.p) "Zero flag should be set"
         }
 
         test "CPY zero page" {
@@ -1522,7 +1522,7 @@ let cpuTests =
                 runWith program
                 <| (memWrite 0x10us 0x01uy >> withCpu (fun c -> { c with y = 0x02uy }))
 
-            Expect.isTrue (hasFlag Flags.C cpu.cpu.p) "Carry flag should be set"
+            Expect.isTrue (hasFlag Flags.c cpu.cpu.p) "Carry flag should be set"
         }
 
         test "CPY absolute" {
@@ -1532,8 +1532,8 @@ let cpuTests =
                 runWith program
                 <| (memWrite 0x1234us 0x02uy >> withCpu (fun c -> { c with y = 0x02uy }))
 
-            Expect.isTrue (hasFlag Flags.C cpu.cpu.p) "Carry flag should be set"
-            Expect.isTrue (hasFlag Flags.Z cpu.cpu.p) "Zero flag should be set"
+            Expect.isTrue (hasFlag Flags.c cpu.cpu.p) "Carry flag should be set"
+            Expect.isTrue (hasFlag Flags.z cpu.cpu.p) "Zero flag should be set"
         }
 
         test "INC absolute" {
@@ -1595,7 +1595,7 @@ let cpuTests =
 
             let cpu =
                 runWith program
-                <| (memWrite 0x10us 0x05uy >> withCpu (fun c -> { c with a = 0x0Auy; p = Flags.C }))
+                <| (memWrite 0x10us 0x05uy >> withCpu (fun c -> { c with a = 0x0Auy; p = Flags.c }))
 
             Expect.equal cpu.cpu.a 0x05uy "A should be 0x05"
         }

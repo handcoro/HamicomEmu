@@ -86,9 +86,12 @@ module Bus =
             let mirrorDownAddr = addr &&& 0b0010_0000_0000_0111us
             memRead mirrorDownAddr bus
 
+        // マイク情報は $4016 から読み出す
         | 0x4016us ->
             let data, joy = Joypad.read bus.joy1
-            data, { bus with joy1 = joy }
+            let micBit = Joypad.getMicrophoneBit bus.joy1
+            let result = data ||| micBit
+            result, { bus with joy1 = joy }
 
         | 0x4017us ->
             let data, joy = Joypad.read bus.joy2

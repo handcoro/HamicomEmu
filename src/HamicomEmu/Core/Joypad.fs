@@ -18,6 +18,7 @@ module Joypad =
         strobe = false
         buttonIdx = 0
         buttonStatus = 0uy
+        microphone = false
     }
 
     /// strobe の書き込み
@@ -36,6 +37,10 @@ module Joypad =
                 strobe = strobe
                 buttonIdx = idx
         }
+
+    /// マイク入力の設定（2コン専用）
+    let setMicrophone isActive joy =
+        { joy with microphone = isActive }
 
     /// 1 ビットずつ入力状態を返す
     let read joy =
@@ -62,3 +67,7 @@ module Joypad =
 
     let mergeStates a b =
         { a with buttonStatus = a.buttonStatus ||| b.buttonStatus }
+
+    /// マイク入力状態の取得（2コン専用、ビット2用）
+    let getMicrophoneBit joy =
+        if joy.microphone then 0b0000_0100uy else 0uy
