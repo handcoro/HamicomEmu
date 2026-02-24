@@ -7,7 +7,8 @@ open HamicomEmu.Ppu.Screen
 open HamicomEmu.Ppu.Renderer
 open HamicomEmu.Apu
 open HamicomEmu.Trace
-open HamicomEmu.Platform.AudioEngine
+open HamicomEmu.Platform.Audio.Engine
+open HamicomEmu.Platform.Audio
 open HamicomEmu.Platform.Input
 open HamicomEmu.Platform.Input.Commands
 open HamicomEmu.Input
@@ -87,6 +88,13 @@ type basicNesGame(raw, cartridgePath, traceFn) as this =
     let cartPath = cartridgePath
     let mutable emu = Unchecked.defaultof<EmulatorCore.EmulatorState>
     let traceFn = traceFn
+    
+#if DEBUG
+    let oversampleFactor = 2
+#else
+    let oversampleFactor = 4
+#endif
+    let mutable audioProcessor = Processor.create sampleRate oversampleFactor
 
     do
         match parsed with
@@ -175,28 +183,15 @@ type basicNesGame(raw, cartridgePath, traceFn) as this =
                 bus.joy1.microphone = joy1.microphone
         }
 
-        let cpuClock = Constants.cpuClockNTSC
-        let cyclesPerSample = cpuClock / float sampleRate // ≒ 40.584
-        let samplesPerFrame = sampleRate / 60 // = 735
-
-        let mutable cycleAcc = 0.0
-
-        // 1フレーム分のサンプルを作るバッファ
-        let samples = ResizeArray<float32>()
-
-        for _ in 1..samplesPerFrame do
-            cycleAcc <- cycleAcc + cyclesPerSample
-            while cycleAcc >= 1.0 do // 1.0 未満はサイクル端数として次サンプルに繰越し
-                let emu', used = EmulatorCore.tick emu traceFn // ← step が消費サイクル数を返すように
-                emu <- emu'
-                cycleAcc <- cycleAcc - float used
-
-            // APU から 1 サンプル取り出す
-            let sample = Apu.mix emu.bus.apu
-            samples.Add(sample)
-
+        // Audio処理: 1フレーム分のサンプルを生成（オーバーサンプリング適用）
+        let deltaSeconds = gameTime.ElapsedGameTime.TotalSeconds
+        let desiredSamples = int (deltaSeconds * float sampleRate)
+        let audioProcessor', emu', samples = Processor.generateFrame audioProcessor emu traceFn desiredSamples
+        audioProcessor <- audioProcessor'
+        emu <- emu'
+        
         // AudioEngine へ一括送信
-        audioEngine.Submit(samples |> Seq.toArray)
+        audioEngine.Submit(samples)
 
 
         base.Update(gameTime)

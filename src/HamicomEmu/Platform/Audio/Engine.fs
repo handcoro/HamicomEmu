@@ -1,6 +1,6 @@
-namespace HamicomEmu.Platform
+namespace HamicomEmu.Platform.Audio
 
-module AudioEngine =
+module Engine =
 
     open System.Collections.Generic
     open OpenTK.Audio.OpenAL
