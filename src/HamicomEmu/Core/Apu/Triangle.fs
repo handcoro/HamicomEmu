@@ -49,6 +49,7 @@ module Triangle =
         tri
 
     /// 三角波出力
+    /// NOTE: ミュートしても出力は 0 にはならない
     let output (tri: TriangleState) =
         let sample = Constants.triangleTable[tri.triangleStep] |> byte
         sample

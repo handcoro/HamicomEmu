@@ -129,8 +129,16 @@ module Apu =
         | Step4 -> Step5
         | Step5 -> Step1
 
+    let private stepToIndex =
+        function
+        | Step1 -> 0
+        | Step2 -> 1
+        | Step3 -> 2
+        | Step4 -> 3
+        | Step5 -> 4
+
     /// APU のサイクルを進める
-    /// 4-step モードは 240Hz で 1 フレーム
+    /// 4-step モードはおおよそ 240Hz で 1 フレーム
     let tick apu : TickResult =
         let mutable apu = apu
         let mutable req = None
@@ -140,9 +148,15 @@ module Apu =
 
         let mode = apu.frameCounter.mode
 
-        if apu.cycle >= Constants.frameStepCycles then
+        let currentStepCycles =
+            let idx = stepToIndex apu.step
+            match mode with
+            | FourStep -> Constants.frameStepCycles4Step[idx]
+            | FiveStep -> Constants.frameStepCycles5Step[idx]
 
-            apu.cycle <- apu.cycle - Constants.frameStepCycles
+        if apu.cycle >= currentStepCycles then
+
+            apu.cycle <- apu.cycle - currentStepCycles
 
             // フレームステップ更新
             apu <- runFrameStep apu.step mode apu
@@ -153,7 +167,7 @@ module Apu =
             | Step5, FiveStep -> apu.step <- Step1
             | _ -> apu.step <- nextStep apu.step
 
-        // 矩形波は CPU サイクル 2 ごとにタイマーを
+        // 矩形波は CPU サイクル 2 ごとに tick
         if apu.cycle % 2u <> 0u then
             let pul1 = Pulse.tick apu.pulse1
             let pul2 = Pulse.tick apu.pulse2
@@ -474,11 +488,5 @@ module Apu =
                 159.79f / (1.0f / (t / 8227.0f + n / 12241.0f + d / 22638.0f) + 100.0f)
 
         let sample = (pulseMix + tndMix) * masterGain
-
-        // NOTE: ローパスフィルタ実装は検討中
-        // filterState は APU の外に持つのがいいかも
-        // let alpha = 0.30f // default: 0.18f
-        // let sample, filterState = nextLowPass alpha sample apu.filterState
-        // apu.filterState <- filterState
 
         sample

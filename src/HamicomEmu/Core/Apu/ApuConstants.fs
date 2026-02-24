@@ -1,8 +1,24 @@
 namespace HamicomEmu.Apu
 
 module Constants =
+    // 各フレームステップの CPU サイクル数
+    // TODO: より正確なサイクル数実装
+    // 4-step mode
+    let frameStepCycles4Step = [|
+        7457u  // Step1
+        7456u  // Step2
+        7458u  // Step3
+        7458u  // Step4
+    |]
 
-    let frameStepCycles = 7457u // 1 step のサイクル数
+    // 5-step mode
+    let frameStepCycles5Step = [|
+        7457u  // Step1
+        7456u  // Step2
+        7458u  // Step3
+        7458u  // Step4
+        7452u  // Step5
+    |]
 
     let dutyTable = [|
         [| 0; 1; 0; 0; 0; 0; 0; 0 |] // 12.5%
