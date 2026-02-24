@@ -45,6 +45,8 @@
     <Compile Include="Core/EmulatorCore.fs" />
     <Compile Include="Core/Trace.fs" />
     <Compile Include="Platform/AudioEngine.fs" />
+    <Compile Include="Platform/Input/Commands.fs" />
+    <Compile Include="Platform/Input/Handler.fs" />
     <Compile Include="Platform/Program.fs" />
   </ItemGroup>
   <ItemGroup>

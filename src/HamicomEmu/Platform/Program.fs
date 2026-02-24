@@ -8,6 +8,8 @@ open HamicomEmu.Ppu.Renderer
 open HamicomEmu.Apu
 open HamicomEmu.Trace
 open HamicomEmu.Platform.AudioEngine
+open HamicomEmu.Platform.Input
+open HamicomEmu.Platform.Input.Commands
 open HamicomEmu.Input
 
 open System
@@ -19,79 +21,10 @@ open Microsoft.Xna.Framework
 open Microsoft.Xna.Framework.Graphics
 open Microsoft.Xna.Framework.Input
 
-type InputSource =
-    | Keyboard of KeyboardState
-    | Gamepad of GamePadState
+// 入力処理は Platform/Input/{Commands,Handler}.fs にて管理
 
 // 電源やリセット操作用の直前のキー状態を覚えておく
 let mutable prevFuncKeyboardState = Keyboard.GetState()
-
-let functionKeyMap = [ // ゲーム外操作用
-    Keys.R, EmulatorCore.reset
-    Keys.P, (fun emu -> EmulatorCore.powerOn emu.bus.cartridge) // 電源をトグル
-]
-
-let keyMap = [
-    Keys.Right, Joypad.Button.right
-    Keys.Left, Joypad.Button.left
-    Keys.Down, Joypad.Button.down
-    Keys.Up, Joypad.Button.up
-    Keys.Enter, Joypad.Button.start
-    Keys.Space, Joypad.Button.select
-    Keys.S, Joypad.Button.b
-    Keys.A, Joypad.Button.a
-]
-
-let keyMap2 = [
-    Keys.J, Joypad.Button.right
-    Keys.G, Joypad.Button.left
-    Keys.H, Joypad.Button.down
-    Keys.Y, Joypad.Button.up
-    Keys.K, Joypad.Button.b
-    Keys.L, Joypad.Button.a
-]
-
-/// 2コンのマイク入力（Mキー）
-let microphoneKey = Keys.M
-
-/// XBox Gamepad 前提の設定
-let padMap = [
-    Buttons.DPadRight, Joypad.Button.right
-    Buttons.DPadLeft, Joypad.Button.left
-    Buttons.DPadDown, Joypad.Button.down
-    Buttons.DPadUp, Joypad.Button.up
-    Buttons.Start, Joypad.Button.start
-    Buttons.Back, Joypad.Button.select
-    Buttons.A, Joypad.Button.b
-    Buttons.B, Joypad.Button.a
-]
-
-let isKeyPressed (ks: KeyboardState) key = ks.IsKeyDown key
-
-let wasKeyPressed (prev: KeyboardState) key = prev.IsKeyDown key
-
-let isPadPressed (gs: GamePadState) button = gs.IsButtonDown button
-
-let getKeyMap number =
-    match number with
-    | 1 -> keyMap
-    | 2 -> keyMap2
-    | _ -> keyMap
-
-let handleJoypadInput (input: InputSource) number joy =
-    let joy =
-        match input with
-        | Keyboard ks ->
-            getKeyMap number
-            |> List.fold (fun accJoy (key, button) -> accJoy |> Joypad.setButtonPressed button (isKeyPressed ks key)) joy
-        | Gamepad gs when gs.IsConnected ->
-            padMap
-            |> List.fold
-                (fun accJoy (padButton, button) -> accJoy |> Joypad.setButtonPressed button (isPadPressed gs padButton))
-                joy
-        | _ -> joy
-
-    joy
 
 let handleFunctionKeyInput (input: InputSource) emu =
     match input with
@@ -99,7 +32,7 @@ let handleFunctionKeyInput (input: InputSource) emu =
         let emu' =
             functionKeyMap
             |> List.fold (fun acc (key, func) ->
-                if isKeyPressed ks key && not (wasKeyPressed prevFuncKeyboardState key) then
+                if ks.IsKeyDown(key) && not (prevFuncKeyboardState.IsKeyDown(key)) then
                     func acc
                 else
                     acc
@@ -220,20 +153,20 @@ type basicNesGame(raw, cartridgePath, traceFn) as this =
             this.Exit()
         
         // リセット機能など
-        emu <- handleFunctionKeyInput (Keyboard ks) emu
+        emu <- handleFunctionKeyInput (Commands.Keyboard ks) emu
 
         // マイク入力
-        let isMicActive = isKeyPressed ks microphoneKey
+        let isMicActive = Handler.isKeyPressed ks Commands.microphoneKey
         let joy1 =
             Joypad.mergeStates
                 (
                     Joypad.init
-                    |> handleJoypadInput (Keyboard ks) 1
+                    |> Handler.handleJoypadInput (Commands.Keyboard ks) 1
                     |> Joypad.setMicrophone isMicActive
                 )
-                (Joypad.init |> handleJoypadInput (Gamepad gs) 1)
+                (Joypad.init |> Handler.handleJoypadInput (Commands.Gamepad gs) 1)
 
-        let joy2 = Joypad.init |> handleJoypadInput (Keyboard ks) 2
+        let joy2 = Joypad.init |> Handler.handleJoypadInput (Commands.Keyboard ks) 2
 
         emu <- {
             emu with
