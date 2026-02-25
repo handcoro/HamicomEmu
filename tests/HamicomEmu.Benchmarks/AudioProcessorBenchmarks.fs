@@ -210,22 +210,25 @@ type OversamplingPrecisionBenchmark() =
         emu <- powerOn cart
     
     /// 8倍オーバーサンプリング
-    [<Benchmark>]
+    [<Benchmark(OperationsPerInvoke = 150)>]
     member _.Generate100Samples_8x() =
-        let _, emu', _ = Processor.generateFrame processor8x emu (fun _ -> ()) 100
-        emu <- emu'
+        for _ in 1..150 do
+            let _, emu', _ = Processor.generateFrame processor8x emu (fun _ -> ()) 100
+            emu <- emu'
     
     /// 16倍オーバーサンプリング
-    [<Benchmark(Baseline = true)>]
+    [<Benchmark(Baseline = true, OperationsPerInvoke = 150)>]
     member _.Generate100Samples_16x() =
-        let _, emu', _ = Processor.generateFrame processor16x emu (fun _ -> ()) 100
-        emu <- emu'
+        for _ in 1..150 do
+            let _, emu', _ = Processor.generateFrame processor16x emu (fun _ -> ()) 100
+            emu <- emu'
     
     /// 32倍オーバーサンプリング (新規検証)
-    [<Benchmark>]
+    [<Benchmark(OperationsPerInvoke = 150)>]
     member _.Generate100Samples_32x() =
-        let _, emu', _ = Processor.generateFrame processor32x emu (fun _ -> ()) 100
-        emu <- emu'
+        for _ in 1..150 do
+            let _, emu', _ = Processor.generateFrame processor32x emu (fun _ -> ()) 100
+            emu <- emu'
 
 /// Expecto テストとしてベンチマークを登録
 [<Tests>]

@@ -40,12 +40,13 @@ module Processor =
                 desiredSamples
 
         let cpuClock = Constants.cpuClockNTSC
-        let cyclesPerSubSample = cpuClock / float (processor.sampleRate * processor.oversampleFactor)
+        let oversampleFactor = processor.oversampleFactor
+        let cyclesPerSubSample = cpuClock / float (processor.sampleRate * oversampleFactor)
+        let invOversampleFactor = 1.0f / float32 oversampleFactor
 
         let samples = Array.zeroCreate<float32> samplesPerFrame
         let mutable cycleAcc = processor.cycleAcc
         let mutable currentEmu = emu
-        let mutable sampleIdx = 0
 
         // CPU サイクル処理：1サブサンプルぶん実行
         let inline processCycles() =
@@ -57,16 +58,23 @@ module Processor =
         // 1サンプル分を生成（オーバーサンプリング適用）
         let inline generateSample() =
             let mutable sum = 0.0f
-            for _ in 1..processor.oversampleFactor do
+            for _ in 1..oversampleFactor do
                 cycleAcc <- cycleAcc + cyclesPerSubSample
                 processCycles()
                 sum <- sum + Apu.mix currentEmu.bus.apu // 蓄積
-            sum / float32 processor.oversampleFactor  // ここで平均化
+            sum * invOversampleFactor // 高速化のため除算の代わりに乗算で平均化
 
         // フレーム中の全サンプルを生成 (Array直接代入で最適化)
+        // 内側ループを 8 ずつ回して外側ループのオーバーヘッドを減らす
         if samplesPerFrame > 0 then
-            for i in 0..samplesPerFrame - 1 do
-                samples[i] <- generateSample()
+            let batchSize = 8
+            let mutable i = 0
+            while i < samplesPerFrame do
+                let remaining = samplesPerFrame - i
+                let count = if remaining >= batchSize then batchSize else remaining
+                for j in 0..count - 1 do
+                    samples[i + j] <- generateSample()
+                i <- i + count
 
         let updatedProcessor = { processor with cycleAcc = cycleAcc }
         updatedProcessor, currentEmu, samples
