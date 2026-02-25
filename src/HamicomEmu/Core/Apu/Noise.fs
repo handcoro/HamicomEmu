@@ -42,7 +42,7 @@ module Noise =
     /// 以下の場合に出力:
     /// * シフトレジスタの bit 0 がセットされていない
     /// * 長さカウンタが 0 でない
-    let output (noi: NoiseState) =
+    let inline output (noi: NoiseState) =
         if noi.lengthCounter = 0uy then
             0uy
         else

@@ -34,7 +34,7 @@ module Pulse =
         pulse
 
     /// 矩形波出力
-    let output (pulse: PulseState) =
+    let inline output (pulse: PulseState) =
         let dutyIndex = int pulse.duty &&& 0b11
 
         let isMuted = Common.isMuted pulse || pulse.lengthCounter = 0uy

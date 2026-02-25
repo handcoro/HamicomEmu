@@ -125,4 +125,4 @@ module Dmc =
 
             dmc, req, stall
 
-    let output dmc = dmc.outputLevel
+    let inline output dmc = dmc.outputLevel

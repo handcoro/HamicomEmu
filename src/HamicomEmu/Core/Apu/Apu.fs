@@ -6,8 +6,6 @@ module Apu =
     open HamicomEmu.Common
     open HamicomEmu.Common.BitUtils
 
-    let initialLowPassFilter = { lastOutput = 0.0f }
-
     let initialFrameCounter = {
         mode = FourStep
         irqInhibit = false
@@ -20,7 +18,6 @@ module Apu =
         triangle = Triangle.init
         noise = Noise.init
         dmc = Dmc.init
-        filterState = initialLowPassFilter
         status = 0uy
         frameCounter = initialFrameCounter
         cycle = 0u
@@ -450,43 +447,34 @@ module Apu =
             // printfn "This APU register is not implemented yet. %04X" addr
             0uy, apu
 
-    /// 一次 IIR ローパスフィルタ
-    let nextLowPass alpha input (state: LowPassFilterState) =
-        let y = alpha * input + (1.0f - alpha) * state.lastOutput
-        y, { state with lastOutput = y }
-
-    /// 1 サンプル合成出力
-    let mix apu =
-        let ch1 = Pulse.output apu.pulse1
-        let ch2 = Pulse.output apu.pulse2
-        let ch3 = Triangle.output apu.triangle
-        let ch4 = Noise.output apu.noise
-        let ch5 = Dmc.output apu.dmc
-
-        let ch1 = ch1 |> int
-        let ch2 = ch2 |> int
-        let ch3 = ch3 |> int
-        let ch4 = ch4 |> int
-        let ch5 = ch5 |> int
-
-        let masterGain = 1.0f
+    /// 1 サンプル合成出力 (最適化版: キャッシュ局所性向上)
+    let inline mix apu =
+        // 出力値を直接int変換で取得（キャッシュ局所性向上）
+        let ch1 = Pulse.output apu.pulse1 |> int
+        let ch2 = Pulse.output apu.pulse2 |> int
+        let ch3 = Triangle.output apu.triangle |> int
+        let ch4 = Noise.output apu.noise |> int
+        let ch5 = Dmc.output apu.dmc |> int
 
         // 実機の回路を模したミキサーらしい
         // https://www.nesdev.org/wiki/APU_Mixer
+        // Pulse ミキサー: ch1 + ch2 が 0 なら結果も 0
+        let pulseSum = ch1 + ch2
         let pulseMix =
-            if ch1 + ch2 = 0 then
+            if pulseSum = 0 then
                 0.0f
             else
-                95.88f / (8128.0f / float32 (ch1 + ch2) + 100.0f)
+                95.88f / (8128.0f / float32 pulseSum + 100.0f)
 
+        // TNDミキサー: t, n, d いずれかが 0 でない場合のみ計算
+        let t = float32 ch3
+        let n = float32 ch4
+        let d = float32 ch5
+        
         let tndMix =
-            let t, n, d = float32 ch3, float32 ch4, float32 ch5
-
             if t = 0.0f && n = 0.0f && d = 0.0f then
                 0.0f
             else
                 159.79f / (1.0f / (t / 8227.0f + n / 12241.0f + d / 22638.0f) + 100.0f)
 
-        let sample = (pulseMix + tndMix) * masterGain
-
-        sample
+        pulseMix + tndMix
