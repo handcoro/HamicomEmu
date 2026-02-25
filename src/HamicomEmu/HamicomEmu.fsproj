@@ -39,6 +39,7 @@
     <Compile Include="Core/Apu/Triangle.fs" />
     <Compile Include="Core/Apu/Noise.fs" />
     <Compile Include="Core/Apu/Dmc.fs" />
+    <Compile Include="Core/Apu/Mixer.fs" />
     <Compile Include="Core/Apu/Apu.fs" />
     <Compile Include="Core/Bus.fs" />
     <Compile Include="Core/Cpu.fs" />

@@ -449,32 +449,11 @@ module Apu =
 
     /// 1 サンプル合成出力 (最適化版: キャッシュ局所性向上)
     let inline mix apu =
-        // 出力値を直接int変換で取得（キャッシュ局所性向上）
-        let ch1 = Pulse.output apu.pulse1 |> int
-        let ch2 = Pulse.output apu.pulse2 |> int
-        let ch3 = Triangle.output apu.triangle |> int
-        let ch4 = Noise.output apu.noise |> int
-        let ch5 = Dmc.output apu.dmc |> int
-
-        // 実機の回路を模したミキサーらしい
-        // https://www.nesdev.org/wiki/APU_Mixer
-        // Pulse ミキサー: ch1 + ch2 が 0 なら結果も 0
-        let pulseSum = ch1 + ch2
-        let pulseMix =
-            if pulseSum = 0 then
-                0.0f
-            else
-                95.88f / (8128.0f / float32 pulseSum + 100.0f)
-
-        // TNDミキサー: t, n, d いずれかが 0 でない場合のみ計算
-        let t = float32 ch3
-        let n = float32 ch4
-        let d = float32 ch5
-        
-        let tndMix =
-            if t = 0.0f && n = 0.0f && d = 0.0f then
-                0.0f
-            else
-                159.79f / (1.0f / (t / 8227.0f + n / 12241.0f + d / 22638.0f) + 100.0f)
-
-        pulseMix + tndMix
+        let outputs : Mixer.ChannelOutputs = {
+            pulse1 = Pulse.output apu.pulse1
+            pulse2 = Pulse.output apu.pulse2
+            triangle = Triangle.output apu.triangle
+            noise = Noise.output apu.noise
+            dmc = Dmc.output apu.dmc
+        }
+        Mixer.mix outputs
