@@ -10,6 +10,44 @@ open HamicomEmu.Apu.Types
 module Ppu = HamicomEmu.Ppu.Ppu
 module Apu = HamicomEmu.Apu.Apu
 
+// ==========================================
+// ベンチマーク用定数
+// ==========================================
+
+/// 画面ピクセル数（256×240）
+[<Literal>]
+let nesFramePixels = 61_440
+
+/// PPU スキャンラインあたりのサイクル
+[<Literal>]
+let cyclesPerScanline = 341
+
+/// フレームあたりのスキャンライン数
+[<Literal>]
+let scanlinesPerFrame = 262
+
+/// フレームあたりのCPUサイクル数（1/60秒 ≈ 29,781サイクル）
+[<Literal>]
+let cyclesPerFrame = 29_781
+
+// 10フレーム分（計算値、Literal不可なため let）
+let cyclesPer10Frames = cyclesPerFrame * 10
+
+/// 1フレーム分のPPU tick数（262スキャンライン × 341サイクル = 89,342）
+let ppuTicksPerFrame = scanlinesPerFrame * cyclesPerScanline
+
+/// レンダラーベンチマーク用の反復回数（属性値に使用）
+[<Literal>]
+let rendererOperationsPerInvoke = 1000
+
+/// 色変換ベンチマーク用の反復回数（属性値に使用）
+[<Literal>]
+let colorConversionOperations = 100
+
+/// タイルコピーベンチマーク用の反復回数（属性値に使用）
+[<Literal>]
+let tileCopyOperations = 10_000
+
 /// CHR ROM page size (8KB)
 let private chrRomPageSize = 8 * 1024
 

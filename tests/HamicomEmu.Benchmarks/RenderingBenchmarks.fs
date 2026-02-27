@@ -23,7 +23,7 @@ type RendererBenchmark() =
         ppu <- Ppu.init cart
         
         // frameBufferを適当なパターンで埋める（実際のゲーム画面を模擬）
-        for i in 0..61439 do
+        for i in 0..nesFramePixels - 1 do
             ppu.frameBuffer[i] <- byte (i % 64)  // パレット範囲内でパターン生成
     
     [<IterationSetup>]
@@ -32,9 +32,9 @@ type RendererBenchmark() =
         ()
     
     /// パレットインデックス→RGB変換（256×240ピクセル = 61,440要素）
-    [<Benchmark(OperationsPerInvoke = 1000)>]
+    [<Benchmark(OperationsPerInvoke = rendererOperationsPerInvoke)>]
     member _.RenderFrameToRgb() =
-        for _ in 1..1000 do
+        for _ in 1..rendererOperationsPerInvoke do
             let _ = Renderer.renderFrame ppu
             ()
 
@@ -51,7 +51,7 @@ type FrameRenderingBenchmark() =
         ppu <- Ppu.init cart
         
         // 典型的なゲーム画面を模擬
-        for i in 0..61439 do
+        for i in 0..nesFramePixels - 1 do
             ppu.frameBuffer[i] <- byte ((i / 256 + i % 256) % 64)
     
     [<IterationSetup>]
@@ -63,11 +63,11 @@ type FrameRenderingBenchmark() =
     member _.CompleteFrameRendering() =
         // 1フレーム = 262スキャンライン × 341サイクル = 89,342サイクル
         let mutable currentPpu = Ppu.init cart
-        for i in 0..61439 do
+        for i in 0..nesFramePixels - 1 do
             currentPpu.frameBuffer[i] <- ppu.frameBuffer[i]  // コピー
         
         // 1フレーム分のPPU tick実行
-        for _ in 1..89_342 do
+        for _ in 1..ppuTicksPerFrame do
             currentPpu <- Ppu.tick currentPpu
         
         // レンダリング
@@ -82,7 +82,7 @@ type ColorDataProcessingBenchmark() =
     [<GlobalSetup>]
     member _.Setup() =
         // 典型的なRGBデータを準備
-        rgbData <- Array.init 61440 (fun i ->
+        rgbData <- Array.init nesFramePixels (fun i ->
             let r = byte ((i / 256) % 256)
             let g = byte (i % 256)
             let b = byte ((i * 2) % 256)
@@ -93,17 +93,17 @@ type ColorDataProcessingBenchmark() =
     member _.IterationSetup() =
         ()
     
-    /// RGB→Color配列への変換（MonoGame Colorオブジェクト生成をシミュレート）(100回反復)
-    [<Benchmark(OperationsPerInvoke = 100)>]
+    /// RGB→Color配列への変換（MonoGame Colorオブジェクト生成をシミュレート）(colorConversionOperations回反復)
+    [<Benchmark(OperationsPerInvoke = colorConversionOperations)>]
     member _.ConvertRgbToColorArray() =
-        for _ in 1..100 do
+        for _ in 1..colorConversionOperations do
             let _ = rgbData |> Array.map (fun (r, g, b) -> struct (r, g, b))
             ()
     
-    /// RGB配列の部分コピー（8×8タイル単位）(10,000回反復)
-    [<Benchmark(OperationsPerInvoke = 10_000)>]
+    /// RGB配列の部分コピー（8×8タイル単位）(tileCopyOperations回反復)
+    [<Benchmark(OperationsPerInvoke = tileCopyOperations)>]
     member _.TileCopy() =
-        for _ in 1..10_000 do
+        for _ in 1..tileCopyOperations do
             let tile = Array.zeroCreate<byte * byte * byte> 64
             for ty in 0..7 do
                 for tx in 0..7 do

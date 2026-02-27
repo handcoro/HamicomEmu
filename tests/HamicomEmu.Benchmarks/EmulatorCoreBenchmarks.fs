@@ -53,20 +53,20 @@ type OneFrameBenchmark() =
         // 各反復前に状態をリセット
         emu <- powerOn cart
     
-    /// 1フレーム分（約29780サイクル）の実行速度を測定
+    /// 1フレーム分（29,781サイクル）の実行速度を測定
     /// 理論値: 60Hz = 16.7ms/frame
     [<Benchmark>]
     member _.EmulateOneFrame() =
         // NES の CPU クロック: 1.789773 MHz
-        // 1/60秒 ≈ 29780 CPU cycles
-        for _ in 1..29780 do
+        // 1/60秒 ≈ 29,781 CPU cycles
+        for _ in 1..cyclesPerFrame do
             let emu', _ = tick emu (fun _ -> ())
             emu <- emu'
     
     /// 10フレーム分の実行速度を測定
     [<Benchmark>]
     member _.EmulateTenFrames() =
-        for _ in 1..297800 do
+        for _ in 1..cyclesPer10Frames do
             let emu', _ = tick emu (fun _ -> ())
             emu <- emu'
 
@@ -87,10 +87,10 @@ type RealisticWorkloadBenchmark() =
         // 各反復前に状態をリセット
         emu <- powerOn cart
     
-    /// 各種アドレッシングモードを含む1フレーム分の実行
+    /// 各種アドレッシングモードを含む1フレーム分（29,781サイクル）の実行
     [<Benchmark>]
     member _.RealisticOneFrame() =
-        for _ in 1..29780 do
+        for _ in 1..cyclesPerFrame do
             let emu', _ = tick emu (fun _ -> ())
             emu <- emu'
 

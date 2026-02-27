@@ -19,7 +19,7 @@ type AudioProcessorDetailBenchmark() =
         let program = createNopFilledRom ()
         cart <- createTestCartridge program
         emu <- powerOn cart
-        processor <- Processor.create 44100 1  // 1xオーバーサンプリング
+        processor <- Processor.create 44100 1  // 等倍サンプリング
     
     [<IterationSetup>]
     member _.IterationSetup() =
@@ -230,6 +230,42 @@ type OversamplingPrecisionBenchmark() =
             let _, emu', _ = Processor.generateFrame processor32x emu (fun _ -> ()) 100
             emu <- emu'
 
+/// フレーム処理のオーディオ分離ベンチマーク (ループのみ vs フル処理の差分)
+[<MemoryDiagnoser>]
+type FrameAudioSeparationBenchmark() =
+    let mutable processor44k = Unchecked.defaultof<Processor.AudioProcessor>
+    let mutable emu = Unchecked.defaultof<EmulatorState>
+    let mutable cart = Unchecked.defaultof<_>
+    
+    [<GlobalSetup>]
+    member _.Setup() =
+        let program = createNopFilledRom ()
+        cart <- createTestCartridge program
+        emu <- powerOn cart
+        processor44k <- Processor.create 44100 1
+    
+    [<IterationSetup>]
+    member _.IterationSetup() =
+        emu <- powerOn cart
+    
+    /// ループのみ: 29,781 CPUサイクル実行（オーディオ処理なし）
+    /// 差分計算の基準ベンチマーク
+    [<Benchmark(Baseline = true)>]
+    member _.Execute1FrameLoopOnly() =
+        let mutable cycleCount = 0u
+        while cycleCount < 29_781u do
+            let emu', used = tick emu (fun _ -> ())
+            emu <- emu'
+            cycleCount <- cycleCount + uint32 used
+    
+    /// フル処理: 735サンプル生成（29,781サイクル相当のCPU実行 + オーディオ生成）
+    /// 差分 = Pure Audio Processing Time
+    [<Benchmark>]
+    member _.Execute1FrameWithAudio() =
+        let processor', emu', _ = Processor.generateFrame processor44k emu (fun _ -> ()) 735
+        processor44k <- processor'
+        emu <- emu'
+
 /// Expecto テストとしてベンチマークを登録
 [<Tests>]
 let tests =
@@ -251,5 +287,8 @@ let tests =
         }
         test "Oversampling Precision Benchmark" {
             benchmark<OversamplingPrecisionBenchmark> BenchmarkDotNet.Configs.DefaultConfig.Instance (fun _ -> box ()) |> ignore
+        }
+        test "Frame Audio Separation Benchmark" {
+            benchmark<FrameAudioSeparationBenchmark> BenchmarkDotNet.Configs.DefaultConfig.Instance (fun _ -> box ()) |> ignore
         }
     ]

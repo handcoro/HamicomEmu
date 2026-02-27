@@ -2,6 +2,7 @@ module PpuTests
 
 open Expecto
 open HamicomEmu.Bus
+open HamicomEmu.Common.BitUtils
 open HamicomEmu.Ppu.Scroll
 open HamicomEmu.Ppu
 open TestHelpers
@@ -61,6 +62,24 @@ let ppuTests =
             Expect.equal ppu'.scroll.w false "w should be false"
         }
 
+        // $2000: generateNmi の立ち上がりで vblank 中は NMI が発生するか
+        test "writeToControlRegister triggers NMI on rising edge during vblank" {
+            let ppu = Ppu.init (testCartridge [||])
+            ppu.status <- setFlag StatusFlags.vblank ppu.status
+
+            let ppu' = Ppu.writeToControlRegister ControlFlags.generateNmi ppu
+            Expect.equal ppu'.nmiInterrupt (Some 1uy) "nmiInterrupt should be set on rising edge"
+        }
+
+        // $2000: vblank ではない場合は NMI が発生しないか
+        test "writeToControlRegister does not trigger NMI outside vblank" {
+            let ppu = Ppu.init (testCartridge [||])
+            ppu.status <- clearFlag StatusFlags.vblank ppu.status
+
+            let ppu' = Ppu.writeToControlRegister ControlFlags.generateNmi ppu
+            Expect.isNone ppu'.nmiInterrupt "nmiInterrupt should remain None outside vblank"
+        }
+
         // $2005 書き込みで x, t, w が正しく変化するか
         test "writeToScrollRegister updates x, t, and w" {
             let ppu = Ppu.init (testCartridge [||])
@@ -85,6 +104,31 @@ let ppuTests =
             let _, ppu'' = Ppu.readFromDataRegister ppu'
             Expect.isTrue (ppu''.scroll.v <= 0x3FFFus) "v should be masked"
         }
+
+        test "readFromDataRegister updates buffer and increments v" {
+            let ppu0 = Ppu.init (testCartridge [||])
+
+            // $2000 を指すように設定
+            let ppu1 = Ppu.writeToAddressRegister 0x20uy ppu0
+            let ppu2 = Ppu.writeToAddressRegister 0x00uy ppu1
+
+            // 事前に VRAM に値を投入
+            let ppu3 = Ppu.writeToDataRegister 0x5Auy ppu2
+
+            // $2000 を再設定（読み出しのバッファ動作を検証）
+            let ppu4 = Ppu.writeToAddressRegister 0x20uy ppu3
+            let ppu5 = Ppu.writeToAddressRegister 0x00uy ppu4
+
+            let buffered, ppu6 = Ppu.readFromDataRegister ppu5
+            let actual, ppu7 = Ppu.readFromDataRegister ppu6
+
+            // 1回目はバッファ値、2回目が実データ
+            Expect.equal buffered 0uy "first read should return buffered value"
+            Expect.equal actual 0x5Auy "second read should return VRAM value"
+
+            // v がインクリメントされていることを確認
+            Expect.equal ppu7.scroll.v 0x2002us "v should increment by 1 twice"
+        }
     
         test "write and read VRAM at $2000" {
             // PPUの初期化
@@ -100,6 +144,12 @@ let ppuTests =
             // $2006: アドレス下位 ($2000の下位バイト)
             let ppu4 = Ppu.writeToAddressRegister 0x00uy ppu3
 
+            // 後続の書き込みで変更される前に退避
+            let vAtSet = ppu4.scroll.v
+            let tAtSet = ppu4.scroll.t
+            let wAtSet = ppu4.scroll.w
+            let xAtSet = ppu2.scroll.x
+
             // $2007: VRAM（$2000）へ書き込み
             let ppu5 = Ppu.writeToDataRegister 0xABuy ppu4
 
@@ -112,10 +162,10 @@ let ppuTests =
             let value, _ = Ppu.readFromDataRegister ppu8 // 実値
 
             // アドレスやスクロールレジスタもついでに確認
-            Expect.equal ppu4.scroll.v 0x2000us "v should be set to 0x2000"
-            Expect.equal ppu4.scroll.t 0x2000us "t should be set to 0x2000"
-            Expect.equal ppu2.scroll.x 0x03uy "x scroll should be set to 0x03"
-            Expect.isFalse ppu4.scroll.w "w should be false after second write"
+            Expect.equal vAtSet 0x2000us "v should be set to 0x2000"
+            Expect.equal tAtSet 0x2000us "t should be set to 0x2000"
+            Expect.equal xAtSet 0x03uy "x scroll should be set to 0x03"
+            Expect.isFalse wAtSet "w should be false after second write"
 
             // VRAM内容の検証
             Expect.equal value 0xABuy "VRAM should contain 0xAB at $2000"
