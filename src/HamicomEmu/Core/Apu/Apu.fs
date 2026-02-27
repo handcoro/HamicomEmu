@@ -165,7 +165,7 @@ module Apu =
             | _ -> apu.step <- nextStep apu.step
 
         // 矩形波は CPU サイクル 2 ごとに tick
-        if apu.cycle % 2u <> 0u then
+        if apu.cycle &&& 1u <> 0u then
             let pul1 = Pulse.tick apu.pulse1
             let pul2 = Pulse.tick apu.pulse2
 

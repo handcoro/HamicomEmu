@@ -124,7 +124,7 @@ module Bus =
             data, bus
 
         | _ ->
-            printfn "Invalid Memory access at: %04X" addr
+            // printfn "Invalid Memory access at: %04X" addr
             0uy, bus
 
     let updatePendingStallCpuCycles newStall bus =
@@ -183,8 +183,6 @@ module Bus =
         Mapper.irqCounter bus.cartridge.mapper
 
         bus.cycleTotal <- cyc
-        // NOTE: 副作用でおかしくなったときは tick 内で留めるようにレコードの再生成
-        // { bus with apu = apu; ppu = ppu }
         bus
 
     let rec tickNTimes n bus =
@@ -299,7 +297,7 @@ module Bus =
             }
 
         | _ ->
-            printfn "Invalid Memory write-access at: %04X" addr
+            // printfn "Invalid Memory write-access at: %04X" addr
             bus
 
     let memRead16 pos bus =

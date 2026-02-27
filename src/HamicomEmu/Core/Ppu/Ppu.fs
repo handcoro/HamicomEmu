@@ -8,16 +8,16 @@ module Ppu =
     open HamicomEmu.Ppu.Types
     open HamicomEmu.Ppu.Common
 
-    let initialScroll = { v = 0us; t = 0us; x = 0uy; w = false }
+    let createScroll () = { v = 0us; t = 0us; x = 0uy; w = false }
 
-    let initialShiftRegisters = {
+    let createShiftRegisters () = {
         patternLow = 0us
         patternHigh = 0us
         attrLow = 0us
         attrHigh = 0us
     }
 
-    let initialLatches = {
+    let createLatches () = {
         tile = 0uy
         attr = 0uy
         patternLow = 0uy
@@ -43,7 +43,7 @@ module Ppu =
         secondarySprites = Array.init 8 (fun _ -> initialSpriteInfo) // セカンダリ OAM
         secondarySpritesCount = 0
         hasSprite = Array.create Screen.width false
-        scroll = initialScroll
+        scroll = createScroll ()
         ctrl = 0uy // 初期状態では制御レジスタは0
         mask = 0b0001_0000uy
         status = 0uy
@@ -55,8 +55,8 @@ module Ppu =
         // レンダリング用のバッファ
         workBuffer = Array.zeroCreate (Screen.width * Screen.height)
         frameBuffer = Array.zeroCreate (Screen.width * Screen.height)
-        regs = initialShiftRegisters
-        latches = initialLatches
+        regs = createShiftRegisters ()
+        latches = createLatches ()
         frameIsOdd = false
     }
 
@@ -74,21 +74,18 @@ module Ppu =
         // 2 回目の書き込みで v <- t
         let v' = if w' = false then t else ppu.scroll.v
 
-        let ppu = {
-            ppu with
-                scroll.t = t
-                scroll.w = w'
-                scroll.v = v'
-        }
+        ppu.scroll.t <- t
+        ppu.scroll.w <- w'
+        ppu.scroll.v <- v'
 
         ppu
 
     /// ネームテーブル情報は t レジスタに移動させる
     let updateControl data ppu =
         let nt = data &&& ControlMasks.nameTable |> uint16
-        let t = ppu.scroll.t &&& ~~~ScrollMasks.nameTable ||| (nt <<< 10)
-        let ctrl = data &&& ~~~0b11uy
-        { ppu with scroll.t = t; ctrl = ctrl }
+        ppu.scroll.t <- ppu.scroll.t &&& ~~~ScrollMasks.nameTable ||| (nt <<< 10)
+        ppu.ctrl <- data &&& ~~~0b11uy
+        ppu
 
     let writeToControlRegister value ppu =
         let beforeNmiStatus = hasFlag ControlFlags.generateNmi ppu.ctrl
@@ -96,9 +93,9 @@ module Ppu =
         let afterNmi = hasFlag ControlFlags.generateNmi ppu'.ctrl
 
         if not beforeNmiStatus && afterNmi && hasFlag StatusFlags.vblank ppu'.status then
-            { ppu' with nmiInterrupt = Some 1uy }
-        else
-            ppu'
+            ppu'.nmiInterrupt <- Some 1uy
+
+        ppu'
 
     let private vramAddressIncrement cr =
         if hasFlag ControlFlags.vramAddIncrement cr then
@@ -108,8 +105,8 @@ module Ppu =
 
     let incrementVramAddress ppu =
         let inc = vramAddressIncrement ppu.ctrl |> uint16
-        let v' = (ppu.scroll.v + inc) &&& 0x3FFFus // 15bit wrap
-        { ppu with scroll.v = v' }
+        ppu.scroll.v <- (ppu.scroll.v + inc) &&& 0x3FFFus // 15bit wrap
+        ppu
 
     let paletteAddrToIndex addr = addr &&& 0x1F
 
@@ -134,21 +131,21 @@ module Ppu =
         | addr when addr <= 0x1FFF ->
             let result = ppu'.buffer
             let chr = Mapper.ppuRead addr ppu'.vram ppu'.cartridge
-            result, { ppu' with buffer = chr }
+            ppu'.buffer <- chr
+            result, ppu'
 
         | addr when addr <= 0x3EFF ->
             let result = ppu'.buffer
             let nt = Mapper.ppuReadNametable mirrored ppu'.vram ppu'.cartridge
-
-            result, { ppu' with buffer = nt }
+            ppu'.buffer <- nt
+            result, ppu'
 
         | addr when addr <= 0x3FFF ->
             // NOTE: 新しい PPU はバッファを介さないらしい？ そしてバッファにはネームテーブルのミラーが入る
             // TODO: 上位 2 bit にオープンバス情報を含める
             let result = ppu'.pal[addr |> paletteAddrToIndex |> mirrorPaletteIndex]
-
-            result,
-            { ppu' with buffer = ppu'.vram[mirrored] }
+            ppu'.buffer <- ppu'.vram[mirrored]
+            result, ppu'
 
         | _ -> failwithf "Invalid PPU address: %04X" addr
 
@@ -160,11 +157,13 @@ module Ppu =
         match addr with
         | addr when addr <= 0x1FFF ->
             let cart = Mapper.ppuWrite addr value ppu'.vram ppu'.cartridge
-            { ppu' with cartridge = cart }
+            ppu'.cartridge <- cart
+            ppu'
 
         | addr when addr <= 0x3EFF ->
             let cart = Mapper.ppuWriteNametable mirrored value ppu'.vram ppu'.cartridge
-            { ppu' with cartridge = cart }
+            ppu'.cartridge <- cart
+            ppu'
 
         | addr when addr <= 0x3FFF ->
             ppu' |> writePaletteRam addr value
@@ -186,9 +185,13 @@ module Ppu =
                 clearNmiInterrupt = clearNmi
         }
 
-    let writeToMaskRegister value ppu = { ppu with mask = value }
+    let writeToMaskRegister value ppu =
+        ppu.mask <- value
+        ppu
 
-    let writeToOamAddress value ppu = { ppu with oamAddr = value }
+    let writeToOamAddress value ppu =
+        ppu.oamAddr <- value
+        ppu
 
     let readFromOamData ppu = ppu.oam[int ppu.oamAddr]
 
@@ -214,13 +217,10 @@ module Ppu =
                 ppu.scroll.x, (t &&& 0b000_1100_0001_1111us) ||| coarseY ||| fineY
 
         let w' = not w
-
-        {
-            ppu with
-                scroll.x = x
-                scroll.t = t'
-                scroll.w = w'
-        }
+        ppu.scroll.x <- x
+        ppu.scroll.t <- t'
+        ppu.scroll.w <- w'
+        ppu
 
     let inline isHideBackgroundInLeftmost ppu = hasFlag MaskFlags.showBackgroundInLeftmost ppu.mask |> not
 
@@ -258,7 +258,7 @@ module Ppu =
 
                         Background.loadTiles c ppu
 
-                        if c % 8u = 0u then
+                        if c &&& 0x07u = 0u then
                             ppu.scroll.v <- Scroll.incrementCoarseX ppu.scroll.v // Coarse X のインクリメント
 
                         // === 背景ピクセル描画 ===

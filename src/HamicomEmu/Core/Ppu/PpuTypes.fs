@@ -16,9 +16,9 @@ module Types =
     /// w: 書き込みラッチ
     type ScrollRegisters = {
         mutable v: uint16
-        t: uint16
-        x: byte
-        w: bool
+        mutable t: uint16
+        mutable x: byte
+        mutable w: bool
     }
 
     type ShiftRegisters = {
@@ -47,7 +47,7 @@ module Types =
     }
 
     type PpuState = {
-        cartridge: Cartridge
+        mutable cartridge: Cartridge
         pal: byte array
         vram: byte array
         oam: byte array
@@ -56,10 +56,10 @@ module Types =
         mutable hasSprite: bool array
         mutable oamAddr: byte
         scroll: ScrollRegisters
-        ctrl: byte
-        mask: byte
+        mutable ctrl: byte
+        mutable mask: byte
         mutable status: byte
-        buffer: byte
+        mutable buffer: byte
         mutable scanline: uint16
         mutable cycle: uint
         mutable nmiInterrupt: option<byte>

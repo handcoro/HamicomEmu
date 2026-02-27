@@ -33,7 +33,7 @@ module Common =
     let mirrorVramAddr mirror mapper addr =
         let mirroredVram = addr &&& 0b10_1111_1111_1111 // 0x3000 - 0x3EFF を 0x2000 - 0x2EFF にミラーリング
         let vramIndex = mirroredVram - 0x2000 // VRAM ベクター
-        let nameTable = vramIndex / 0x400
+        let nameTable = vramIndex >>> 10 // 0x400 = 2^10
 
         // VRC1 などのマッパーミラーリングも取得
         let mirror = getMirroring mirror mapper
@@ -44,8 +44,8 @@ module Common =
         | Horizontal, 2 -> vramIndex - 0x400 // B -> B
         | Horizontal, 1 -> vramIndex - 0x400 // a -> A
         | Horizontal, 3 -> vramIndex - 0x800 // b -> B
-        | OneScreenA, _ -> vramIndex % 0x400  // 常に $2000-$23FF
-        | OneScreenB, _ -> vramIndex % 0x400 ||| 0x400  // 常に $2400-$27FF (オフセット計算)
+        | OneScreenA, _ -> vramIndex &&& 0x3FF  // 常に $2000-$23FF
+        | OneScreenB, _ -> vramIndex &&& 0x3FF ||| 0x400  // 常に $2400-$27FF (オフセット計算)
         | _ -> vramIndex // それ以外はそのまま
 
     let inline idx x y = y * width + x
@@ -53,7 +53,7 @@ module Common =
     let inline inLeftmostRange x = x >= 0 && x <= 7
 
     let inline mirrorTransparentColorIndex i =
-        if i % 4 = 0 then i &&& 0x10 else i
+        if i &&& 0x03 = 0 then i &&& 0x10 else i
 
     /// ビット反転ユーティリティ
     let inline reverseBits b =
