@@ -44,6 +44,13 @@ type MemoryReadBenchmark() =
         for _ in 1..500_000 do
             let _, _ = Bus.memRead 0x8000us emu.bus
             ()
+    
+    /// APU ステータス ($4015) からの読み込み（500,000回反復）
+    [<Benchmark(OperationsPerInvoke = 500_000)>]
+    member _.ReadFromApuStatus() =
+        for _ in 1..500_000 do
+            let _, _ = Bus.memRead 0x4015us emu.bus
+            ()
 
 /// メモリアクセス（書き込み）のベンチマーク
 [<MemoryDiagnoser>]
@@ -81,6 +88,27 @@ type MemoryWriteBenchmark() =
     member _.WriteToPpuData() =
         for _ in 1..50_000 do
             let _ = Bus.memWrite 0x2007us 0x42uy emu.bus
+            ()
+    
+    /// APU レジスタ ($4000 Pulse1 Control) への書き込み（100,000回反復）
+    [<Benchmark(OperationsPerInvoke = 100_000)>]
+    member _.WriteToApuPulse1() =
+        for _ in 1..100_000 do
+            let _ = Bus.memWrite 0x4000us 0x80uy emu.bus
+            ()
+    
+    /// APU ステータス ($4015) への書き込み（100,000回反復）
+    [<Benchmark(OperationsPerInvoke = 100_000)>]
+    member _.WriteToApuStatus() =
+        for _ in 1..100_000 do
+            let _ = Bus.memWrite 0x4015us 0x0Fuy emu.bus
+            ()
+    
+    /// APU Frame Counter ($4017) への書き込み（100,000回反復）
+    [<Benchmark(OperationsPerInvoke = 100_000)>]
+    member _.WriteToApuFrameCounter() =
+        for _ in 1..100_000 do
+            let _ = Bus.memWrite 0x4017us 0x40uy emu.bus
             ()
 
 /// 16bit メモリ読み込みのベンチマーク
