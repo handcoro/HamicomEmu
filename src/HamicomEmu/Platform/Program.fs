@@ -82,6 +82,8 @@ type basicNesGame(raw, cartridgePath, traceFn) as this =
     let mutable spriteBatch = Unchecked.defaultof<SpriteBatch>
     let mutable texture = Unchecked.defaultof<Texture2D>
     let mutable audioEngine = AudioEngine(sampleRate)
+    let mutable frameRgbBuffer = Unchecked.defaultof<(byte * byte * byte) array>
+    let mutable frameColorBuffer = Unchecked.defaultof<Color array>
 
     let parsed = parseCartridge raw
 
@@ -137,17 +139,19 @@ type basicNesGame(raw, cartridgePath, traceFn) as this =
     override _.LoadContent() =
         spriteBatch <- new SpriteBatch(this.GraphicsDevice)
         texture <- new Texture2D(this.GraphicsDevice, width, height)
+        frameRgbBuffer <- Array.zeroCreate (width * height)
+        frameColorBuffer <- Array.zeroCreate (width * height)
         base.LoadContent()
 
     override _.Draw(gameTime) =
         this.GraphicsDevice.Clear(Color.Black)
         spriteBatch.Begin(samplerState = SamplerState.PointClamp)
-        let fr = renderFrame emu.bus.ppu
+        renderFrameInto emu.bus.ppu frameRgbBuffer |> ignore
+        for i = 0 to frameRgbBuffer.Length - 1 do
+            let (r, g, b) = frameRgbBuffer[i]
+            frameColorBuffer[i] <- Color(int r, int g, int b)
 
-        let colorData =
-            fr |> Array.map (fun (r, g, b) -> Color(int r, int g, int b))
-
-        texture.SetData(colorData)
+        texture.SetData(frameColorBuffer)
         let destRect = Rectangle(0, 0, width * scale, height * scale)
         spriteBatch.Draw(texture, destRect, Color.White)
         spriteBatch.End()

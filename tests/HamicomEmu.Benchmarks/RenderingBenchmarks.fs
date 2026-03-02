@@ -38,6 +38,38 @@ type RendererBenchmark() =
             let _ = Renderer.renderFrame ppu
             ()
 
+/// PPU レンダリング（バッファ再利用版）のベンチマーク
+[<MemoryDiagnoser>]
+type RendererBufferReuseBenchmark() =
+    let mutable ppu = Unchecked.defaultof<PpuState>
+    let mutable cart = Unchecked.defaultof<_>
+    let mutable buffer = Unchecked.defaultof<(byte * byte * byte) array>
+    
+    [<GlobalSetup>]
+    member _.Setup() =
+        let program = createNopFilledRom ()
+        cart <- createTestCartridge program
+        ppu <- Ppu.init cart
+        
+        // frameBufferを適当なパターンで埋める
+        for i in 0..nesFramePixels - 1 do
+            ppu.frameBuffer[i] <- byte (i % 64)
+        
+        // 出力バッファを事前割り当て
+        buffer <- Array.zeroCreate nesFramePixels
+    
+    [<IterationSetup>]
+    member _.IterationSetup() =
+        ()
+    
+    /// バッファ再利用版（GC圧力軽減）
+    [<Benchmark(OperationsPerInvoke = rendererOperationsPerInvoke)>]
+    member _.RenderFrameWithBufferReuse() =
+        for _ in 1..rendererOperationsPerInvoke do
+            let _ = Renderer.renderFrameInto ppu buffer
+            ()
+
+
 /// フレーム全体のレンダリングパイプラインベンチマーク
 [<MemoryDiagnoser>]
 type FrameRenderingBenchmark() =
@@ -117,6 +149,9 @@ let tests =
     testSequenced <| testList "Rendering Benchmarks" [
         test "Renderer Benchmark" {
             benchmark<RendererBenchmark> BenchmarkDotNet.Configs.DefaultConfig.Instance (fun _ -> box ()) |> ignore
+        }
+        test "Renderer Buffer Reuse Benchmark" {
+            benchmark<RendererBufferReuseBenchmark> BenchmarkDotNet.Configs.DefaultConfig.Instance (fun _ -> box ()) |> ignore
         }
         test "Frame Rendering Benchmark" {
             benchmark<FrameRenderingBenchmark> BenchmarkDotNet.Configs.DefaultConfig.Instance (fun _ -> box ()) |> ignore
