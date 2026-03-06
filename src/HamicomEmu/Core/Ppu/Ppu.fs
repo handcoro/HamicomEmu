@@ -257,6 +257,7 @@ module Ppu =
         let tmp = ppu.frameBuffer
         ppu.frameBuffer <- ppu.workBuffer
         ppu.workBuffer <- tmp
+        Array.fill ppu.workBuffer 0 (Screen.width * Screen.height) ppu.pal[0]
 
     /// PPU を n サイクル進める（1スキャンラインをまたぐときは精密タイミング処理を行う）
     /// tick 内で内部レンダリングを行う
@@ -288,16 +289,21 @@ module Ppu =
                         let pal = ppu.pal
                         let work = ppu.workBuffer
 
+                        // 背景色を計算（スプライトゼロヒット判定で必要）
+                        // レンダリングOFFまたは左端非表示の場合は bgColor = 0（透明）
+                        let shouldRenderBackground = 
+                            isRenderingBackgroundEnabled ppu 
+                            && not (isHideBackgroundInLeftmost ppu && inLeftmostRange x)
+
                         let bgColor =
-                            if not (isRenderingBackgroundEnabled ppu)
-                                || isHideBackgroundInLeftmost ppu && inLeftmostRange x
-                            then
-                                0
-                            else
+                            if shouldRenderBackground then
                                 Background.getPaletteIndexFromRegs ppu
+                            else
+                                0
                         let bgColorMirrored = bgColor |> mirrorTransparentColorIndex
 
-                        work[idx x y] <- pal[bgColorMirrored]
+                        if shouldRenderBackground then
+                            work[idx x y] <- pal[bgColorMirrored]
 
                         // === スプライト描画 ===
                         if isHideSpritesInLeftmost ppu && inLeftmostRange x then
