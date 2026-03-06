@@ -3,6 +3,8 @@ module PpuTests
 open Expecto
 open HamicomEmu.Bus
 open HamicomEmu.Common.BitUtils
+open HamicomEmu.Mapper
+open HamicomEmu.Mapper.Common
 open HamicomEmu.Ppu.Scroll
 open HamicomEmu.Ppu
 open TestHelpers
@@ -249,6 +251,90 @@ let ppuTests =
             Expect.equal ppu4.scroll.x 0x07uy "x scroll should be set to 0x07"
             Expect.equal ppu4.scroll.v 0x80us "v should be set to $80"
             Expect.isFalse ppu4.scroll.w "w should be false"
+        }
+
+        test "sprite evaluation clears stale secondary OAM entries" {
+            let ppu = Ppu.init (testCartridge [||])
+
+            // スキャンライン内のスプライト評価タイミングへ移動
+            ppu.scanline <- 10us
+            ppu.cycle <- 257u
+
+            // 1つだけ有効なスプライトを OAM に配置
+            ppu.oam[0] <- 10uy
+            ppu.oam[1] <- 0x22uy
+            ppu.oam[2] <- 0x00uy
+            ppu.oam[3] <- 20uy
+
+            // 前のラインのゴミを模擬
+            ppu.secondarySprites[1].y <- 3uy
+            ppu.secondarySprites[1].tile <- 4uy
+            ppu.secondarySprites[1].attr <- 5uy
+            ppu.secondarySprites[1].x <- 6uy
+
+            let ppu' = Ppu.tick ppu
+
+            Expect.equal ppu'.secondarySpritesCount 1 "one sprite should be selected"
+            Expect.equal ppu'.secondarySprites[0].y 10uy "first selected sprite should remain"
+            Expect.equal ppu'.secondarySprites[1].y 0xFFuy "stale sprite data should be cleared"
+            Expect.equal ppu'.secondarySprites[1].tile 0xFFuy "stale sprite tile should be cleared"
+            Expect.equal ppu'.secondarySprites[1].attr 0xFFuy "stale sprite attr should be cleared"
+            Expect.equal ppu'.secondarySprites[1].x 0xFFuy "stale sprite x should be cleared"
+        }
+
+        test "MMC3 A12 rising edge clocks IRQ counter" {
+            let prg = Array.create (8 * 1024 * 4) 0uy
+            let chr = Array.create (1024 * 8) 0uy
+            let mmc3 = Mmc3.init prg chr Vertical
+
+            Mmc3.cpuWrite 0xC000 2uy prg chr mmc3 |> ignore
+            Mmc3.cpuWrite 0xC001 0uy prg chr mmc3 |> ignore
+            Mmc3.cpuWrite 0xE001 0uy prg chr mmc3 |> ignore
+
+            let pulseA12 () =
+                for _ in 1..8 do
+                    Mmc3.onPpuFetch 0x0000 mmc3
+                Mmc3.onPpuFetch 0x1000 mmc3
+
+            pulseA12 () // reload -> 2
+            pulseA12 () // 2 -> 1
+            pulseA12 () // 1 -> 0 and pending
+
+            Expect.isTrue (Mmc3.pollIrq mmc3) "IRQ should be pending after third qualified rising edge"
+        }
+
+        test "MMC3 ignores A12 rise without enough low cycles" {
+            let prg = Array.create (8 * 1024 * 4) 0uy
+            let chr = Array.create (1024 * 8) 0uy
+            let mmc3 = Mmc3.init prg chr Vertical
+
+            Mmc3.cpuWrite 0xC000 1uy prg chr mmc3 |> ignore
+            Mmc3.cpuWrite 0xC001 0uy prg chr mmc3 |> ignore
+            Mmc3.cpuWrite 0xE001 0uy prg chr mmc3 |> ignore
+
+            for _ in 1..7 do
+                Mmc3.onPpuFetch 0x0000 mmc3
+
+            Mmc3.onPpuFetch 0x1000 mmc3
+
+            Expect.isFalse (Mmc3.pollIrq mmc3) "A12 low duration below threshold must not clock IRQ counter"
+        }
+
+        test "MMC3 reload value 0 can still assert IRQ on qualified edge" {
+            let prg = Array.create (8 * 1024 * 4) 0uy
+            let chr = Array.create (1024 * 8) 0uy
+            let mmc3 = Mmc3.init prg chr Vertical
+
+            Mmc3.cpuWrite 0xC000 0uy prg chr mmc3 |> ignore
+            Mmc3.cpuWrite 0xC001 0uy prg chr mmc3 |> ignore
+            Mmc3.cpuWrite 0xE001 0uy prg chr mmc3 |> ignore
+
+            for _ in 1..8 do
+                Mmc3.onPpuFetch 0x0000 mmc3
+
+            Mmc3.onPpuFetch 0x1000 mmc3
+
+            Expect.isTrue (Mmc3.pollIrq mmc3) "reload=0 should be able to assert IRQ when edge is qualified"
         }
     ]
 

@@ -229,6 +229,13 @@ module Ppu =
     let inline isRenderingBackgroundEnabled ppu = hasFlag MaskFlags.backgroundRendering ppu.mask
     let inline isRenderingSpritesEnabled ppu = hasFlag MaskFlags.spriteRendering ppu.mask
 
+    /// 簡易実装のための暫定対応
+    let inline private spriteFetchPatternBase ppu =
+        if hasFlag ControlFlags.spriteSize ppu.ctrl || hasFlag ControlFlags.spritePatternAddress ppu.ctrl then
+            0x1000
+        else
+            0x0000
+
     let inline private isRenderingEnabled ppu =
         isRenderingBackgroundEnabled ppu || isRenderingSpritesEnabled ppu
 
@@ -315,11 +322,16 @@ module Ppu =
                         ppu.scroll.v <- Scroll.incrementY ppu.scroll.v
 
                     elif c >= 257u && c <= 320u then
+                        // 簡略スプライト評価でも MMC3 の A12 立ち上がり判定が成立するように、
+                        // 257-320 のスプライトフェッチ位相を明示的に反映する。
+                        Mapper.onPpuFetch (spriteFetchPatternBase ppu) ppu.cartridge.mapper
+
                         if c = 257u then
                             // v <- t: 水平スクロール位置コピー
                             ppu.scroll.v <- Scroll.getHorizontalPosition ppu.scroll.v ppu.scroll.t
 
                             System.Array.Clear(ppu.hasSprite, 0, Screen.width) // スプライトの存在位置をすべて false で初期化
+                            Sprite.clearSecondaryOam ppu
                             // === スプライト評価 ===
                             // NOTE: 本当は違うタイミングで行うところをかんたん実装で済ませている
                             // https://www.nesdev.org/w/images/default/4/4f/Ppu.svg
@@ -328,10 +340,6 @@ module Ppu =
                             for i = 0 to ppu.secondarySpritesCount - 1 do
                                 Sprite.loadTilesInfo i ppu
                                 Sprite.updateSpriteExistence i ppu
-                        
-                        // === スキャンラインカウンタ 簡易実装 ===
-                        if c = 260u then
-                            Mapper.scanlineCounter ppu.cartridge.mapper
 
                     // === 次のスキャンラインの冒頭 2 タイル先読み ===
                     elif c >= 321u && c <= 336u then

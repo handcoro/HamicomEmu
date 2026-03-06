@@ -1,5 +1,6 @@
 namespace HamicomEmu.Mapper
 
+/// TODO: サブマッパーの実装
 module Mmc3 =
 
     open HamicomEmu.Mapper.Common
@@ -30,36 +31,36 @@ module Mmc3 =
 
     }
 
-    /// スキャンラインカウンタ・A12 立ち上がり検出
-    /// TODO: この実装で問題なくなったらコメントアウトして使う
-    let onPpuFetch ppuAddr s = ()
-    (*
-        let a12High = ppuAddr &&& 0x1000 <> 0
-        // A12 が Low の間はカウント（>=8 クロック）
-        if not a12High then
-            s.a12LowCycle <- min 16 (s.a12LowCycle + 1)
-        let risingEdge = (not s.a12RisingEdge) && a12High && (s.a12LowCycle >= 8)
-        s.a12RisingEdge <- a12High
-        if risingEdge then
-            s.a12LowCycle <- 0
-            if s.irqCounter = 0uy then
-                s.irqCounter <- s.irqReloadValue
-            else
-                s.irqCounter <- s.irqCounter - 1uy
-                if s.irqCounter = 0uy && s.irqEnabled then
-                    s.irqPending <- true
-    *)
-
-    /// スキャンラインカウンタ簡易実装
-    /// https://emudev.de/nes-emulator/about-mappers-mmc1-and-mmc3/
-    let scanlineCounter s =
+    let private clockIrqCounter s =
         if s.irqCounter = 0uy || s.irqReload then
             s.irqCounter <- s.irqReloadValue
             s.irqReload <- false
+            if s.irqCounter = 0uy && s.irqEnabled then
+                s.irqPending <- true
         else
             s.irqCounter <- s.irqCounter - 1uy
             if s.irqCounter = 0uy && s.irqEnabled then
                 s.irqPending <- true
+
+    /// スキャンラインカウンタ・A12 立ち上がり検出
+    let onPpuFetch ppuAddr s =
+        let a12High = ppuAddr &&& 0x1000 <> 0
+
+        // A12 が十分な期間 Low の後に High へ遷移したときのみ IRQ カウンタを進める。
+        if not a12High then
+            s.a12LowCycle <- min 16 (s.a12LowCycle + 1)
+
+        let risingEdge = (not s.a12RisingEdge) && a12High && (s.a12LowCycle >= 8)
+        s.a12RisingEdge <- a12High
+
+        if risingEdge then
+            s.a12LowCycle <- 0
+            clockIrqCounter s
+
+    /// スキャンラインカウンタ簡易実装
+    /// https://emudev.de/nes-emulator/about-mappers-mmc1-and-mmc3/
+    let scanlineCounter s =
+        clockIrqCounter s
 
 
     // 7  bit  0

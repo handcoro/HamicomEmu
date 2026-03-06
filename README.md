@@ -10,11 +10,11 @@ F# でのんびり作られるファミコンエミュレータです。
 
 ---
 
-## 最近の進捗・現状メモ（2026 年 2 月）
+## 最近の進捗・現状メモ（2026 年 3 月）
 
-- OAM DMA (スプライトの直接転送) 中に CPU だけを止めるようにした
-- Namco 163 を音声出力機能を除いて実装
-- 2コン入力にマイクを除いて対応
+- オーバーサンプリングにより音声の折り返しノイズ低減
+- 最適化により負荷の軽減
+- MMC3 の本来の IRQ（スキャンラインカウンタ）機能を簡易的な仕組みを残しつつも実装
 
 ---
 
@@ -24,7 +24,7 @@ F# でのんびり作られるファミコンエミュレータです。
 - スクロールまわりのしっかりとした実装を継続中です
 - コードの見通し・保守性も意識して、細かいリファクタやファイル整理をちょこちょこやっています
 - フレームワークを .NET 10 SDK にアップグレード
-- テストプロジェクトを分離しました
+- 最適化のためのベンチマーク作成は GitHub Copilot にほぼお任せしています
 
 ---
 
@@ -91,10 +91,17 @@ dotnet build --project ./src/HamicomEmu/HamicomEmu.fsproj
 
 ## 参考
 
+### F# 学習
+
 - [F# for Fun and Profit eBook 日本語訳](https://matarillo.github.io/fsharp_for_fun_and_profit-ja/index.html)
+- ChatGPT
+
+### エミュレーター学習
+
 - [Writing NES Emulator in Rust](https://bugzmanov.github.io/nes_ebook/)
 - [プラスウイングTV: ファミコンエミュレータを作る (Make a NES Emulator in Rust)](https://www.youtube.com/watch?v=B-0bw4q6Pxo&list=PLp_EUEO9JJP1cMwbqzOHFOI9gPH_zoO0U)
 - [NES on FPGA](https://pgate1.at-ninja.jp/NES_on_FPGA/index.html)
 - [NESDev](https://www.nesdev.org/)
 - [GitHub: Famicom-Fsharp - instructions.fs](https://github.com/kxkx5150/Famicom-Fsharp/blob/main/src/emulator/instructions.fs)
-- ChatGPT
+- [GitHub: Mesen2 - Mesen2/Core/NES](https://github.com/SourMesen/Mesen2/tree/master/Core/NES)
+- GitHub Copilot

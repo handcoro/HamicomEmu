@@ -26,6 +26,17 @@ module Sprite =
         else
             0x0000us
 
+    let clearSecondaryOam ppu =
+        let si = ppu.secondarySprites
+        for i in 0..si.Length - 1 do
+            si[i].index <- 0
+            si[i].y <- 0xFFuy
+            si[i].tile <- 0xFFuy
+            si[i].attr <- 0xFFuy
+            si[i].x <- 0xFFuy
+            si[i].tileLo <- 0uy
+            si[i].tileHi <- 0uy
+
     let loadTilesInfo idx ppu =
         // 属性ビット展開
         let si = ppu.secondarySprites
