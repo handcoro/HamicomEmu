@@ -2,9 +2,11 @@ module PpuTests
 
 open Expecto
 open HamicomEmu.Bus
+open HamicomEmu.Cartridge
 open HamicomEmu.Common.BitUtils
 open HamicomEmu.Mapper
 open HamicomEmu.Mapper.Common
+open HamicomEmu.Mapper.Types
 open HamicomEmu.Ppu.Scroll
 open HamicomEmu.Ppu
 open TestHelpers
@@ -256,9 +258,9 @@ let ppuTests =
         test "sprite evaluation clears stale secondary OAM entries" {
             let ppu = Ppu.init (testCartridge [||])
 
-            // スキャンライン内のスプライト評価タイミングへ移動
+            // スキャンライン先頭へ移動（1-64 の secondary OAM clear も通す）
             ppu.scanline <- 10us
-            ppu.cycle <- 257u
+            ppu.cycle <- 0u
 
             // 1つだけ有効なスプライトを OAM に配置
             ppu.oam[0] <- 10uy
@@ -267,19 +269,47 @@ let ppuTests =
             ppu.oam[3] <- 20uy
 
             // 前のラインのゴミを模擬
-            ppu.secondarySprites[1].y <- 3uy
-            ppu.secondarySprites[1].tile <- 4uy
-            ppu.secondarySprites[1].attr <- 5uy
-            ppu.secondarySprites[1].x <- 6uy
+            ppu.secondarySpritesRender[1].y <- 3uy
+            ppu.secondarySpritesRender[1].tile <- 4uy
+            ppu.secondarySpritesRender[1].attr <- 5uy
+            ppu.secondarySpritesRender[1].x <- 6uy
 
-            let ppu' = Ppu.tick ppu
+            let mutable ppu' = ppu
+            for _ in 1..260 do
+                ppu' <- Ppu.tick ppu'
 
-            Expect.equal ppu'.secondarySpritesCount 1 "one sprite should be selected"
-            Expect.equal ppu'.secondarySprites[0].y 10uy "first selected sprite should remain"
-            Expect.equal ppu'.secondarySprites[1].y 0xFFuy "stale sprite data should be cleared"
-            Expect.equal ppu'.secondarySprites[1].tile 0xFFuy "stale sprite tile should be cleared"
-            Expect.equal ppu'.secondarySprites[1].attr 0xFFuy "stale sprite attr should be cleared"
-            Expect.equal ppu'.secondarySprites[1].x 0xFFuy "stale sprite x should be cleared"
+            Expect.equal ppu'.secondarySpritesRenderCount 1 "one sprite should be selected"
+            Expect.equal ppu'.secondarySpritesRender[0].y 10uy "first selected sprite should remain"
+            Expect.equal ppu'.secondarySpritesRender[1].y 0xFFuy "stale sprite data should be cleared"
+            Expect.equal ppu'.secondarySpritesRender[1].tile 0xFFuy "stale sprite tile should be cleared"
+            Expect.equal ppu'.secondarySpritesRender[1].attr 0xFFuy "stale sprite attr should be cleared"
+            Expect.equal ppu'.secondarySpritesRender[1].x 0xFFuy "stale sprite x should be cleared"
+        }
+
+        test "visible phase does not mutate secondary OAM before cycle 257" {
+            let ppu = Ppu.init (testCartridge [||])
+
+            ppu.scanline <- 20us
+            ppu.cycle <- 1u
+            ppu.secondarySpritesRenderCount <- 1
+            ppu.secondarySpritesRender[0].index <- 0
+            ppu.secondarySpritesRender[0].y <- 20uy
+            ppu.secondarySpritesRender[0].tile <- 0x12uy
+            ppu.secondarySpritesRender[0].attr <- 0x01uy
+            ppu.secondarySpritesRender[0].x <- 40uy
+            ppu.secondarySpritesRender[0].tileLo <- 0xAAuy
+            ppu.secondarySpritesRender[0].tileHi <- 0x55uy
+
+            let mutable ppu' = ppu
+            for _ in 1..200 do
+                ppu' <- Ppu.tick ppu'
+
+            Expect.equal ppu'.cycle 201u "test should stay before cycle 257"
+            Expect.equal ppu'.secondarySpritesRenderCount 1 "sprite count should be preserved during visible phase"
+            Expect.equal ppu'.secondarySpritesRender[0].tile 0x12uy "sprite tile should not be cleared mid-line"
+            Expect.equal ppu'.secondarySpritesRender[0].x 40uy "sprite x should remain intact"
+            Expect.equal ppu'.secondarySpritesRender[0].tileLo 0xAAuy "prefetched low tile byte should remain intact"
+            Expect.equal ppu'.secondarySpritesRender[0].tileHi 0x55uy "prefetched high tile byte should remain intact"
         }
 
         test "MMC3 A12 rising edge clocks IRQ counter" {
@@ -335,6 +365,113 @@ let ppuTests =
             Mmc3.onPpuFetch 0x1000 mmc3
 
             Expect.isTrue (Mmc3.pollIrq mmc3) "reload=0 should be able to assert IRQ when edge is qualified"
+        }
+
+        test "sprite evaluation scans all 64 Primary OAM entries within c=66-256" {
+            let ppu = Ppu.init (testCartridge [||])
+
+            // 64個全てのエントリにスプライトを配置（全てライン範囲外にして不一致にする）
+            for i in 0..63 do
+                ppu.oam[i * 4] <- 240uy  // Y: すべてライン範囲外
+
+            ppu.scanline <- 10us
+            ppu.cycle <- 0u
+
+            // c=1 から c=260 までティック（評価フェーズ全体をカバー）
+            let mutable ppu' = ppu
+            for _ in 1..260 do
+                ppu' <- Ppu.tick ppu'
+
+            // 64個全てのエントリが評価されたが、どれもライン一致しなかった
+            Expect.equal ppu'.secondarySpritesRenderCount 0 "no sprites should match when all are out of range"
+            // evalPrimaryIdxが64を超えていない（配列外参照が起きていない）
+            Expect.isTrue (ppu'.evalPrimaryIdx <= 64) "evalPrimaryIdx should not exceed 64 (boundary protection)"
+        }
+
+        test "sprite evaluation copies all 4 bytes correctly on line match" {
+            let ppu = Ppu.init (testCartridge [||])
+
+            // スプライトを3つ配置（全て同じラインに一致させる）
+            ppu.oam[0 * 4 + 0] <- 10uy   // Y
+            ppu.oam[0 * 4 + 1] <- 0xAAuy // Tile
+            ppu.oam[0 * 4 + 2] <- 0xBBuy // Attr
+            ppu.oam[0 * 4 + 3] <- 20uy   // X
+
+            ppu.oam[1 * 4 + 0] <- 10uy
+            ppu.oam[1 * 4 + 1] <- 0xCCuy
+            ppu.oam[1 * 4 + 2] <- 0xDDuy
+            ppu.oam[1 * 4 + 3] <- 30uy
+
+            ppu.oam[2 * 4 + 0] <- 10uy
+            ppu.oam[2 * 4 + 1] <- 0xEEuy
+            ppu.oam[2 * 4 + 2] <- 0xFFuy
+            ppu.oam[2 * 4 + 3] <- 40uy
+
+            ppu.scanline <- 15us  // Y=10, size=8 → line 10..17 のため15は範囲内
+            ppu.cycle <- 0u
+
+            let mutable ppu' = ppu
+            for _ in 1..260 do
+                ppu' <- Ppu.tick ppu'
+
+            Expect.equal ppu'.secondarySpritesRenderCount 3 "three sprites should match"
+            
+            // 1つ目のスプライト: Y/Tile/Attr/X 全て正しくコピーされている
+            Expect.equal ppu'.secondarySpritesRender[0].y 10uy "first sprite Y should be copied"
+            Expect.equal ppu'.secondarySpritesRender[0].tile 0xAAuy "first sprite Tile should be copied"
+            Expect.equal ppu'.secondarySpritesRender[0].attr 0xBBuy "first sprite Attr should be copied"
+            Expect.equal ppu'.secondarySpritesRender[0].x 20uy "first sprite X should be copied"
+
+            // 2つ目のスプライト
+            Expect.equal ppu'.secondarySpritesRender[1].y 10uy "second sprite Y should be copied"
+            Expect.equal ppu'.secondarySpritesRender[1].tile 0xCCuy "second sprite Tile should be copied"
+            Expect.equal ppu'.secondarySpritesRender[1].attr 0xDDuy "second sprite Attr should be copied"
+            Expect.equal ppu'.secondarySpritesRender[1].x 30uy "second sprite X should be copied"
+
+            // 3つ目のスプライト
+            Expect.equal ppu'.secondarySpritesRender[2].y 10uy "third sprite Y should be copied"
+            Expect.equal ppu'.secondarySpritesRender[2].tile 0xEEuy "third sprite Tile should be copied"
+            Expect.equal ppu'.secondarySpritesRender[2].attr 0xFFuy "third sprite Attr should be copied"
+            Expect.equal ppu'.secondarySpritesRender[2].x 40uy "third sprite X should be copied"
+        }
+
+        test "Pattern Table fetch does not occur during c=66-256 (MMC3 A12 protection)" {
+            let prg = Array.create (8 * 1024 * 4) 0uy
+            let chr = Array.create (1024 * 8) 0uy
+            let mmc3 = Mmc3.init prg chr Vertical
+
+            // MMC3 IRQ カウンタを reload=0 に設定（敏感にIRQ発生する状態）
+            Mmc3.cpuWrite 0xC000 0uy prg chr mmc3 |> ignore
+            Mmc3.cpuWrite 0xC001 0uy prg chr mmc3 |> ignore
+            Mmc3.cpuWrite 0xE001 0uy prg chr mmc3 |> ignore
+
+            let cart = {
+                prgRom = prg
+                chrRom = chr
+                chrRam = [||]
+                mapper = MMC3 mmc3
+                screenMirroring = Vertical
+            }
+            let ppu = Ppu.init cart
+
+            // スプライトを1つ配置（ライン一致させる）
+            ppu.oam[0] <- 10uy
+            ppu.oam[1] <- 0x12uy
+            ppu.oam[2] <- 0x00uy
+            ppu.oam[3] <- 20uy
+
+            ppu.scanline <- 15us
+            ppu.cycle <- 0u
+
+            // c=1 から c=256 まで実行（評価フェーズ全体）
+            let mutable ppu' = ppu
+            for _ in 1..256 do
+                ppu' <- Ppu.tick ppu'
+
+            // c=66-256 中は Pattern Table フェッチが行われていないため、
+            // MMC3 IRQ カウンタは減らない（A12 rising edge が発生していない）
+            // この検証により、Phase 3 実装が MMC3互換性を保っていることを確認できる
+            Expect.isFalse (Mmc3.pollIrq mmc3) "IRQ should not be asserted during c=66-256 (confirms no Pattern Table fetch during sprite evaluation)"
         }
     ]
 

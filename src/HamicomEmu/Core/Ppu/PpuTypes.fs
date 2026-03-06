@@ -51,9 +51,12 @@ module Types =
         pal: byte array
         vram: byte array
         oam: byte array
-        mutable secondarySprites: SpriteInfo array
-        mutable secondarySpritesCount: int
-        mutable hasSprite: bool array
+        mutable secondarySpritesRender: SpriteInfo array
+        mutable secondarySpritesRenderCount: int
+        mutable secondarySpritesEval: SpriteInfo array
+        mutable secondarySpritesEvalCount: int
+        mutable hasSpriteRender: bool array
+        mutable hasSpriteEval: bool array
         mutable oamAddr: byte
         scroll: ScrollRegisters
         mutable ctrl: byte
@@ -69,5 +72,16 @@ module Types =
         regs: ShiftRegisters
         latches: PpuLatches
         mutable frameIsOdd: bool
+        // 65-256 逐次スプライト評価用の状態
+        mutable evalPrimaryIdx: int        // Primary OAM の現在インデックス（0-63）
+        mutable evalSecondaryIdx: int     // Secondary OAM への書き込みカウント（0-7）
+        mutable evalReadData: byte        // 現在読込データ
+        mutable evalOddCycle: bool        // 奇数=read, 偶数=write
+        mutable evalActive: bool          // 評価フェーズ中か（c=65-256）
+        mutable evalBytePhase: int        // 0=Y, 1=Tile, 2=Attr, 3=X
+        mutable evalLatchY: byte
+        mutable evalLatchTile: byte
+        mutable evalLatchAttr: byte
+        mutable evalLatchX: byte
     }
 

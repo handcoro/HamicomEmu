@@ -85,7 +85,7 @@ type SpriteEvaluationBenchmark() =
     member _.EvaluateSprites0Active() =
         for _ in 1..10_000 do
             ppu <- Ppu.init cart
-            let count = evaluateForLine 0 ppu
+            let count = Sprite.evaluateForLineToEval 0 ppu
             ()
     
     /// スプライト8個（OAM上限）のケース（10,000回反復）
@@ -93,7 +93,7 @@ type SpriteEvaluationBenchmark() =
     member _.EvaluateSprites8Active() =
         for _ in 1..10_000 do
             ppu <- createPpuWithSprites 8 cart
-            let count = evaluateForLine 0 ppu
+            let count = Sprite.evaluateForLineToEval 0 ppu
             ()
     
     /// スプライト64個（OAM全体）のケース（10,000回反復）
@@ -101,7 +101,7 @@ type SpriteEvaluationBenchmark() =
     member _.EvaluateSprites64Full() =
         for _ in 1..10_000 do
             ppu <- createPpuWithSprites 64 cart
-            let count = evaluateForLine 0 ppu
+            let count = Sprite.evaluateForLineToEval 0 ppu
             ()
 
 /// Background タイルロードのベンチマーク

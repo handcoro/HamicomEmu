@@ -40,9 +40,12 @@ module Ppu =
         vram = Array.zeroCreate Common.vramSize // 背景情報
         oam = Array.zeroCreate 256 // OAM データは256バイト
         oamAddr = 0uy
-        secondarySprites = Array.init 8 (fun _ -> initialSpriteInfo) // セカンダリ OAM
-        secondarySpritesCount = 0
-        hasSprite = Array.create Screen.width false
+        secondarySpritesRender = Array.init 8 (fun _ -> initialSpriteInfo) // 描画側セカンダリ OAM
+        secondarySpritesRenderCount = 0
+        secondarySpritesEval = Array.init 8 (fun _ -> initialSpriteInfo) // 評価側セカンダリ OAM
+        secondarySpritesEvalCount = 0
+        hasSpriteRender = Array.create Screen.width false
+        hasSpriteEval = Array.create Screen.width false
         scroll = createScroll ()
         ctrl = 0uy // 初期状態では制御レジスタは0
         mask = 0b0001_0000uy
@@ -58,6 +61,17 @@ module Ppu =
         regs = createShiftRegisters ()
         latches = createLatches ()
         frameIsOdd = false
+        // 逐次評価状態の初期化
+        evalPrimaryIdx = 0
+        evalSecondaryIdx = 0
+        evalReadData = 0uy
+        evalOddCycle = true  // c=65 は奇数サイクルから開始
+        evalActive = false
+        evalBytePhase = 0
+        evalLatchY = 0uy
+        evalLatchTile = 0uy
+        evalLatchAttr = 0uy
+        evalLatchX = 0uy
     }
 
     let writeToAddressRegister (value: byte) ppu =
@@ -259,7 +273,6 @@ module Ppu =
 
             if isRenderingEnabled ppu then
                 if s < 240us then
-
                     // === 描画範囲内の処理 ===
                     if c >= 1u && c <= 256u then
 
@@ -289,13 +302,13 @@ module Ppu =
                         // === スプライト描画 ===
                         if isHideSpritesInLeftmost ppu && inLeftmostRange x then
                             ()
-                        elif isRenderingSpritesEnabled ppu && ppu.hasSprite[x] then
+                        elif isRenderingSpritesEnabled ppu && ppu.hasSpriteRender[x] then
                             // スプライトの描画候補を決める
                             let mutable candidateIndex = -1
                             let mutable candidateColor = 0
-                            for i = 0 to ppu.secondarySpritesCount - 1 do
+                            for i = 0 to ppu.secondarySpritesRenderCount - 1 do
                                 if candidateIndex = -1 then
-                                    let si = ppu.secondarySprites[i]
+                                    let si = ppu.secondarySpritesRender[i]
                                     let shift = x - int si.x
                                     if si.x < 0xF9uy && shift >= 0 && shift <= 7 then
                                         let spColor = Sprite.getPaletteIndex shift si
@@ -304,7 +317,7 @@ module Ppu =
                                             candidateColor <- spColor
 
                             if candidateIndex <> -1 then
-                                let si = ppu.secondarySprites[candidateIndex]
+                                let si = ppu.secondarySpritesRender[candidateIndex]
                                 let spColor = candidateColor
                                 let priority = SpriteAttributes.priority si.attr
                                 if Sprite.prioritizeOverBackground bgColorMirrored spColor priority then
@@ -316,6 +329,12 @@ module Ppu =
 
                         // === シフト ===
                         Background.shiftRegisters 1 ppu.regs
+
+                    // === 65-256 での逐次スプライト評価（4バイトOAMDATA） ===
+                    if c = 65u && isRenderingEnabled ppu then
+                        Sprite.initEvalPhase ppu
+                    elif c >= 66u && c <= 256u && isRenderingEnabled ppu then
+                        Sprite.performEvalCycleStep (int s) ppu
 
                     // === スキャンラインの終わりに Y をインクリメント ===
                     if c = 256u then
@@ -329,18 +348,8 @@ module Ppu =
                         if c = 257u then
                             // v <- t: 水平スクロール位置コピー
                             ppu.scroll.v <- Scroll.getHorizontalPosition ppu.scroll.v ppu.scroll.t
-
-                            System.Array.Clear(ppu.hasSprite, 0, Screen.width) // スプライトの存在位置をすべて false で初期化
-                            Sprite.clearSecondaryOam ppu
-                            // === スプライト評価 ===
-                            // NOTE: 本当は違うタイミングで行うところをかんたん実装で済ませている
-                            // https://www.nesdev.org/w/images/default/4/4f/Ppu.svg
-                            ppu.secondarySpritesCount <- Sprite.evaluateForLine (int s) ppu
-
-                            for i = 0 to ppu.secondarySpritesCount - 1 do
-                                Sprite.loadTilesInfo i ppu
-                                Sprite.updateSpriteExistence i ppu
-
+                            // 逐次評価結果を確定し、タイルをロードしてコミット
+                            Sprite.finalizeEvalPhase ppu
                     // === 次のスキャンラインの冒頭 2 タイル先読み ===
                     elif c >= 321u && c <= 336u then
                         Background.loadTiles c ppu
