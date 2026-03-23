@@ -140,27 +140,43 @@ module Sprite =
         else
             // === 偶数サイクル: line hit を評価し、必要なら 4 バイトを採用 ===
             if ppu.evalPrimaryIdx < 64 then
-                let y = int ppu.evalReadData
                 let size = if parseSize ppu.ctrl = Mode8x16 then 16 else 8
+                if ppu.evalSecondaryIdx < 8 then
+                    let y = int ppu.evalReadData
 
-                if ppu.evalSecondaryIdx < 8 && y <= 0xEF && y <= line && line < y + size then
+                    if y <= 0xEF && y <= line && line < y + size then
+                        let baseIdx = ppu.evalPrimaryIdx * 4
+                        ppu.evalLatchY <- ppu.oam[baseIdx]
+                        ppu.evalLatchTile <- ppu.oam[baseIdx + 1]
+                        ppu.evalLatchAttr <- ppu.oam[baseIdx + 2]
+                        ppu.evalLatchX <- ppu.oam[baseIdx + 3]
+
+                        let si = ppu.secondarySpritesEval
+                        let idx = ppu.evalSecondaryIdx
+                        si[idx].index <- baseIdx
+                        si[idx].y <- ppu.evalLatchY
+                        si[idx].tile <- ppu.evalLatchTile
+                        si[idx].attr <- ppu.evalLatchAttr
+                        si[idx].x <- ppu.evalLatchX
+                        ppu.evalSecondaryIdx <- idx + 1
+
+                    // 次の Primary OAM エントリーへ（2サイクル/エントリー）
+                    ppu.evalPrimaryIdx <- ppu.evalPrimaryIdx + 1
+                else
+                    // 8 本見つかった後はオーバーフロー判定へ移行
+                    // 実機バグを再現するため、評価バイト位相を 0..3 と進める
                     let baseIdx = ppu.evalPrimaryIdx * 4
-                    ppu.evalLatchY <- ppu.oam[baseIdx]
-                    ppu.evalLatchTile <- ppu.oam[baseIdx + 1]
-                    ppu.evalLatchAttr <- ppu.oam[baseIdx + 2]
-                    ppu.evalLatchX <- ppu.oam[baseIdx + 3]
+                    let yLike = int ppu.oam[baseIdx + ppu.evalBytePhase]
 
-                    let si = ppu.secondarySpritesEval
-                    let idx = ppu.evalSecondaryIdx
-                    si[idx].index <- baseIdx
-                    si[idx].y <- ppu.evalLatchY
-                    si[idx].tile <- ppu.evalLatchTile
-                    si[idx].attr <- ppu.evalLatchAttr
-                    si[idx].x <- ppu.evalLatchX
-                    ppu.evalSecondaryIdx <- idx + 1
-
-                // 次の Primary OAM エントリーへ（2サイクル/エントリー）
-                ppu.evalPrimaryIdx <- ppu.evalPrimaryIdx + 1
+                    if yLike <= 0xEF && yLike <= line && line < yLike + size then
+                        ppu.status <- setFlag StatusFlags.spriteOverflow ppu.status
+                        // 1 スプライト分の検出後は評価バイト位相を戻す
+                        ppu.evalPrimaryIdx <- ppu.evalPrimaryIdx + 1
+                        ppu.evalBytePhase <- 0
+                    else
+                        // 検出できなかった場合は評価バイト位相も進める（without carry 相当）
+                        ppu.evalPrimaryIdx <- ppu.evalPrimaryIdx + 1
+                        ppu.evalBytePhase <- (ppu.evalBytePhase + 1) &&& 0x03
         
         ppu.evalOddCycle <- not ppu.evalOddCycle
 

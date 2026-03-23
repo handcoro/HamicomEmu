@@ -392,6 +392,7 @@ module Ppu =
                 ppu.status <-
                     ppu.status
                     |> clearFlag StatusFlags.vblank
+                    |> clearFlag StatusFlags.spriteOverflow
                     |> clearFlag StatusFlags.spriteZeroHit
 
                 ppu.nmiInterrupt <- None

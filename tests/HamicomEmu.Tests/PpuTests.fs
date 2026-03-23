@@ -470,8 +470,73 @@ let ppuTests =
 
             // c=66-256 中は Pattern Table フェッチが行われていないため、
             // MMC3 IRQ カウンタは減らない（A12 rising edge が発生していない）
-            // この検証により、Phase 3 実装が MMC3互換性を保っていることを確認できる
             Expect.isFalse (Mmc3.pollIrq mmc3) "IRQ should not be asserted during c=66-256 (confirms no Pattern Table fetch during sprite evaluation)"
+        }
+
+        test "sprite overflow flag is set when 9th in-range sprite exists" {
+            let ppu = Ppu.init (testCartridge [||])
+
+            // 9 本を同一ラインに配置
+            for i in 0..8 do
+                ppu.oam[i * 4 + 0] <- 10uy
+                ppu.oam[i * 4 + 1] <- byte i
+                ppu.oam[i * 4 + 2] <- 0uy
+                ppu.oam[i * 4 + 3] <- byte (16 + i)
+
+            ppu.scanline <- 15us
+            ppu.cycle <- 0u
+
+            let mutable ppu' = ppu
+            for _ in 1..260 do
+                ppu' <- Ppu.tick ppu'
+
+            Expect.isTrue (hasFlag StatusFlags.spriteOverflow ppu'.status) "sprite overflow flag should be set when more than 8 sprites are in range"
+            Expect.equal ppu'.secondarySpritesRenderCount 8 "only first 8 sprites should be kept in secondary OAM"
+        }
+
+        test "sprite overflow diagonal scan can cause false positive" {
+            let ppu = Ppu.init (testCartridge [||])
+
+            // 最初の 8 本だけが本来の in-range
+            for i in 0..7 do
+                ppu.oam[i * 4 + 0] <- 10uy
+                ppu.oam[i * 4 + 1] <- byte i
+                ppu.oam[i * 4 + 2] <- 0uy
+                ppu.oam[i * 4 + 3] <- byte (16 + i)
+
+            // 9 本目は out-of-range
+            ppu.oam[8 * 4 + 0] <- 240uy
+            ppu.oam[8 * 4 + 1] <- 0uy
+            ppu.oam[8 * 4 + 2] <- 0uy
+            ppu.oam[8 * 4 + 3] <- 0uy
+
+            // 10 本目も Y は out-of-range だが、Tile を in-range 値にする
+            // 斜め進みで OAM[n+1][1] が Y として評価されると false positive になる
+            ppu.oam[9 * 4 + 0] <- 240uy
+            ppu.oam[9 * 4 + 1] <- 10uy
+            ppu.oam[9 * 4 + 2] <- 0uy
+            ppu.oam[9 * 4 + 3] <- 0uy
+
+            ppu.scanline <- 15us
+            ppu.cycle <- 0u
+
+            let mutable ppu' = ppu
+            for _ in 1..260 do
+                ppu' <- Ppu.tick ppu'
+
+            Expect.equal ppu'.secondarySpritesRenderCount 8 "secondary OAM should still keep only 8 sprites"
+            Expect.isTrue (hasFlag StatusFlags.spriteOverflow ppu'.status) "diagonal scan should be able to set overflow from non-Y bytes"
+        }
+
+        test "sprite overflow flag is cleared at pre-render line cycle 1" {
+            let ppu = Ppu.init (testCartridge [||])
+            ppu.status <- setFlag StatusFlags.spriteOverflow ppu.status
+            ppu.scanline <- 261us
+            ppu.cycle <- 1u
+
+            let ppu' = Ppu.tick ppu
+
+            Expect.isFalse (hasFlag StatusFlags.spriteOverflow ppu'.status) "sprite overflow should be cleared at pre-render line cycle 1"
         }
     ]
 
