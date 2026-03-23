@@ -10,16 +10,16 @@ module Processor =
     /// 音声処理プロセッサの状態を管理する型
     type AudioProcessor = {
         sampleRate: int
-        oversampleFactor: int
+        oversamplingRatio: int
         maxSamplesPerUpdate: int
         cycleAcc: float
     }
 
     /// 音声プロセッサを初期化
-    let create (sampleRate: int) (oversampleFactor: int) : AudioProcessor =
+    let create (sampleRate: int) (oversamplingRatio: int) : AudioProcessor =
         {
             sampleRate = sampleRate
-            oversampleFactor = oversampleFactor
+            oversamplingRatio = oversamplingRatio
             maxSamplesPerUpdate = sampleRate / 30
             cycleAcc = 0.0
         }
@@ -40,9 +40,9 @@ module Processor =
                 desiredSamples
 
         let cpuClock = Constants.cpuClockNTSC
-        let oversampleFactor = processor.oversampleFactor
-        let cyclesPerSubSample = cpuClock / float (processor.sampleRate * oversampleFactor)
-        let invOversampleFactor = 1.0f / float32 oversampleFactor
+        let oversamplingRatio = processor.oversamplingRatio
+        let cyclesPerSubSample = cpuClock / float (processor.sampleRate * oversamplingRatio)
+        let invOversamplingRatio = 1.0f / float32 oversamplingRatio
 
         let samples = Array.zeroCreate<float32> samplesPerFrame
         let mutable cycleAcc = processor.cycleAcc
@@ -58,11 +58,11 @@ module Processor =
         // 1サンプル分を生成（オーバーサンプリング適用）
         let inline generateSample() =
             let mutable sum = 0.0f
-            for _ in 1..oversampleFactor do
+            for _ in 1..oversamplingRatio do
                 cycleAcc <- cycleAcc + cyclesPerSubSample
                 processCycles()
                 sum <- sum + Apu.mix currentEmu.bus.apu // 蓄積
-            sum * invOversampleFactor // 高速化のため除算の代わりに乗算で平均化
+            sum * invOversamplingRatio // 高速化のため除算の代わりに乗算で平均化
 
         // フレーム中の全サンプルを生成 (Array直接代入で最適化)
         // 内側ループを 8 ずつ回して外側ループのオーバーヘッドを減らす

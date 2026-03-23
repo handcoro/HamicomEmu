@@ -36,7 +36,7 @@ module Scroll =
                 v + 0b1_00000us
 
     /// Coarse X、Coarse Y、ネームテーブルをもとにタイル単位のアドレス取得
-    let inline getTileIndexAddress v =
+    let inline tileIndexAddress v =
         0x2000us ||| (v &&& 0xFFFus)
 
     /// NN 1111 YYY XXX
@@ -44,7 +44,7 @@ module Scroll =
     /// || |||| +++------ high 3 bits of coarse Y (y/4)
     /// || ++++---------- attribute offset (960 bytes)
     /// ++--------------- nametable select
-    let inline getAttributeAddress v =
+    let inline attributeAddress v =
         0x23C0us ||| (v &&& 0x0C00us) ||| ((v >>> 4) &&& 0x38us) ||| ((v >>> 2) &&& 0x07us)
         // ntAddr ||| 0x23C0us ||| coarseYHi ||| coarseXHi
 
@@ -53,11 +53,11 @@ module Scroll =
     // v[10]  <- t[10]  (nametable X)
     // v[0:4] <- t[0:4], v[10] <- t[10]
     // ....A.. ...BCDEF
-    let inline getHorizontalPosition v t =
+    let inline horizontalPosition v t =
         let mask = 0b000_01_00000_11111us
         (v &&& ~~~mask) ||| (t &&& mask)
     // v <- t: 垂直スクロール位置コピー
     // GHIA.BC DEF.....
-    let inline getVerticalPosition v t =
+    let inline verticalPosition v t =
         let mask = 0b111_10_11111_00000us
         (v &&& ~~~mask) ||| (t &&& mask)

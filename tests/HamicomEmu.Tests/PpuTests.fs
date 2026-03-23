@@ -323,8 +323,8 @@ let ppuTests =
 
             let pulseA12 () =
                 for _ in 1..8 do
-                    Mmc3.onPpuFetch 0x0000 mmc3
-                Mmc3.onPpuFetch 0x1000 mmc3
+                    Mmc3.clockIrqFromPpuAddress 0x0000 mmc3
+                Mmc3.clockIrqFromPpuAddress 0x1000 mmc3
 
             pulseA12 () // reload -> 2
             pulseA12 () // 2 -> 1
@@ -343,9 +343,9 @@ let ppuTests =
             Mmc3.cpuWrite 0xE001 0uy prg chr mmc3 |> ignore
 
             for _ in 1..7 do
-                Mmc3.onPpuFetch 0x0000 mmc3
+                Mmc3.clockIrqFromPpuAddress 0x0000 mmc3
 
-            Mmc3.onPpuFetch 0x1000 mmc3
+            Mmc3.clockIrqFromPpuAddress 0x1000 mmc3
 
             Expect.isFalse (Mmc3.pollIrq mmc3) "A12 low duration below threshold must not clock IRQ counter"
         }
@@ -360,9 +360,9 @@ let ppuTests =
             Mmc3.cpuWrite 0xE001 0uy prg chr mmc3 |> ignore
 
             for _ in 1..8 do
-                Mmc3.onPpuFetch 0x0000 mmc3
+                Mmc3.clockIrqFromPpuAddress 0x0000 mmc3
 
-            Mmc3.onPpuFetch 0x1000 mmc3
+            Mmc3.clockIrqFromPpuAddress 0x1000 mmc3
 
             Expect.isTrue (Mmc3.pollIrq mmc3) "reload=0 should be able to assert IRQ when edge is qualified"
         }

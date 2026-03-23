@@ -261,18 +261,12 @@ module Mapper =
             vram[addr] <- value
             cart
 
-
-    let onPpuFetch addr mapper =
+    let onPpuAddress addr mapper =
         match mapper with
-        | MMC3 state -> Mmc3.onPpuFetch addr state
-        | _ -> ()
-    
-    let scanlineCounter mapper =
-        match mapper with
-        | MMC3 state -> Mmc3.scanlineCounter state
+        | MMC3 state -> Mmc3.clockIrqFromPpuAddress addr state
         | _ -> ()
 
-    let irqCounter mapper =
+    let clockIrqCounter mapper =
         match mapper with
         | Namco163 state -> Namco163.incrementIrqCounter state
         | _ -> ()

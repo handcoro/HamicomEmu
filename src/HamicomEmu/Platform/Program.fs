@@ -92,11 +92,11 @@ type basicNesGame(raw, cartridgePath, traceFn) as this =
     let traceFn = traceFn
     
 #if DEBUG
-    let oversampleFactor = 2
+    let defaultAudioOversamplingRatio = 1
 #else
-    let oversampleFactor = 4
+    let defaultAudioOversamplingRatio = 8
 #endif
-    let mutable audioProcessor = Processor.create sampleRate oversampleFactor
+    let mutable audioProcessor = Processor.create sampleRate defaultAudioOversamplingRatio
 
     do
         match parsed with

@@ -297,7 +297,7 @@ module Ppu =
 
                         let bgColor =
                             if shouldRenderBackground then
-                                Background.getPaletteIndexFromRegs ppu
+                                Background.paletteIndex ppu
                             else
                                 0
                         let bgColorMirrored = bgColor |> mirrorTransparentColorIndex
@@ -317,7 +317,7 @@ module Ppu =
                                     let si = ppu.secondarySpritesRender[i]
                                     let shift = x - int si.x
                                     if si.x < 0xF9uy && shift >= 0 && shift <= 7 then
-                                        let spColor = Sprite.getPaletteIndex shift si
+                                        let spColor = Sprite.paletteIndex shift si
                                         if spColor <> 0 then
                                             candidateIndex <- i
                                             candidateColor <- spColor
@@ -338,9 +338,9 @@ module Ppu =
 
                     // === 65-256 での逐次スプライト評価（4バイトOAMDATA） ===
                     if c = 65u && isRenderingEnabled ppu then
-                        Sprite.initEvalPhase ppu
+                        Sprite.resetEvalPhase ppu
                     elif c >= 66u && c <= 256u && isRenderingEnabled ppu then
-                        Sprite.performEvalCycleStep (int s) ppu
+                        Sprite.evalCycleStep (int s) ppu
 
                     // === スキャンラインの終わりに Y をインクリメント ===
                     if c = 256u then
@@ -349,13 +349,13 @@ module Ppu =
                     elif c >= 257u && c <= 320u then
                         // 簡略スプライト評価でも MMC3 の A12 立ち上がり判定が成立するように、
                         // 257-320 のスプライトフェッチ位相を明示的に反映する。
-                        Mapper.onPpuFetch (spriteFetchPatternBase ppu) ppu.cartridge.mapper
+                        Mapper.onPpuAddress (spriteFetchPatternBase ppu) ppu.cartridge.mapper
 
                         if c = 257u then
                             // v <- t: 水平スクロール位置コピー
-                            ppu.scroll.v <- Scroll.getHorizontalPosition ppu.scroll.v ppu.scroll.t
+                            ppu.scroll.v <- Scroll.horizontalPosition ppu.scroll.v ppu.scroll.t
                             // 逐次評価結果を確定し、タイルをロードしてコミット
-                            Sprite.finalizeEvalPhase ppu
+                            Sprite.commitEvalPhase ppu
                     // === 次のスキャンラインの冒頭 2 タイル先読み ===
                     elif c >= 321u && c <= 336u then
                         Background.loadTiles c ppu
@@ -367,7 +367,7 @@ module Ppu =
                 if s = 261us then
                     // v <- t: 垂直スクロール位置コピー
                     if c >= 280u && c <= 304u then
-                        ppu.scroll.v <- Scroll.getVerticalPosition ppu.scroll.v ppu.scroll.t
+                        ppu.scroll.v <- Scroll.verticalPosition ppu.scroll.v ppu.scroll.t
 
                     // === 0 番スキャンラインの冒頭 2 タイル先読み ===
                     elif c >= 321u && c <= 336u then

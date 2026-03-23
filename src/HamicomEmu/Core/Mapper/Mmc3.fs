@@ -42,8 +42,8 @@ module Mmc3 =
             if s.irqCounter = 0uy && s.irqEnabled then
                 s.irqPending <- true
 
-    /// スキャンラインカウンタ・A12 立ち上がり検出
-    let onPpuFetch ppuAddr s =
+    /// PPU アドレスの変化から A12 立ち上がりを検出し、IRQ カウンタを進める
+    let clockIrqFromPpuAddress ppuAddr s =
         let a12High = ppuAddr &&& 0x1000 <> 0
 
         // A12 が十分な期間 Low の後に High へ遷移したときのみ IRQ カウンタを進める。
@@ -56,11 +56,6 @@ module Mmc3 =
         if risingEdge then
             s.a12LowCycle <- 0
             clockIrqCounter s
-
-    /// スキャンラインカウンタ簡易実装
-    /// https://emudev.de/nes-emulator/about-mappers-mmc1-and-mmc3/
-    let scanlineCounter s =
-        clockIrqCounter s
 
 
     // 7  bit  0

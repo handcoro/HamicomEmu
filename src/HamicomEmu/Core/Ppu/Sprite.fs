@@ -11,13 +11,13 @@ module Sprite =
         | Mode8x8
         | Mode8x16
 
-    let parseSize ctrl =
+    let sizeMode ctrl =
         if hasFlag ControlFlags.spriteSize ctrl then
             Mode8x16
         else
             Mode8x8
 
-    let parsePatternAddr ctrl =
+    let patternTableBase ctrl =
         if
             not (hasFlag ControlFlags.spriteSize ctrl)
             && hasFlag ControlFlags.spritePatternAddress ctrl
@@ -49,13 +49,13 @@ module Sprite =
         si[evalIdx].attr <- ppu.oam[baseIdx + 2]
         si[evalIdx].x <- ppu.oam[baseIdx + 3]
 
-    let loadEvalTilesInfo idx ppu =
+    let evalSpriteTileRow idx ppu =
         // 属性ビット展開
         let si = ppu.secondarySpritesEval
         let horiMirror = SpriteAttributes.flipHorizontal si[idx].attr
         let vertMirror = SpriteAttributes.flipVertical si[idx].attr
 
-        let size = parseSize ppu.ctrl
+        let size = sizeMode ppu.ctrl
 
         // 行オフセット計算
         let offset = byte ppu.scanline - si[idx].y |> int
@@ -76,11 +76,11 @@ module Sprite =
                 tableBase + tileBase + if lineOffset >= 8 then lineOffset + 8 else lineOffset
             | Mode8x8 ->
                 (tileIdx <<< 4)
-                + int (parsePatternAddr ppu.ctrl)
+                + int (patternTableBase ppu.ctrl)
                 + lineOffset
 
-        Mapper.onPpuFetch tileAddr ppu.cartridge.mapper
-        Mapper.onPpuFetch (tileAddr + 8) ppu.cartridge.mapper
+        Mapper.onPpuAddress tileAddr ppu.cartridge.mapper
+        Mapper.onPpuAddress (tileAddr + 8) ppu.cartridge.mapper
 
         // VRAM 読み出し
         let lo = Mapper.ppuRead tileAddr ppu.vram ppu.cartridge
@@ -91,29 +91,15 @@ module Sprite =
         si[idx].tileHi <- if horiMirror then reverseBits hi else hi
 
     /// スキャンライン上でスプライトがある X 座標をマーク（評価バッファ側）
-    let updateEvalSpriteExistence idx ppu =
+    let markEvalSpritePixels idx ppu =
         let si = ppu.secondarySpritesEval
         for xOff in 0..7 do
             let px = int si[idx].x + xOff
             if px >= 0 && px < 256 then
                 ppu.hasSpriteEval[px] <- true
 
-    let evaluateForLineToEval line ppu =
-        let mutable count = 0
-        // OAM: 64 エントリー x 4 バイト
-        for i in 0..63 do
-            if count < 8 then
-                let baseIdx = i * 4
-                let y = int ppu.oam[baseIdx]
-                let size = if parseSize ppu.ctrl = Mode8x16 then 16 else 8
-                // スプライトの Y 座標がスキャンラインにかかっている場合
-                if y <= 0xEF && y <= line && line < y + size then
-                    copyPrimaryToEval i count ppu
-                    count <- count + 1
-        count
-
     /// c=65 で評価フェーズを初期化する
-    let initEvalPhase ppu =
+    let resetEvalPhase ppu =
         System.Array.Clear(ppu.hasSpriteEval, 0, Screen.width)
         clearEvalBuffer ppu
         ppu.evalPrimaryIdx <- 0
@@ -131,7 +117,7 @@ module Sprite =
     /// 奇数サイクル: Primary OAM から Y を読み出し
     /// 偶数サイクル: line hit 判定後、4バイトをラッチして Secondary OAM へ書き込み
     /// NOTE: ここでは Pattern Table フェッチは行わない（A12 位相保護）
-    let performEvalCycleStep line ppu =
+    let evalCycleStep line ppu =
         if ppu.evalOddCycle then
             // === 奇数サイクル: Primary OAM から Y バイトを読み出す ===
             if ppu.evalPrimaryIdx < 64 then
@@ -140,7 +126,7 @@ module Sprite =
         else
             // === 偶数サイクル: line hit を評価し、必要なら 4 バイトを採用 ===
             if ppu.evalPrimaryIdx < 64 then
-                let size = if parseSize ppu.ctrl = Mode8x16 then 16 else 8
+                let size = if sizeMode ppu.ctrl = Mode8x16 then 16 else 8
                 if ppu.evalSecondaryIdx < 8 then
                     let y = int ppu.evalReadData
 
@@ -181,14 +167,14 @@ module Sprite =
         ppu.evalOddCycle <- not ppu.evalOddCycle
 
     /// c=257 で評価フェーズを終わらせ、結果を render へコミット
-    let finalizeEvalPhase ppu =
+    let commitEvalPhase ppu =
         ppu.evalActive <- false
         ppu.secondarySpritesEvalCount <- ppu.evalSecondaryIdx
 
         // Pattern Table フェッチは 257 以降で実施する（65-256 は OAM 評価のみ）
         for i = 0 to ppu.secondarySpritesEvalCount - 1 do
-            loadEvalTilesInfo i ppu
-            updateEvalSpriteExistence i ppu
+            evalSpriteTileRow i ppu
+            markEvalSpritePixels i ppu
         
         // 描画側/評価側を入れ替えてコミットする
         let renderSprites = ppu.secondarySpritesRender
@@ -205,7 +191,7 @@ module Sprite =
         ppu.evalSecondaryIdx <- 0
         ppu.evalBytePhase <- 0
 
-    let inline getPaletteIndex shift si =
+    let inline paletteIndex shift si =
         let t0 = si.tileLo <<< shift &&& 0x80uy >>> 7
         let t1 = si.tileHi <<< shift &&& 0x80uy >>> 6
         let idx = t1 ||| t0 |> int

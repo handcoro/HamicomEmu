@@ -18,17 +18,17 @@ module Background =
     let fetchTileLatch ppu =
         let v = ppu.scroll.v
         let addr =
-            Scroll.getTileIndexAddress v
+            Scroll.tileIndexAddress v
             |> int
             |> mirrorVramAddr ppu.cartridge.screenMirroring ppu.cartridge.mapper
-        Mapper.onPpuFetch addr ppu.cartridge.mapper
+        Mapper.onPpuAddress addr ppu.cartridge.mapper
         ppu.latches.tile <- Mapper.ppuReadNametable addr ppu.vram ppu.cartridge
 
     /// 属性テーブルのフェッチ
     let fetchAttrLatch ppu =
         let v = ppu.scroll.v
         let addr =
-            Scroll.getAttributeAddress v
+            Scroll.attributeAddress v
             |> int
             |> mirrorVramAddr ppu.cartridge.screenMirroring ppu.cartridge.mapper
 
@@ -37,7 +37,7 @@ module Background =
         // 該当シフト量 0: 左上タイル 2: 右上タイル 4: 左下タイル 6: 右下タイル
         let shift = ((v >>> 4) &&& 0b100) ||| (v &&& 0b10)
 
-        Mapper.onPpuFetch addr ppu.cartridge.mapper
+        Mapper.onPpuAddress addr ppu.cartridge.mapper
         ppu.latches.attr <- (attrByte >>> shift) &&& 0b11uy
 
     let inline backgroundPatternAddr ctrl =
@@ -46,7 +46,7 @@ module Background =
         else
             0x0000us
 
-    let inline getPatternAddress ppu =
+    let inline patternAddress ppu =
         let patternBase = backgroundPatternAddr ppu.ctrl |> int
         let tile = ppu.latches.tile |> int
         let fineY = (ppu.scroll.v &&& ScrollMasks.fineY) >>> 12 |> int
@@ -55,14 +55,14 @@ module Background =
 
     /// パターンテーブル下位
     let fetchPatternLowLatch ppu =
-        let addr = getPatternAddress ppu
-        Mapper.onPpuFetch addr ppu.cartridge.mapper
+        let addr = patternAddress ppu
+        Mapper.onPpuAddress addr ppu.cartridge.mapper
         ppu.latches.patternLow <- Mapper.ppuRead addr ppu.vram ppu.cartridge
 
     /// パターンテーブル上位
     let fetchPatternHighLatch ppu =
-        let addr = getPatternAddress ppu + 8 // 上位バイト
-        Mapper.onPpuFetch addr ppu.cartridge.mapper
+        let addr = patternAddress ppu + 8 // 上位バイト
+        Mapper.onPpuAddress addr ppu.cartridge.mapper
         ppu.latches.patternHigh <- Mapper.ppuRead addr ppu.vram ppu.cartridge
 
     /// パターンテーブルをレジスタにロード
@@ -83,7 +83,7 @@ module Background =
         regs.attrLow <- regs.attrLow  ||| attrLow
         regs.attrHigh <- regs.attrHigh ||| attrHigh
 
-    let inline getPaletteIndexFromRegs ppu =
+    let inline paletteIndex ppu =
         let regs = ppu.regs
         let offset = int ppu.scroll.x
         let p0 = (regs.patternLow  <<< offset) &&& 0x8000us >>> 15

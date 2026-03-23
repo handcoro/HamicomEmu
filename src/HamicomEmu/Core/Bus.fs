@@ -180,7 +180,7 @@ module Bus =
 
         | None -> ()
 
-        Mapper.irqCounter bus.cartridge.mapper
+        Mapper.clockIrqCounter bus.cartridge.mapper
 
         bus.cycleTotal <- cyc
         bus
