@@ -5,6 +5,12 @@ module Mmc3 =
 
     open HamicomEmu.Mapper.Common
 
+    [<Literal>]
+    let private ppuCyclesPerFrame = 262 * 341
+
+    [<Literal>]
+    let private minA12LowCycles = 8
+
     type State = {
         mutable mirroring: Mirroring
         hardwiredMirroring: Mirroring
@@ -24,8 +30,9 @@ module Mmc3 =
 
         prgRam: byte array
 
-        mutable a12RisingEdge: bool
-        mutable a12LowCycle: int
+        mutable a12LastHigh: bool      // 前回観測の A12 値
+        mutable a12LowCycles: int      // A12 low の累積 PPU cycle
+        mutable lastPpuTick: int       // 前回通知の PPU frame 内 tick
 
         mutable isSaved: bool
 
@@ -42,19 +49,34 @@ module Mmc3 =
             if s.irqCounter = 0uy && s.irqEnabled then
                 s.irqPending <- true
 
-    /// PPU アドレスの変化から A12 立ち上がりを検出し、IRQ カウンタを進める
-    let clockIrqFromPpuAddress ppuAddr s =
+    /// PPU アドレスの A12 立ち上がりを検出し、IRQ カウンタを進める
+    let clockIrqFromPpuAddress ppuAddr ppuTick s =
         let a12High = ppuAddr &&& 0x1000 <> 0
+        let wasHigh = s.a12LastHigh
 
-        // A12 が十分な期間 Low の後に High へ遷移したときのみ IRQ カウンタを進める。
+        // PPU tick の前回からの差分算出
+        let delta =
+            if s.lastPpuTick < 0 then
+                0
+            elif ppuTick >= s.lastPpuTick then
+                ppuTick - s.lastPpuTick
+            else
+                // フレーム跨ぎ
+                ppuTick + ppuCyclesPerFrame - s.lastPpuTick
+
         if not a12High then
-            s.a12LowCycle <- min 16 (s.a12LowCycle + 1)
+            s.a12LowCycles <- min 64 (s.a12LowCycles + delta)
 
-        let risingEdge = (not s.a12RisingEdge) && a12High && (s.a12LowCycle >= 8)
-        s.a12RisingEdge <- a12High
+        let lowCyclesSufficient = s.a12LowCycles >= minA12LowCycles
+        let risingEdge = (not wasHigh) && a12High && lowCyclesSufficient
+
+        if a12High then
+            s.a12LowCycles <- 0
+
+        s.a12LastHigh <- a12High
+        s.lastPpuTick <- ppuTick
 
         if risingEdge then
-            s.a12LowCycle <- 0
             clockIrqCounter s
 
 
@@ -172,8 +194,9 @@ module Mmc3 =
             irqEnabled = false
             irqPending = false
             prgRam = Array.zeroCreate 0x2000
-            a12RisingEdge = false
-            a12LowCycle = 0
+            a12LastHigh = false
+            a12LowCycles = 0
+            lastPpuTick = -1
             isSaved = false
         }
         

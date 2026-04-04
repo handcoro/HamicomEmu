@@ -261,9 +261,9 @@ module Mapper =
             vram[addr] <- value
             cart
 
-    let onPpuAddress addr mapper =
+    let onPpuAddress addr ppuTick mapper =
         match mapper with
-        | MMC3 state -> Mmc3.clockIrqFromPpuAddress addr state
+        | MMC3 state -> Mmc3.clockIrqFromPpuAddress addr ppuTick state
         | _ -> ()
 
     let clockIrqCounter mapper =

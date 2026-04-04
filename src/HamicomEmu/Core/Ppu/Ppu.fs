@@ -243,7 +243,6 @@ module Ppu =
     let inline isRenderingBackgroundEnabled ppu = hasFlag MaskFlags.backgroundRendering ppu.mask
     let inline isRenderingSpritesEnabled ppu = hasFlag MaskFlags.spriteRendering ppu.mask
 
-    /// 簡易実装のための暫定対応
     let inline private spriteFetchPatternBase ppu =
         if hasFlag ControlFlags.spriteSize ppu.ctrl || hasFlag ControlFlags.spritePatternAddress ppu.ctrl then
             0x1000
@@ -347,15 +346,14 @@ module Ppu =
                         ppu.scroll.v <- Scroll.incrementY ppu.scroll.v
 
                     elif c >= 257u && c <= 320u then
-                        // 簡略スプライト評価でも MMC3 の A12 立ち上がり判定が成立するように、
-                        // 257-320 のスプライトフェッチ位相を明示的に反映する。
-                        Mapper.onPpuAddress (spriteFetchPatternBase ppu) ppu.cartridge.mapper
-
                         if c = 257u then
                             // v <- t: 水平スクロール位置コピー
                             ppu.scroll.v <- Scroll.horizontalPosition ppu.scroll.v ppu.scroll.t
-                            // 逐次評価結果を確定し、タイルをロードしてコミット
+                            // 逐次評価結果を確定して描画側へコミット
                             Sprite.commitEvalPhase ppu
+
+                        // 257-320 のスプライトフェッチ位相を逐次反映する
+                        Sprite.fetchRenderSpritePhase c ppu
                     // === 次のスキャンラインの冒頭 2 タイル先読み ===
                     elif c >= 321u && c <= 336u then
                         Background.loadTiles c ppu
@@ -368,6 +366,12 @@ module Ppu =
                     // v <- t: 垂直スクロール位置コピー
                     if c >= 280u && c <= 304u then
                         ppu.scroll.v <- Scroll.verticalPosition ppu.scroll.v ppu.scroll.t
+
+                    // プリレンダーのスプライトフェッチ帯でも A12 位相を通知する
+                    // NOTE: 暫定的に描画パイプラインは変更せず、MMC3 IRQ 位相のみ補正
+                    elif c >= 257u && c <= 320u then
+                        let ppuTick = ppuTickInFrame ppu.scanline ppu.cycle
+                        Mapper.onPpuAddress (spriteFetchPatternBase ppu) ppuTick ppu.cartridge.mapper
 
                     // === 0 番スキャンラインの冒頭 2 タイル先読み ===
                     elif c >= 321u && c <= 336u then

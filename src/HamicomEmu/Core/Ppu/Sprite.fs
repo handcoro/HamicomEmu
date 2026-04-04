@@ -49,16 +49,12 @@ module Sprite =
         si[evalIdx].attr <- ppu.oam[baseIdx + 2]
         si[evalIdx].x <- ppu.oam[baseIdx + 3]
 
-    let evalSpriteTileRow idx ppu =
-        // 属性ビット展開
-        let si = ppu.secondarySpritesEval
-        let horiMirror = SpriteAttributes.flipHorizontal si[idx].attr
-        let vertMirror = SpriteAttributes.flipVertical si[idx].attr
-
+    let private patternRowAddress (si: SpriteInfo) ppu =
         let size = sizeMode ppu.ctrl
+        let vertMirror = SpriteAttributes.flipVertical si.attr
 
         // 行オフセット計算
-        let offset = byte ppu.scanline - si[idx].y |> int
+        let offset = byte ppu.scanline - si.y |> int
         let height = if size = Mode8x16 then 16 else 8
         let lineOffset =
             if vertMirror then
@@ -67,28 +63,64 @@ module Sprite =
                 offset
 
         // パターンテーブルアドレス計算
-        let tileIdx = int si[idx].tile
-        let tileAddr =
-            match size with
-            | Mode8x16 ->
-                let tableBase = if tileIdx &&& 0x01 <> 0 then 0x1000 else 0x0000 // 8x16 の場合は 0 ビット目がタイルのバンク
-                let tileBase = (tileIdx &&& 0xFE) <<< 4
-                tableBase + tileBase + if lineOffset >= 8 then lineOffset + 8 else lineOffset
-            | Mode8x8 ->
-                (tileIdx <<< 4)
-                + int (patternTableBase ppu.ctrl)
-                + lineOffset
+        let tileIdx = int si.tile
+        match size with
+        | Mode8x16 ->
+            let tableBase = if tileIdx &&& 0x01 <> 0 then 0x1000 else 0x0000 // 8x16 の場合は 0 ビット目がタイルのバンク
+            let tileBase = (tileIdx &&& 0xFE) <<< 4
+            tableBase + tileBase + if lineOffset >= 8 then lineOffset + 8 else lineOffset
+        | Mode8x8 ->
+            (tileIdx <<< 4)
+            + int (patternTableBase ppu.ctrl)
+            + lineOffset
 
-        Mapper.onPpuAddress tileAddr ppu.cartridge.mapper
-        Mapper.onPpuAddress (tileAddr + 8) ppu.cartridge.mapper
+    let private dummyPatternRowBase ppu =
+        match sizeMode ppu.ctrl with
+        | Mode8x16 -> 0x1FE0
+        | Mode8x8 -> int (patternTableBase ppu.ctrl) + 0x0FF0
 
-        // VRAM 読み出し
-        let lo = Mapper.ppuRead tileAddr ppu.vram ppu.cartridge
-        let hi = Mapper.ppuRead (tileAddr + 8) ppu.vram ppu.cartridge
+    /// c=257-320 の 8 サイクル位相に合わせて、スプライトフェッチを逐次実施する
+    /// 位相 0-1: garbage #1, 2-3: garbage #2, 4-5: pattern low, 6-7: pattern high
+    /// NOTE: A12 位相再現のため、garbage を含む全位相でマッパーに通知する
+    let fetchRenderSpritePhase cycle ppu =
+        let slot = (cycle - 257u) / 8u |> int
+        let phase = (cycle - 257u) % 8u |> int
 
-        // 反転を考慮
-        si[idx].tileLo <- if horiMirror then reverseBits lo else lo
-        si[idx].tileHi <- if horiMirror then reverseBits hi else hi
+        // 8 本未満時はダミースプライト（tile $FF 相当）を使って A12 位相を維持
+        let hasRealSprite = slot < ppu.secondarySpritesRenderCount
+        let dummyBase = dummyPatternRowBase ppu
+
+        let addr =
+            match phase with
+            | 0 | 1 -> 0x2000 + slot
+            | 2 | 3 -> 0x2008 + slot
+            | 4 | 5 ->
+                if hasRealSprite then
+                    let si = ppu.secondarySpritesRender[slot]
+                    patternRowAddress si ppu
+                else
+                    dummyBase
+            | _ ->
+                if hasRealSprite then
+                    let si = ppu.secondarySpritesRender[slot]
+                    patternRowAddress si ppu + 8
+                else
+                    dummyBase + 8
+
+        let ppuTick = ppuTickInFrame ppu.scanline ppu.cycle
+        Mapper.onPpuAddress addr ppuTick ppu.cartridge.mapper
+
+        if hasRealSprite then
+            let horiMirror = SpriteAttributes.flipHorizontal ppu.secondarySpritesRender[slot].attr
+
+            match phase with
+            | 5 ->
+                let lo = Mapper.ppuRead addr ppu.vram ppu.cartridge
+                ppu.secondarySpritesRender[slot].tileLo <- if horiMirror then reverseBits lo else lo
+            | 7 ->
+                let hi = Mapper.ppuRead addr ppu.vram ppu.cartridge
+                ppu.secondarySpritesRender[slot].tileHi <- if horiMirror then reverseBits hi else hi
+            | _ -> ()
 
     /// スキャンライン上でスプライトがある X 座標をマーク（評価バッファ側）
     let markEvalSpritePixels idx ppu =
@@ -171,9 +203,8 @@ module Sprite =
         ppu.evalActive <- false
         ppu.secondarySpritesEvalCount <- ppu.evalSecondaryIdx
 
-        // Pattern Table フェッチは 257 以降で実施する（65-256 は OAM 評価のみ）
+        // c=257-320 の逐次フェッチに備え、表示位置マスクのみ先に更新する
         for i = 0 to ppu.secondarySpritesEvalCount - 1 do
-            evalSpriteTileRow i ppu
             markEvalSpritePixels i ppu
         
         // 描画側/評価側を入れ替えてコミットする

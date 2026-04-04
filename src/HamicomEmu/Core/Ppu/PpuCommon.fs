@@ -6,6 +6,18 @@ module Common =
     open HamicomEmu.Mapper
     open HamicomEmu.Mapper.Common
 
+    [<Literal>]
+    let ppuCyclesPerScanline = 341
+
+    [<Literal>]
+    let ppuScanlinesPerFrame = 262
+
+    [<Literal>]
+    let ppuCyclesPerFrame = ppuCyclesPerScanline * ppuScanlinesPerFrame
+
+    let inline ppuTickInFrame scanline cycle =
+        (int scanline * ppuCyclesPerScanline) + int cycle
+
     let mirrorPaletteIndex index =
         match index with
         | 0x10

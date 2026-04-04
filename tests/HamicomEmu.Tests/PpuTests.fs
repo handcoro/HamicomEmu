@@ -11,6 +11,25 @@ open HamicomEmu.Ppu.Scroll
 open HamicomEmu.Ppu
 open TestHelpers
 
+let private initMmc3IrqState reloadValue =
+    let prg = Array.zeroCreate<byte> (8 * 1024 * 4)
+    let chr = Array.zeroCreate<byte> (1024 * 8)
+    let mmc3 = Mmc3.init prg chr Vertical
+
+    Mmc3.cpuWrite 0xC000 reloadValue prg chr mmc3 |> ignore
+    Mmc3.cpuWrite 0xC001 0uy prg chr mmc3 |> ignore
+    Mmc3.cpuWrite 0xE001 0uy prg chr mmc3 |> ignore
+
+    mmc3
+
+let private notifyMmc3At tick addr mmc3 =
+    Mmc3.clockIrqFromPpuAddress addr tick mmc3
+
+let private pulseQualifiedA12Rise baseTick mmc3 =
+    notifyMmc3At baseTick 0x0000 mmc3
+    notifyMmc3At (baseTick + 8) 0x0000 mmc3
+    notifyMmc3At (baseTick + 9) 0x1000 mmc3
+
 let ppuTests =
     testList "PPU Tests" [
         test "PPU Register Test" {
@@ -312,59 +331,73 @@ let ppuTests =
             Expect.equal ppu'.secondarySpritesRender[0].tileHi 0x55uy "prefetched high tile byte should remain intact"
         }
 
-        test "MMC3 A12 rising edge clocks IRQ counter" {
-            let prg = Array.create (8 * 1024 * 4) 0uy
-            let chr = Array.create (1024 * 8) 0uy
-            let mmc3 = Mmc3.init prg chr Vertical
+        test "MMC3 clocks IRQ counter only on qualified A12 rises" {
+            let mmc3 = initMmc3IrqState 2uy
 
-            Mmc3.cpuWrite 0xC000 2uy prg chr mmc3 |> ignore
-            Mmc3.cpuWrite 0xC001 0uy prg chr mmc3 |> ignore
-            Mmc3.cpuWrite 0xE001 0uy prg chr mmc3 |> ignore
+            pulseQualifiedA12Rise 0 mmc3
+            Expect.isFalse (Mmc3.pollIrq mmc3) "first qualified rise should reload the counter to 2 without asserting IRQ"
 
-            let pulseA12 () =
-                for _ in 1..8 do
-                    Mmc3.clockIrqFromPpuAddress 0x0000 mmc3
-                Mmc3.clockIrqFromPpuAddress 0x1000 mmc3
+            pulseQualifiedA12Rise 20 mmc3
+            Expect.isFalse (Mmc3.pollIrq mmc3) "second qualified rise should decrement the counter to 1 without asserting IRQ"
 
-            pulseA12 () // reload -> 2
-            pulseA12 () // 2 -> 1
-            pulseA12 () // 1 -> 0 and pending
+            pulseQualifiedA12Rise 40 mmc3
+            Expect.isTrue (Mmc3.pollIrq mmc3) "third qualified rise should decrement the counter to 0 and assert IRQ"
+        }
 
-            Expect.isTrue (Mmc3.pollIrq mmc3) "IRQ should be pending after third qualified rising edge"
+        test "MMC3 can clock on sparse notifications when low dwell is observed" {
+            let mmc3 = initMmc3IrqState 0uy
+
+            // low 側通知が疎でも、ppuTick 差分で 8 cycle 以上の Low 滞在が観測できれば qualified edge になる
+            notifyMmc3At 100 0x0000 mmc3
+            notifyMmc3At 108 0x0000 mmc3
+            notifyMmc3At 109 0x1000 mmc3
+
+            Expect.isTrue (Mmc3.pollIrq mmc3) "qualified rise should trigger IRQ even with sparse callbacks"
         }
 
         test "MMC3 ignores A12 rise without enough low cycles" {
-            let prg = Array.create (8 * 1024 * 4) 0uy
-            let chr = Array.create (1024 * 8) 0uy
-            let mmc3 = Mmc3.init prg chr Vertical
+            let mmc3 = initMmc3IrqState 1uy
 
-            Mmc3.cpuWrite 0xC000 1uy prg chr mmc3 |> ignore
-            Mmc3.cpuWrite 0xC001 0uy prg chr mmc3 |> ignore
-            Mmc3.cpuWrite 0xE001 0uy prg chr mmc3 |> ignore
+            notifyMmc3At 200 0x0000 mmc3
+            notifyMmc3At 207 0x1000 mmc3
 
-            for _ in 1..7 do
-                Mmc3.clockIrqFromPpuAddress 0x0000 mmc3
-
-            Mmc3.clockIrqFromPpuAddress 0x1000 mmc3
-
-            Expect.isFalse (Mmc3.pollIrq mmc3) "A12 low duration below threshold must not clock IRQ counter"
+            Expect.isFalse (Mmc3.pollIrq mmc3) "A12 low duration below the 8-cycle threshold must not clock IRQ counter"
         }
 
-        test "MMC3 reload value 0 can still assert IRQ on qualified edge" {
-            let prg = Array.create (8 * 1024 * 4) 0uy
-            let chr = Array.create (1024 * 8) 0uy
-            let mmc3 = Mmc3.init prg chr Vertical
+        test "MMC3 reload value 0 can assert IRQ on the first qualified rise" {
+            let mmc3 = initMmc3IrqState 0uy
 
-            Mmc3.cpuWrite 0xC000 0uy prg chr mmc3 |> ignore
-            Mmc3.cpuWrite 0xC001 0uy prg chr mmc3 |> ignore
-            Mmc3.cpuWrite 0xE001 0uy prg chr mmc3 |> ignore
+            pulseQualifiedA12Rise 300 mmc3
 
-            for _ in 1..8 do
-                Mmc3.clockIrqFromPpuAddress 0x0000 mmc3
+            Expect.isTrue (Mmc3.pollIrq mmc3) "reload=0 should assert IRQ on the first qualified rise"
+        }
 
-            Mmc3.clockIrqFromPpuAddress 0x1000 mmc3
+        test "MMC3 requires returning low long enough before the next qualified rise" {
+            let mmc3 = initMmc3IrqState 1uy
 
-            Expect.isTrue (Mmc3.pollIrq mmc3) "reload=0 should be able to assert IRQ when edge is qualified"
+            pulseQualifiedA12Rise 400 mmc3
+            Expect.isFalse (Mmc3.pollIrq mmc3) "first qualified rise should only reload the counter to 1"
+
+            notifyMmc3At 410 0x1000 mmc3
+            notifyMmc3At 420 0x1000 mmc3
+            notifyMmc3At 421 0x0000 mmc3
+            notifyMmc3At 427 0x1000 mmc3
+
+            Expect.isFalse (Mmc3.pollIrq mmc3) "continuous high callbacks and a short low period must not create a second qualified rise"
+
+            pulseQualifiedA12Rise 440 mmc3
+            Expect.isTrue (Mmc3.pollIrq mmc3) "after at least 8 low cycles, the next A12 rise should clock the counter again"
+        }
+
+        test "MMC3 low dwell qualification survives PPU frame wrap" {
+            let mmc3 = initMmc3IrqState 0uy
+            let frameTicks = 262 * 341
+
+            notifyMmc3At (frameTicks - 4) 0x0000 mmc3
+            notifyMmc3At 4 0x0000 mmc3
+            notifyMmc3At 5 0x1000 mmc3
+
+            Expect.isTrue (Mmc3.pollIrq mmc3) "low dwell spanning the end of a frame should still qualify the next A12 rise"
         }
 
         test "sprite evaluation scans all 64 Primary OAM entries within c=66-256" {
