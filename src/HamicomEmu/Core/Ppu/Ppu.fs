@@ -370,6 +370,10 @@ module Ppu =
                     // プリレンダーのスプライトフェッチ帯でも A12 位相を通知する
                     // NOTE: 暫定的に描画パイプラインは変更せず、MMC3 IRQ 位相のみ補正
                     elif c >= 257u && c <= 320u then
+                        if c = 257u then
+                            // 0 番スキャンライン冒頭の水平スクロール位置を同期
+                            ppu.scroll.v <- Scroll.horizontalPosition ppu.scroll.v ppu.scroll.t
+
                         let ppuTick = ppuTickInFrame ppu.scanline ppu.cycle
                         Mapper.onPpuAddress (spriteFetchPatternBase ppu) ppuTick ppu.cartridge.mapper
 
