@@ -612,8 +612,10 @@ module Cpu =
 
         let pc, bus' = Bus.memRead16 vectorAddr bus
         let p = cpu.p |> setFlag Flags.i
+        let cpu' = { cpu with p = p; pc = pc }
+        let bus'' = Bus.tickNTimes 7 bus'
 
-        { cpu with p = p; pc = pc }, bus', 7u
+        cpu', bus'', 7u
 
     /// 割り込み用 P フラグ前処理（B フラグクリア、U フラグセット）
     let prepareInterruptFlags p = p |> clearFlag Flags.b |> setFlag Flags.u
@@ -743,9 +745,45 @@ module Cpu =
             RTS, rts
         ]
 
+    type StepContext = {
+        cpu: CpuState
+        bus: Bus.BusState
+    }
+
+    let tick ctx =
+        { ctx with bus = ctx.bus |> Bus.tick }
+
+    let tickN n ctx =
+        let rec loop remaining state =
+            if remaining <= 0 then
+                state
+            else
+                state |> tick |> loop (remaining - 1)
+        ctx |> loop n
+
+    let consumeCycle cpu bus =
+        let ctx = {cpu = cpu; bus = bus } |> tick
+        ctx.cpu, ctx.bus
+
+    let consumeCycles n cpu bus =
+        let ctx = { cpu = cpu; bus = bus } |> tickN (int n)
+        ctx.cpu, ctx.bus
+
+    let finishInstruction totalCycles cpu bus =
+        let remainingCycles =
+            if totalCycles > 0u then
+                totalCycles - 1u
+            else
+                0u
+
+        let cpu', bus' = consumeCycles remainingCycles cpu bus
+        cpu', bus', totalCycles
+
     /// CPU を 1 命令だけ実行する
     let step cpu (bus: Bus.BusState) =
 
+        // 1 サイクル目: opcode fetch
+        let cpu, bus = consumeCycle cpu bus
         let opcode, bus' = Bus.memRead cpu.pc bus
         let op, mode, size, cycles, penalty = decodeOpcode opcode
 
@@ -756,8 +794,9 @@ module Cpu =
                 | Absolute_Y
                 | Indirect_X
                 | Indirect_Y ->
-                    let addr = getOperandAddress c b c.pc m // 命令内と合わせて2回呼ぶことになるのはできればどうにかしたい
-                    isPageCrossed c.pc addr
+                    let operandPc = c.pc + 1us
+                    let addr = getOperandAddress c b operandPc m // 命令内と合わせて2回呼ぶことになるのはできればどうにかしたい
+                    isPageCrossed operandPc addr
                 | _ -> false
 
             (c, b) ||> f m ||> advancePC size, crsd
@@ -767,12 +806,12 @@ module Cpu =
             | Some f -> execInstr f mode cpu bus'
             | None ->
                 match Map.tryFind op jumpMap with
-                | Some f -> f mode cpu bus', false  // ブランチ系は命令内で追加サイクルを処理する
+                | Some f -> f mode cpu bus', false // ブランチ系は命令内で追加サイクルを処理する
                 | _ -> failwithf "Unsupported opcode: %A" op
 
         // サイクル追加発生可能性のある命令でページ境界をまたいだ場合はサイクル追加
         let pen = if penalty && crossed then 1u else 0u
 
-        let consumed = cycles + pen + cpu'.cyclePenalty
+        let totalCycles = cycles + pen + cpu'.cyclePenalty
         let cpu'' = { cpu' with cyclePenalty = 0u }
-        cpu'', bus'', consumed
+        finishInstruction totalCycles cpu'' bus''

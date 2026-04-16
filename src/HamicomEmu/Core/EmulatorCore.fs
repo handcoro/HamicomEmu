@@ -34,37 +34,40 @@ module EmulatorCore =
         let cart = Mapper.setPrgRam data emu.bus.cartridge
         { emu with bus.cartridge = cart }
 
-    /// ステップの実行回数指定をできるようにしてあるけど使わないかも
-    /// TODO: Bus.tick を 1 ずつ回すようにした影響で再現度は上がったけど実行速度が犠牲に！適宜各種状態の mutable 化を検討中
     let tick emu (trace: EmulatorState -> unit) =
         match emu.bus.pendingStallCpuCycles with
         | Some stall when stall > 0u ->
             // ストール中は CPU 実行を止めて Bus/APU/PPU だけ進める
-            let bus' = Bus.tick emu.bus
-            let newStall = stall - 1u
-            let bus'' = Bus.updatePendingStallCpuCycles newStall bus'
-            { emu with bus = bus'' }, 1u
+            let bus' =
+                emu.bus
+                |> Bus.tick
+                |> Bus.updatePendingStallCpuCycles (stall - 1u)
+            { emu with bus = bus' }, 1u
         | _ ->
-            // NOTE: ここで割り込み判定をしているけど正確にはもっと複雑らしい？ https://www.nesdev.org/wiki/CPU_interrupts
+            let nmiBus, nmi = Bus.pollNmiStatus emu.bus
             let irq = Bus.pollIrqStatus emu.bus
-            let interruptDisabled = Cpu.interruptDisabled emu.cpu
-            let suppressIrq = Cpu.isSuppressIrq emu.cpu
 
-            let cpu, bus, consumed =
-                match Bus.pollNmiStatus emu.bus, irq && not interruptDisabled && not suppressIrq with
-                | (b, Some _), _ -> // NMI
-                    Cpu.nmi emu.cpu b
-                | (b, None), true -> // IRQ
-                    Cpu.irq emu.cpu b
-                | (b, None), false -> // 通常進行
+            let suppressIrq = Cpu.isSuppressIrq emu.cpu
+            let irqAllowed =
+                not (Cpu.interruptDisabled emu.cpu)
+                && not suppressIrq
+
+            // NMI > IRQ > 通常進行 の優先順位で CPU を実行
+            let cpu', bus', consumedCycles =
+                match nmi, irq && irqAllowed with
+                | Some _, _ -> // NMI
+                    Cpu.nmi emu.cpu nmiBus
+                | None, true -> // IRQ
+                    Cpu.irq emu.cpu nmiBus
+                | None, false -> // 通常進行
                     // 通常進行の場合はトレース実行
                     trace emu
-                    // TODO: CLI, SEI, PLP の IRQ 抑制は後でもっといい仕組みを考える
-                    let c = if suppressIrq then Cpu.clearSuppressIrq emu.cpu else emu.cpu
-                    let c', b, con = Cpu.step c b
-                    c', b, con
+                    let cpu =
+                        if suppressIrq then
+                            Cpu.clearSuppressIrq emu.cpu
+                        else
+                            emu.cpu
+                    Cpu.step cpu nmiBus
 
-            let bus = Bus.updatePendingStallCpuCycles consumed bus
-
-            { emu with cpu = cpu; bus = bus }, 0u
+            { emu with cpu = cpu'; bus = bus' }, consumedCycles
 
