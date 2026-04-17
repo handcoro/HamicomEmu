@@ -764,6 +764,24 @@ module Cpu =
                 state |> tick |> loop (remaining - 1)
         ctx |> loop n
 
+    let readByteTimed addr ctx =
+        let value, bus = Bus.memRead addr ctx.bus
+        let ctx = { ctx with bus = bus } |> tick
+        value, ctx
+
+    let readWordTimed addr ctx =
+        let value, bus = Bus.memRead16 addr ctx.bus
+        let ctx = { ctx with bus = bus } |> tickN 2
+        value, ctx
+
+    let writeByteTimed addr value ctx =
+        let bus = Bus.memWrite addr value ctx.bus
+        { ctx with bus = bus } |> tick
+
+    let dummyReadTimed addr ctx =
+        let _, bus = Bus.memRead addr ctx.bus
+        { ctx with bus = bus } |> tick
+
     let consumeCycle cpu bus =
         let ctx = {cpu = cpu; bus = bus } |> tick
         ctx.cpu, ctx.bus
@@ -772,12 +790,13 @@ module Cpu =
         let ctx = { cpu = cpu; bus = bus } |> tickN (int n)
         ctx.cpu, ctx.bus
 
+    /// step 冒頭の consumeCycle（opcode fetch = cycle 1）分を引いた残りを遅延する
+    /// NOTE: cycles - 2u = (cycles - 1) - 1 で cycle 1 分を補正
     let inline cyclesToFinalAccess cycles = if cycles > 1u then cycles - 2u else 0u
 
     let finishInstruction totalCycles cpu bus =
         // 最終アクセスまでの残りサイクルを消費
         let delayCycles = cyclesToFinalAccess totalCycles
-
         let cpu', bus' = consumeCycles delayCycles cpu bus
 
         // 最終サイクルの直前に割り込み要求をチェック
@@ -787,6 +806,81 @@ module Cpu =
         let cpu'', bus'' = consumeCycle cpu' bus'
         { cpu'' with irqLine = irqSample }, bus'', totalCycles
 
+    let normalizePpuRegisterAddress addr =
+        if addr >= 0x2000us && addr <= 0x3FFFus then
+            0x2000us ||| (addr &&& 0x0007us)
+        else
+            addr
+
+    /// フェッチサイクル (opcode + operand) 終了まで tick を進める
+    let delayToFinalAccess cycles ctx =
+        let delayCycles = cyclesToFinalAccess cycles
+
+        ctx |> tickN (int delayCycles)
+
+    /// 命令終了まで PC を進める
+    let finishPhaseFixed size cycles ctx =
+        let cpu = { ctx.cpu with pc = ctx.cpu.pc + size }
+        Some(cpu, ctx.bus, cycles)
+
+    let execPhaseFixedStoreAbsolute reg size cycles value ctx =
+        let ctx =
+            ctx
+            |> delayToFinalAccess cycles
+            |> writeByteTimed reg value
+        finishPhaseFixed size cycles ctx
+
+    let execPhaseFixedLdaAbsolute reg size cycles ctx =
+        let value, ctx =
+            ctx
+            |> delayToFinalAccess cycles
+            |> readByteTimed reg
+        let p = ctx.cpu.p |> setZeroNegativeFlags value
+
+        let ctx = { ctx with cpu.a = value; cpu.p = p }
+        finishPhaseFixed size cycles ctx
+
+    let execPhaseFixedBitAbsolute reg size cycles ctx =
+        let value, ctx =
+            ctx
+            |> delayToFinalAccess cycles
+            |> readByteTimed reg
+        let p =
+            ctx.cpu.p
+            |> updateFlag Flags.z (ctx.cpu.a &&& value = 0uy)
+            |> updateFlag Flags.n (value &&& Flags.n <> 0uy)
+            |> updateFlag Flags.v (value &&& Flags.v <> 0uy)
+        
+        let ctx = { ctx with cpu.p = p }
+        finishPhaseFixed size cycles ctx
+
+    /// PPU レジスタへのアクセスを行う特定の命令をサイクル分割して実行する
+    let tryExecPhaseFixedPpuInstr op mode size cycles cpu bus =
+        if mode <> Absolute then
+            None
+        else
+            let addr, _ = Bus.memRead16 (cpu.pc + 1us) bus
+            let reg = normalizePpuRegisterAddress addr
+
+            let ctx = { cpu = cpu; bus = bus }
+
+            match op, reg with
+            | STA, (0x2000us | 0x2005us | 0x2006us) ->
+                execPhaseFixedStoreAbsolute reg size cycles ctx.cpu.a ctx
+            | STY, (0x2000us | 0x2005us | 0x2006us) ->
+                execPhaseFixedStoreAbsolute reg size cycles ctx.cpu.y ctx
+            | STX, (0x2000us | 0x2005us | 0x2006us) ->
+                execPhaseFixedStoreAbsolute reg size cycles ctx.cpu.x ctx
+
+            | LDA, 0x2002us ->
+                execPhaseFixedLdaAbsolute reg size cycles ctx
+
+            | BIT, 0x2002us ->
+                execPhaseFixedBitAbsolute reg size cycles ctx
+
+            | _ ->
+                None
+
     /// CPU を 1 命令だけ実行する
     let step cpu (bus: Bus.BusState) =
 
@@ -795,31 +889,35 @@ module Cpu =
         let opcode, bus' = Bus.memRead cpu.pc bus
         let op, mode, size, cycles, penalty = decodeOpcode opcode
 
-        let execInstr f m c b =
-            let crsd =
-                match m with
-                | Absolute_X
-                | Absolute_Y
-                | Indirect_X
-                | Indirect_Y ->
-                    let operandPc = c.pc + 1us
-                    let addr = getOperandAddress c b operandPc m // 命令内と合わせて2回呼ぶことになるのはできればどうにかしたい
-                    isPageCrossed operandPc addr
-                | _ -> false
+        match tryExecPhaseFixedPpuInstr op mode size cycles cpu bus' with
+        | Some timedResult ->
+            timedResult
+        | None ->
+            let execInstr f m c b =
+                let crsd =
+                    match m with
+                    | Absolute_X
+                    | Absolute_Y
+                    | Indirect_X
+                    | Indirect_Y ->
+                        let operandPc = c.pc + 1us
+                        let addr = getOperandAddress c b operandPc m // 命令内と合わせて2回呼ぶことになるのはできればどうにかしたい
+                        isPageCrossed operandPc addr
+                    | _ -> false
 
-            (c, b) ||> f m ||> advancePC size, crsd
+                (c, b) ||> f m ||> advancePC size, crsd
 
-        let (cpu', bus''), crossed =
-            match Map.tryFind op execMap with
-            | Some f -> execInstr f mode cpu bus'
-            | None ->
-                match Map.tryFind op jumpMap with
-                | Some f -> f mode cpu bus', false // ブランチ系は命令内で追加サイクルを処理する
-                | _ -> failwithf "Unsupported opcode: %A" op
+            let (cpu', bus''), crossed =
+                match Map.tryFind op execMap with
+                | Some f -> execInstr f mode cpu bus'
+                | None ->
+                    match Map.tryFind op jumpMap with
+                    | Some f -> f mode cpu bus', false // ブランチ系は命令内で追加サイクルを処理する
+                    | _ -> failwithf "Unsupported opcode: %A" op
 
-        // サイクル追加発生可能性のある命令でページ境界をまたいだ場合はサイクル追加
-        let pen = if penalty && crossed then 1u else 0u
+            // サイクル追加発生可能性のある命令でページ境界をまたいだ場合はサイクル追加
+            let pen = if penalty && crossed then 1u else 0u
 
-        let totalCycles = cycles + pen + cpu'.cyclePenalty
-        let cpu'' = { cpu' with cyclePenalty = 0u }
-        finishInstruction totalCycles cpu'' bus''
+            let totalCycles = cycles + pen + cpu'.cyclePenalty
+            let cpu'' = { cpu' with cyclePenalty = 0u }
+            finishInstruction totalCycles cpu'' bus''
