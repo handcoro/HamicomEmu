@@ -243,12 +243,6 @@ module Ppu =
     let inline isRenderingBackgroundEnabled ppu = hasFlag MaskFlags.backgroundRendering ppu.mask
     let inline isRenderingSpritesEnabled ppu = hasFlag MaskFlags.spriteRendering ppu.mask
 
-    let inline private spriteFetchPatternBase ppu =
-        if hasFlag ControlFlags.spriteSize ppu.ctrl || hasFlag ControlFlags.spritePatternAddress ppu.ctrl then
-            0x1000
-        else
-            0x0000
-
     let inline private isRenderingEnabled ppu =
         isRenderingBackgroundEnabled ppu || isRenderingSpritesEnabled ppu
 
@@ -363,19 +357,16 @@ module Ppu =
 
                 // === プリレンダーライン ===
                 if s = 261us then
-                    // v <- t: 垂直スクロール位置コピー
-                    if c >= 280u && c <= 304u then
-                        ppu.scroll.v <- Scroll.verticalPosition ppu.scroll.v ppu.scroll.t
-
-                    // プリレンダーのスプライトフェッチ帯でも A12 位相を通知する
-                    // NOTE: 暫定的に描画パイプラインは変更せず、MMC3 IRQ 位相のみ補正
-                    elif c >= 257u && c <= 320u then
+                    if c >= 257u && c <= 320u then
                         if c = 257u then
                             // 0 番スキャンライン冒頭の水平スクロール位置を同期
                             ppu.scroll.v <- Scroll.horizontalPosition ppu.scroll.v ppu.scroll.t
-
-                        let ppuTick = ppuTickInFrame ppu.scanline ppu.cycle
-                        Mapper.onPpuAddress (spriteFetchPatternBase ppu) ppuTick ppu.cartridge.mapper
+                            Sprite.commitEvalPhase ppu
+                        elif c >= 280u && c <= 304u then
+                            // v <- t: 垂直スクロール位置コピー
+                            ppu.scroll.v <- Scroll.verticalPosition ppu.scroll.v ppu.scroll.t
+                        // プリレンダーのスプライトフェッチ帯でも A12 位相を通知する
+                        Sprite.fetchRenderSpritePhase c ppu
 
                     // === 0 番スキャンラインの冒頭 2 タイル先読み ===
                     elif c >= 321u && c <= 336u then
