@@ -283,10 +283,6 @@ module Mmc3 =
     let setPrgRam data state =
         Array.blit data 0 state.prgRam 0 data.Length
 
-    let pollIrq state =
-        if state.irqPending then
-            state.irqPending <- false
-            true
-        else
-            false
+    let pollIrq state = state.irqPending
+
     let getMirroring state = state.mirroring
