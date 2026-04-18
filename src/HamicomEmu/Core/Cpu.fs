@@ -39,6 +39,8 @@ module Cpu =
         cyclePenalty: uint
         // NOTE: CLI, SEI, PLP 後の IRQ を抑制する
         suppressIrq: bool
+        // 割り込み要求は命令途中でポーリングしてこのフラグに保持する
+        irqLine: bool
     }
 
     let init = {
@@ -50,6 +52,7 @@ module Cpu =
         p = Flags.i ||| Flags.u
         cyclePenalty = 0u
         suppressIrq = false
+        irqLine = false
     }
 
     let isPageCrossed (a: uint16) (b: uint16) = (a &&& 0xFF00us) <> (b &&& 0xFF00us)
@@ -769,15 +772,20 @@ module Cpu =
         let ctx = { cpu = cpu; bus = bus } |> tickN (int n)
         ctx.cpu, ctx.bus
 
-    let finishInstruction totalCycles cpu bus =
-        let remainingCycles =
-            if totalCycles > 0u then
-                totalCycles - 1u
-            else
-                0u
+    let inline cyclesToFinalAccess cycles = if cycles > 1u then cycles - 2u else 0u
 
-        let cpu', bus' = consumeCycles remainingCycles cpu bus
-        cpu', bus', totalCycles
+    let finishInstruction totalCycles cpu bus =
+        // 最終アクセスまでの残りサイクルを消費
+        let delayCycles = cyclesToFinalAccess totalCycles
+
+        let cpu', bus' = consumeCycles delayCycles cpu bus
+
+        // 最終サイクルの直前に割り込み要求をチェック
+        let irqSample = Bus.pollIrqStatus bus'
+
+        // 最終サイクル消費
+        let cpu'', bus'' = consumeCycle cpu' bus'
+        { cpu'' with irqLine = irqSample }, bus'', totalCycles
 
     /// CPU を 1 命令だけ実行する
     let step cpu (bus: Bus.BusState) =

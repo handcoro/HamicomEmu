@@ -45,7 +45,7 @@ module EmulatorCore =
             { emu with bus = bus' }, 1u
         | _ ->
             let nmiBus, nmi = Bus.pollNmiStatus emu.bus
-            let irq = Bus.pollIrqStatus emu.bus
+            let irq = emu.cpu.irqLine
 
             let suppressIrq = Cpu.isSuppressIrq emu.cpu
             let irqAllowed =
