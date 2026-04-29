@@ -898,11 +898,12 @@ module Cpu =
                     match m with
                     | Absolute_X
                     | Absolute_Y
-                    | Indirect_X
                     | Indirect_Y ->
                         let operandPc = c.pc + 1us
                         let addr = getOperandAddress c b operandPc m // 命令内と合わせて2回呼ぶことになるのはできればどうにかしたい
-                        isPageCrossed operandPc addr
+                        // ページ跨ぎ判定はベースアドレス（インデックス加算前）と実効アドレスで行う
+                        let index = match m with | Absolute_X -> uint16 c.x | _ -> uint16 c.y
+                        isPageCrossed (addr - index) addr
                     | _ -> false
 
                 (c, b) ||> f m ||> advancePC size, crsd
